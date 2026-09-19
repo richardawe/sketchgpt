@@ -8,7 +8,7 @@ name: Deploy Pages
 
 on:
   push:
-    branches: [claude/ollama-base-model-setup-hg1iuk]
+    branches: [main]
     paths:
       - 'web/**'
       - '.github/workflows/pages.yml'

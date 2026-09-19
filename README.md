@@ -15,7 +15,7 @@ Also includes a local [Ollama](https://ollama.com) setup for development.
 ## Use this as a template
 
 ```bash
-gh repo create my-chat --public --template <you>/sketchgpt --clone
+gh repo create my-chat --public --template richardawe/sketchgpt --clone
 cd my-chat
 ./scripts/setup-pages.sh
 ```
