@@ -64,12 +64,77 @@ the digest pin gives the same reproducibility guarantee that committing the
 bytes would. If you do want the weights versioned, `git lfs track
 "models/ollama/blobs/*"` and drop the ignore rule — just budget the quota.
 
+## Chat UI
+
+```bash
+./scripts/serve-web.sh          # then open http://localhost:8080
+```
+
+A dependency-free chat page (`web/index.html`) with streaming replies, a model
+picker, and a live system-prompt box for experimenting with the model's
+behaviour.
+
+It must be **served**, not opened by double-clicking the file. A `file://` page
+sends a null origin and Ollama rejects it — `serve-web.sh` handles this, and
+also starts Ollama if it is not already running.
+
+### Can this run on GitHub Pages?
+
+You can host the page there, but **it will not reliably reach your model**, and
+it would only ever work for someone running Ollama on their own machine.
+
+The model runs at `http://127.0.0.1:11434` on *your* computer. A Pages site is
+public HTTPS, so a request from it to your local Ollama is a public-to-private
+call. Chrome's Private Network Access rules require the local server to opt in
+with an `Access-Control-Allow-Private-Network` header, and Ollama does not send
+one — verified against Ollama 0.34.2:
+
+```
+# from https://<user>.github.io, with the origin explicitly allowed:
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: https://<user>.github.io
+# ... and no Access-Control-Allow-Private-Network header
+```
+
+So the CORS half passes but the private-network half does not. Browser
+behaviour here is inconsistent and tightening over time — not something to
+build on.
+
+Serving from `http://localhost` avoids the problem entirely: both ends are
+local, so no private-network check applies. Ollama allows any `localhost` or
+`127.0.0.1` origin by default, which is why `serve-web.sh` needs no config.
+
+**If you do want it on the public web**, the shape that actually works is a
+small server-side proxy — a host with a GPU running Ollama behind an
+authenticated API, with the static page calling that instead of `127.0.0.1`.
+Note that this exposes your model to the internet, so put auth and rate
+limiting in front of it.
+
+## Making it do other things
+
+See [`docs/customising.md`](docs/customising.md). Short version: Ollama runs
+models, it cannot train them. Start with a system prompt — for most tasks that
+is enough — and only climb toward RAG or a LoRA fine-tune when it genuinely
+is not.
+
+```bash
+ollama create sketchgpt -f models/modelfiles/sketchgpt.Modelfile
+ollama run sketchgpt
+```
+
+A custom model built this way shares the base weights, so it costs kilobytes,
+not another 500 MB.
+
 ## Layout
 
 ```
 models/model-pin.json     pinned model + digests (committed)
+models/modelfiles/        custom models built on the base (committed)
 models/ollama/            Ollama model store — weights live here (ignored)
 scripts/setup-ollama.sh   install, serve, pull, verify, smoke-test
+scripts/serve-web.sh      serve the chat UI on localhost
+web/index.html            dependency-free streaming chat UI
+docs/customising.md       how to change what the model does
 ```
 
 ## Notes
