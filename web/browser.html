@@ -121,6 +121,8 @@
         <input id="temp" type="number" min="0" max="2" step="0.1" value="0.7" style="width:70px"></span>
       <label style="display:inline" title="Send each message on its own, ignoring earlier turns">
         <input type="checkbox" id="single"> one message at a time</label>
+      <label style="display:inline" title="Qwen3 and similar models reason before answering">
+        <input type="checkbox" id="think"> show reasoning</label>
       <span id="hint" style="color:var(--muted)"></span>
     </div>
   </div>
@@ -439,7 +441,8 @@ function save() {
   try {
     localStorage.setItem("sketchgpt.cfg", JSON.stringify({
       preset: $("preset").value, system: $("system").value,
-      temp: $("temp").value, single: $("single").checked
+      temp: $("temp").value, single: $("single").checked,
+      think: $("think").checked
     }));
   } catch {}
 }
@@ -452,6 +455,7 @@ function restore() {
     $("system").value = c.system || "";
     $("temp").value = c.temp != null ? c.temp : 0.7;
     $("single").checked = !!c.single;
+    $("think").checked = !!c.think;
     $("hint").textContent = HINTS[$("preset").value] || "";
     syncBadge();
   } else {
@@ -495,13 +499,21 @@ function addMsg(role, text) {
   return { body, think };
 }
 
-// Qwen3 emits its reasoning inside <think>…</think>; split it out as it streams.
+// Qwen3 emits reasoning inside <think>…</think>. Chat templates commonly
+// PREFILL the opening tag, so the stream often carries only the closing one —
+// treating a missing "<think>" as "no reasoning here" dumped the entire
+// monologue into the answer. Handle both shapes.
 function splitThink(raw) {
-  const open = raw.indexOf("<think>");
-  if (open === -1) return { think: "", answer: raw };
+  const open  = raw.indexOf("<think>");
   const close = raw.indexOf("</think>");
+
+  if (open === -1) {
+    if (close === -1) return { think: "", answer: raw };      // no reasoning
+    // Opening tag was prefilled: everything up to </think> is reasoning.
+    return { think: raw.slice(0, close), answer: raw.slice(close + 8) };
+  }
   return close === -1
-    ? { think: raw.slice(open + 7), answer: "" }
+    ? { think: raw.slice(open + 7), answer: "" }               // still thinking
     : { think: raw.slice(open + 7, close), answer: raw.slice(close + 8) };
 }
 
@@ -537,6 +549,10 @@ $("form").addEventListener("submit", async e => {
     const temp = parseFloat($("temp").value);
     const req = { messages: base, stream: true };
     if (!isNaN(temp)) req.temperature = temp;
+
+    // Reasoning models otherwise spend most of their output budget thinking
+    // out loud before the answer. Off by default; the block is collapsed when on.
+    if (!$("think").checked) req.extra_body = { enable_thinking: false };
 
     // Single-turn means a short structured answer is expected, so cap the
     // output. Without this a model that loops emits a wall of repeated text.

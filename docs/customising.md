@@ -150,6 +150,16 @@ because it ignores the output format and answers "good", "downward" or
 of two tokens, obedience beats capability. Use the 1B for extraction and
 routing, where it is clearly ahead.
 
+### On a desktop, go bigger
+
+Qwen3-1.7B (2037 MB) via the in-browser page produces genuinely usable long-form
+work on desktop — outlines, drafts, structured documents. The ceiling described
+below is a property of 360M-class models on phones, not of the page.
+
+Reasoning models like Qwen3 think before answering. The page hides that by
+default (`extra_body.enable_thinking = false`); tick **show reasoning** to see
+it in a collapsed block instead.
+
 ### The use case this points at
 
 **Private sentiment tagging of your own writing, offline.**
