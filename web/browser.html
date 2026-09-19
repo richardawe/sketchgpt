@@ -387,7 +387,15 @@ const PRESETS = {
   chat: { system: "", temp: 0.7, single: false },
   mood: {
     system: "Reply with exactly one word: positive or negative.",
-    temp: 0, single: true
+    temp: 0, single: true,
+    // Layered, because a 4-bit model may ignore the instruction outright:
+    //  - grammar makes any other output unreachable by the sampler
+    //  - maxTokens caps the damage if grammar is unsupported
+    //  - wrap repeats the instruction in the user turn, which small models
+    //    follow more reliably than the system role
+    maxTokens: 4,
+    grammar: 'root ::= "positive" | "negative"',
+    wrap: t => `Text: ${t}\n\nReply with exactly one word: positive or negative.`
   }
 };
 const HINTS = {
@@ -489,17 +497,40 @@ $("form").addEventListener("submit", async e => {
   let raw = "";
   try {
     // One-at-a-time sends just this turn: for classification, earlier turns
-    // bias the answer rather than help it.
-    const base = $("single").checked ? [history[history.length - 1]] : [...history];
+    // bias the answer rather than help it. Clone so wrapping cannot corrupt
+    // the stored history.
+    const preset = PRESETS[$("preset").value];
+    let base = ($("single").checked ? [history[history.length - 1]] : history)
+                 .map(m => ({ ...m }));
+
+    if (preset && preset.wrap && base.length && base[base.length - 1].role === "user") {
+      base[base.length - 1].content = preset.wrap(base[base.length - 1].content);
+    }
     const sys = $("system").value.trim();
     if (sys) base.unshift({ role: "system", content: sys });
-    const temp = parseFloat($("temp").value);
 
-    const stream = await engine.chat.completions.create({
-      messages: base,
-      stream: true,
-      temperature: isNaN(temp) ? undefined : temp
-    });
+    const temp = parseFloat($("temp").value);
+    const req = { messages: base, stream: true };
+    if (!isNaN(temp)) req.temperature = temp;
+
+    // Single-turn means a short structured answer is expected, so cap the
+    // output. Without this a model that loops emits a wall of repeated text.
+    const cap = preset && preset.maxTokens ? preset.maxTokens
+              : ($("single").checked ? 12 : 0);
+    if (cap) req.max_tokens = cap;
+
+    let stream;
+    try {
+      stream = await engine.chat.completions.create(
+        preset && preset.grammar
+          ? { ...req, response_format: { type: "grammar", grammar: preset.grammar } }
+          : req);
+    } catch (e) {
+      // Grammar support varies by model build; fall back rather than break chat.
+      if (!(preset && preset.grammar)) throw e;
+      console.warn("grammar constraint rejected, retrying without:", e.message);
+      stream = await engine.chat.completions.create(req);
+    }
     for await (const chunk of stream) {
       if (stopFlag) { await engine.interruptGenerate(); break; }
       raw += chunk.choices?.[0]?.delta?.content || "";
