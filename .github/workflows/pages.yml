@@ -1,0 +1,55 @@
+name: Deploy Pages
+
+# Publishes the in-browser chat page. Only web/browser.html works for a public
+# visitor — it runs the model in the tab via WebGPU. web/index.html talks to a
+# local Ollama and would just report "offline" to anyone else, so the deployed
+# site leads with the browser version and keeps the Ollama one alongside it for
+# reference.
+
+on:
+  push:
+    branches: [claude/ollama-base-model-setup-hg1iuk]
+    paths:
+      - 'web/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it midway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp web/browser.html _site/index.html   # the page that works for visitors
+          cp web/index.html   _site/ollama.html  # needs a local Ollama
+          cp web/browser.html _site/browser.html # stable direct link
+          ls -la _site
+
+      # enablement: true turns Pages on via the API if it is not already,
+      # so this repo needs no manual Settings step.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
