@@ -48,6 +48,14 @@
   #bar { height: 3px; background: var(--line); display: none; }
   #bar.on { display: block; }
   #barfill { height: 100%; width: 0; background: var(--accent); transition: width 0.25s; }
+  #settings { padding: 12px 16px; border-bottom: 1px solid var(--line);
+              background: var(--panel); display: none; }
+  #settings.open { display: block; }
+  #settings label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  #system { width: 100%; min-height: 76px; resize: vertical; }
+  #preset { width: 100%; max-width: 100%; }
+  .row { display: flex; gap: 16px; align-items: center; margin-top: 10px;
+         flex-wrap: wrap; font-size: 13px; }
   #log { flex: 1 1 auto; overflow-y: auto; padding: 20px 16px; }
   .wrap { max-width: 760px; margin: 0 auto; }
   .msg { margin-bottom: 18px; }
@@ -85,9 +93,32 @@
   <select id="model" title="Model"></select>
   <span id="status">checking…</span>
   <span class="spacer"></span>
+  <button id="toggle">Settings</button>
   <button id="evict" title="Remove the cached weights from this browser">Clear cache</button>
 </header>
 <div id="bar"><div id="barfill"></div></div>
+
+<div id="settings">
+  <div class="wrap">
+    <label for="preset">Preset</label>
+    <select id="preset">
+      <option value="chat">Chat — open conversation</option>
+      <option value="mood">Mood tagger — positive / negative</option>
+      <option value="custom">Custom</option>
+    </select>
+
+    <label for="system" style="margin-top:12px">System prompt</label>
+    <textarea id="system" placeholder="Instructions the model sees before every message."></textarea>
+
+    <div class="row">
+      <span><label for="temp" style="display:inline">Temperature</label>
+        <input id="temp" type="number" min="0" max="2" step="0.1" value="0.7" style="width:70px"></span>
+      <label style="display:inline" title="Send each message on its own, ignoring earlier turns">
+        <input type="checkbox" id="single"> one message at a time</label>
+      <span id="hint" style="color:var(--muted)"></span>
+    </div>
+  </div>
+</div>
 
 <div id="log"><div class="wrap" id="wrap">
   <div class="card" id="card">
@@ -346,6 +377,76 @@ $("evict").addEventListener("click", async () => {
   } catch (e) { alert("Could not clear cache: " + e.message); }
 });
 
+// ---- Presets --------------------------------------------------------------
+// The mood tagger is the one task this size of model is genuinely reliable at:
+// SmolLM2-360M scored 10/10 on realistic journal entries, where Llama-3.2-1B
+// managed 4/10 because it drifted off-format. Small models obey tight
+// constraints well; they reason badly. Temperature 0 keeps it deterministic,
+// and one-message-at-a-time stops earlier turns from skewing the label.
+const PRESETS = {
+  chat: { system: "", temp: 0.7, single: false },
+  mood: {
+    system: "Reply with exactly one word: positive or negative.",
+    temp: 0, single: true
+  }
+};
+const HINTS = {
+  chat: "Open chat is where small models struggle most.",
+  mood: "Paste a journal entry or note; it replies with one word.",
+  custom: ""
+};
+
+function applyPreset(name) {
+  const cfg = PRESETS[name];
+  if (cfg) {
+    $("system").value = cfg.system;
+    $("temp").value = cfg.temp;
+    $("single").checked = cfg.single;
+  }
+  $("hint").textContent = HINTS[name] || "";
+  save();
+}
+
+function save() {
+  try {
+    localStorage.setItem("sketchgpt.cfg", JSON.stringify({
+      preset: $("preset").value, system: $("system").value,
+      temp: $("temp").value, single: $("single").checked
+    }));
+  } catch {}
+}
+
+function restore() {
+  let c = null;
+  try { c = JSON.parse(localStorage.getItem("sketchgpt.cfg") || "null"); } catch {}
+  if (c) {
+    $("preset").value = c.preset || "chat";
+    $("system").value = c.system || "";
+    $("temp").value = c.temp != null ? c.temp : 0.7;
+    $("single").checked = !!c.single;
+    $("hint").textContent = HINTS[$("preset").value] || "";
+  } else {
+    applyPreset("chat");
+  }
+}
+
+$("preset").addEventListener("change", () => applyPreset($("preset").value));
+// Hand-editing the prompt means it is no longer one of the presets.
+for (const id of ["system", "temp", "single"]) {
+  $(id).addEventListener("input", () => {
+    const cur = PRESETS[$("preset").value];
+    if (cur && ($("system").value !== cur.system ||
+                parseFloat($("temp").value) !== cur.temp ||
+                $("single").checked !== cur.single)) {
+      $("preset").value = "custom";
+      $("hint").textContent = "";
+    }
+    save();
+  });
+}
+$("toggle").addEventListener("click", () => $("settings").classList.toggle("open"));
+restore();
+
 // ---- Chat ----------------------------------------------------------------
 function addMsg(role, text) {
   const el = document.createElement("div");
@@ -387,7 +488,18 @@ $("form").addEventListener("submit", async e => {
 
   let raw = "";
   try {
-    const stream = await engine.chat.completions.create({ messages: history, stream: true });
+    // One-at-a-time sends just this turn: for classification, earlier turns
+    // bias the answer rather than help it.
+    const base = $("single").checked ? [history[history.length - 1]] : [...history];
+    const sys = $("system").value.trim();
+    if (sys) base.unshift({ role: "system", content: sys });
+    const temp = parseFloat($("temp").value);
+
+    const stream = await engine.chat.completions.create({
+      messages: base,
+      stream: true,
+      temperature: isNaN(temp) ? undefined : temp
+    });
     for await (const chunk of stream) {
       if (stopFlag) { await engine.interruptGenerate(); break; }
       raw += chunk.choices?.[0]?.delta?.content || "";

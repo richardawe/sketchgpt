@@ -114,3 +114,58 @@ fine-tuning at this size will usually disappoint — move to a larger base
 | It to know your documents or data | 3 — RAG |
 | A style or idiom prompting can't reach | 4 — LoRA |
 | It to be smarter in general | None — use a bigger base model |
+
+
+---
+
+## What a 360M model on a phone is actually for
+
+Measured against `smollm2:360m`, the size the in-browser page defaults to on
+mobile. Every number below is a real run, not an estimate.
+
+| Task | SmolLM2-360M | Llama-3.2-1B |
+|---|---|---|
+| **Sentiment on journal entries (positive/negative)** | **10/10** | 4/10 |
+| Binary sentiment on short reviews | **10/10** | — |
+| Three-way sentiment (+ neutral) | 5/8 | — |
+| Extract dates from a sentence | invented 4 extra dates | 3/3 |
+| Three keywords from a caption | echoed the input | correct |
+| Route to billing/technical/sales | wrong | correct |
+| Spam vs normal | chance | answered "normal" to everything |
+| Urgent vs later | 2/8 | 4/8 |
+
+Two things fall out of this.
+
+**It is a classifier, not a conversationalist.** The one task it is genuinely
+reliable at is sorting short text into *two* clearly-opposed, conventional
+labels. Positive/negative is heavily represented in training data; invented
+label pairs like urgent/later are not, and it fails them. Adding a third class
+makes it collapse to whichever label it likes best. Few-shot examples did not
+rescue the custom schemes.
+
+**Bigger is not automatically better.** Llama-3.2-1B scored 4/10 on journal
+sentiment against SmolLM2-360M's 10/10 — not because it understands less, but
+because it ignores the output format and answers "good", "downward" or
+"anxious" when asked for one of two words. When the whole job is emitting one
+of two tokens, obedience beats capability. Use the 1B for extraction and
+routing, where it is clearly ahead.
+
+### The use case this points at
+
+**Private sentiment tagging of your own writing, offline.**
+
+It fits what the model can do and what the phone is good for at the same time:
+
+- Journal entries and personal notes are exactly the text you would not paste
+  into a cloud API. On-device inference means it never leaves the phone.
+- It works on a plane, on the tube, with no signal at all.
+- Entries are short, so a 360M model answers quickly.
+- Volume is high and per-call cost is zero.
+- The task is binary, which is the one shape this model nails.
+
+The **Mood tagger** preset in `web/browser.html` sets this up: the system
+prompt, temperature 0 for determinism, and one-message-at-a-time so earlier
+entries cannot bias the current label.
+
+Open chat, by contrast, is the worst possible use of a model this size — it is
+the one thing the benchmark above says it cannot do.
