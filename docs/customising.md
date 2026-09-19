@@ -160,22 +160,32 @@ Reasoning models like Qwen3 think before answering. The page hides that by
 default (`extra_body.enable_thinking = false`); tick **show reasoning** to see
 it in a collapsed block instead.
 
-### The use case this points at
+### What these models are for
 
-**Private sentiment tagging of your own writing, offline.**
+Tested in the browser, the mood tagger **did not work**: a 4-bit SmolLM2-360M
+answered "positive" to everything. The grammar constraint did its job — the
+output was always a valid label — but a valid label is not a correct one. When
+the weights are damaged enough that the logits carry little signal, constrained
+decoding just picks whichever allowed token edges ahead, every time.
 
-It fits what the model can do and what the phone is good for at the same time:
+That is the trap worth remembering:
 
-- Journal entries and personal notes are exactly the text you would not paste
-  into a cloud API. On-device inference means it never leaves the phone.
-- It works on a plane, on the tube, with no signal at all.
-- Entries are short, so a 360M model answers quickly.
-- Volume is high and per-call cost is zero.
-- The task is binary, which is the one shape this model nails.
+**Tasks with a correct answer fail silently.** Classification, extraction and
+routing return confident, well-formed, wrong results. You cannot tell by
+looking. At 360M and 4-bit, do not use them for this.
 
-The **Mood tagger** preset in `web/browser.html` sets this up: the system
-prompt, temperature 0 for determinism, and one-message-at-a-time so earlier
-entries cannot bias the current label.
+**Tasks with no correct answer degrade gracefully.** Description, riffing on a
+concrete input, open questions — a weak model gives you something mediocre,
+and mediocre is visible and harmless. Given a seed, even the 360M model
+produced usable lines ("a water droplet on a white piece of paper"; "what if
+cities could change colours at night?"). Asked to generate from nothing or to
+follow a multi-part format, it waffled or echoed the input back.
 
-Open chat, by contrast, is the worst possible use of a model this size — it is
-the one thing the benchmark above says it cannot do.
+So the presets in the page make no accuracy claims. **Concise** shortens
+replies, which helps because small models ramble; it cannot be wrong, only
+unhelpful. Everything else is a free-text system prompt you can experiment
+with, knowing the failure mode above.
+
+If you need a task done *correctly*, use a bigger model. Qwen3-1.7B on a
+desktop handles real generative work — outlines, drafts, structured documents.
+The ceiling described here belongs to 360M-class models on phones.

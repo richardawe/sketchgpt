@@ -1,7 +1,47 @@
 # sketchgpt
 
-Local LLM setup for sketchgpt, running a small base model through
-[Ollama](https://ollama.com).
+A chat page that runs a language model **in the browser** — no server, no API
+key, no install for whoever opens it. Weights download once from a CDN into
+browser storage; every visit after that loads from cache and works offline.
+
+Also includes a local [Ollama](https://ollama.com) setup for development.
+
+> **Built on [WebLLM](https://github.com/mlc-ai/web-llm)** (MLC), which does the
+> actual in-browser inference. In-browser LLMs are an established category —
+> WebLLM has shipped since 2023 and runs its own demo at
+> [chat.webllm.ai](https://chat.webllm.ai). This repo is a deployable
+> starting point with device-aware model selection, not a new technique.
+
+## Use this as a template
+
+```bash
+gh repo create my-chat --public --template <you>/sketchgpt --clone
+cd my-chat
+./scripts/setup-pages.sh
+```
+
+That pushes the repo, enables Pages, triggers the deploy and prints your URL.
+It uses **your** `gh` credentials, because a workflow's `GITHUB_TOKEN` cannot
+create a Pages site — it fails with *"Resource not accessible by integration"*.
+
+Already have a repo? Run `./scripts/setup-pages.sh` inside it, or
+`./scripts/setup-pages.sh my-chat` to create one first.
+
+Then open the URL. The first visit asks before downloading the weights;
+after that the page loads them from cache and drops you straight into chat.
+
+### What visitors get
+
+| Device | Model chosen | Download |
+|---|---|---|
+| Desktop | Qwen3-0.6B | ~500 MB |
+| Phone / tablet | SmolLM2-360M | ~376 MB |
+
+The page reads the GPU adapter and available memory, filters out models the
+device cannot run, and picks one with headroom to spare. Anything larger is
+labelled and needs a confirmation, because exceeding the limit kills the tab
+rather than raising an error. Bigger models are one dropdown away — Qwen3-1.7B
+is the sweet spot on a desktop.
 
 ## Quickstart
 

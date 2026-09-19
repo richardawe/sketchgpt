@@ -109,7 +109,7 @@
     <label for="preset">Preset</label>
     <select id="preset">
       <option value="chat">Chat — open conversation</option>
-      <option value="mood">Mood tagger — positive / negative</option>
+      <option value="concise">Concise — short answers</option>
       <option value="custom">Custom</option>
     </select>
 
@@ -278,6 +278,16 @@ async function init() {
 
   await refreshMeta();
   setStatus("ready to load");
+
+  // Returning visitors already have the weights, so there is nothing to
+  // consent to — open straight into chat. A first visit still asks, because
+  // silently pulling hundreds of MB on someone's mobile data is not ours to do.
+  try {
+    if (await webllm.hasModelInCache($("model").value)) {
+      setStatus("loading from cache…", "busy");
+      $("load").click();
+    }
+  } catch {}
 }
 init();
 
@@ -386,43 +396,27 @@ $("evict").addEventListener("click", async () => {
 });
 
 // ---- Presets --------------------------------------------------------------
-// The mood tagger is the one task this size of model is genuinely reliable at:
 // SmolLM2-360M scored 10/10 on realistic journal entries, where Llama-3.2-1B
 // managed 4/10 because it drifted off-format. Small models obey tight
 // constraints well; they reason badly. Temperature 0 keeps it deterministic,
 // and one-message-at-a-time stops earlier turns from skewing the label.
 const PRESETS = {
-  chat: { system: "", temp: 0.7, single: false },
-  mood: {
-    system: "Reply with exactly one word: positive or negative.",
-    temp: 0, single: true,
-    // Layered, because a 4-bit model may ignore the instruction outright:
-    //  - grammar makes any other output unreachable by the sampler
-    //  - maxTokens caps the damage if grammar is unsupported
-    //  - wrap repeats the instruction in the user turn, which small models
-    //    follow more reliably than the system role
-    maxTokens: 4,
-    grammar: 'root ::= "positive" | "negative"',
-    wrap: t => `Text: ${t}\n\nReply with exactly one word: positive or negative.`
-  }
+  chat:    { system: "", temp: 0.7, single: false },
+  concise: { system: "Answer in at most two short sentences.", temp: 0.5, single: false }
 };
+
 const HINTS = {
-  chat: "Open chat is where small models struggle most.",
-  mood: "Paste a journal entry or note; it replies with one word.",
+  chat: "",
+  concise: "Small models ramble; this keeps answers short.",
   custom: ""
 };
 
-const MODE_LABEL = { mood: "mood tagger", custom: "custom prompt" };
+const MODE_LABEL = { concise: "concise", custom: "custom prompt" };
 
 function syncBadge() {
   const name = $("preset").value;
-  const label = MODE_LABEL[name];
-  const constrained = name !== "chat";
-  $("mode").hidden = !constrained;
-  $("mode").textContent = label || "";
-  $("input").placeholder = name === "mood"
-    ? "Paste a note — replies with one word…"
-    : "Send a message…  (Enter to send, Shift+Enter for newline)";
+  $("mode").hidden = name === "chat";
+  $("mode").textContent = MODE_LABEL[name] || "";
 }
 
 function applyPreset(name) {
