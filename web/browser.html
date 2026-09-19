@@ -34,6 +34,11 @@
   .dot.err { background: #c0503f; }
   .dot.busy { background: #d9a441; }
   #status { color: var(--muted); font-size: 13px; }
+  /* A constrained preset silently rewrites every reply, so it must be visible
+     even when the settings panel is shut. */
+  #mode { font-size: 12px; padding: 2px 8px; border-radius: 999px;
+          background: var(--accent); color: #fff; white-space: nowrap; }
+  #mode[hidden] { display: none; }
   .spacer { flex: 1 1 auto; }
   select, button, input, textarea {
     font: inherit; color: var(--ink); background: var(--panel);
@@ -92,6 +97,7 @@
   <h1>sketchgpt</h1>
   <select id="model" title="Model"></select>
   <span id="status">checking…</span>
+  <span id="mode" hidden></span>
   <span class="spacer"></span>
   <button id="toggle">Settings</button>
   <button id="evict" title="Remove the cached weights from this browser">Clear cache</button>
@@ -404,6 +410,19 @@ const HINTS = {
   custom: ""
 };
 
+const MODE_LABEL = { mood: "mood tagger", custom: "custom prompt" };
+
+function syncBadge() {
+  const name = $("preset").value;
+  const label = MODE_LABEL[name];
+  const constrained = name !== "chat";
+  $("mode").hidden = !constrained;
+  $("mode").textContent = label || "";
+  $("input").placeholder = name === "mood"
+    ? "Paste a note — replies with one word…"
+    : "Send a message…  (Enter to send, Shift+Enter for newline)";
+}
+
 function applyPreset(name) {
   const cfg = PRESETS[name];
   if (cfg) {
@@ -412,6 +431,7 @@ function applyPreset(name) {
     $("single").checked = cfg.single;
   }
   $("hint").textContent = HINTS[name] || "";
+  syncBadge();
   save();
 }
 
@@ -433,6 +453,7 @@ function restore() {
     $("temp").value = c.temp != null ? c.temp : 0.7;
     $("single").checked = !!c.single;
     $("hint").textContent = HINTS[$("preset").value] || "";
+    syncBadge();
   } else {
     applyPreset("chat");
   }
@@ -448,11 +469,15 @@ for (const id of ["system", "temp", "single"]) {
                 $("single").checked !== cur.single)) {
       $("preset").value = "custom";
       $("hint").textContent = "";
+      syncBadge();
     }
     save();
   });
 }
 $("toggle").addEventListener("click", () => $("settings").classList.toggle("open"));
+$("mode").addEventListener("click", () => $("settings").classList.add("open"));
+$("mode").style.cursor = "pointer";
+$("mode").title = "Constrained mode — tap to change";
 restore();
 
 // ---- Chat ----------------------------------------------------------------
