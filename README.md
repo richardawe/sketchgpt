@@ -125,8 +125,24 @@ files at 100 MB and sites at ~1 GB, so the weights could never live there.
 python3 -m http.server 8080 --directory web   # then open /browser.html
 ```
 
-To publish it: Settings → Pages → deploy from branch, then visit
-`/browser.html`. Pages must be served over HTTPS for WebGPU to be available.
+### Publishing it
+
+`.github/workflows/pages.yml` deploys the site on every push that touches
+`web/`. It assembles `browser.html` as the site's `index.html` (the page that
+works for a visitor) and ships the Ollama page as `ollama.html`.
+
+**Pages has to be switched on once by hand first:**
+
+> Settings → Pages → Source: **GitHub Actions**
+
+The workflow cannot do this for you. Creating a Pages site requires
+repo-administration rights and the workflow's `GITHUB_TOKEN` does not have
+them — `actions/configure-pages` fails with *"Create Pages site failed. Error:
+Resource not accessible by integration"*. Once the source is set, that step
+reads the existing config and every later push deploys on its own.
+
+The site then lands at `https://<user>.github.io/sketchgpt/`. Pages serves over
+HTTPS, which WebGPU requires anyway.
 
 **Requirements and caveats**
 
