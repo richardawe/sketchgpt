@@ -78,16 +78,24 @@ It must be **served**, not opened by double-clicking the file. A `file://` page
 sends a null origin and Ollama rejects it — `serve-web.sh` handles this, and
 also starts Ollama if it is not already running.
 
-### Can this run on GitHub Pages?
+### Two ways to run it
 
-You can host the page there, but **it will not reliably reach your model**, and
-it would only ever work for someone running Ollama on their own machine.
+| | `web/index.html` (Ollama) | `web/browser.html` (in-browser) |
+|---|---|---|
+| Runs on | Ollama, via localhost | WebGPU, inside the tab |
+| Needs installing | Yes | No |
+| Hostable on GitHub Pages | No | **Yes** |
+| Works for other people | Only if they install Ollama | Anyone with a WebGPU browser |
+| Model storage | `models/ollama/` on disk | Browser cache, persisted |
+| Speed | Faster | Slower, but no setup |
 
-The model runs at `http://127.0.0.1:11434` on *your* computer. A Pages site is
-public HTTPS, so a request from it to your local Ollama is a public-to-private
-call. Chrome's Private Network Access rules require the local server to opt in
-with an `Access-Control-Allow-Private-Network` header, and Ollama does not send
-one — verified against Ollama 0.34.2:
+### Why the Ollama page can't go on GitHub Pages
+
+Your model runs at `http://127.0.0.1:11434` on *your* machine. A Pages site is
+public HTTPS, so calling it is a public-to-private request. Chrome's Private
+Network Access rules require the local server to opt in with an
+`Access-Control-Allow-Private-Network` header, and Ollama does not send one —
+verified against Ollama 0.34.2:
 
 ```
 # from https://<user>.github.io, with the origin explicitly allowed:
@@ -96,19 +104,41 @@ Access-Control-Allow-Origin: https://<user>.github.io
 # ... and no Access-Control-Allow-Private-Network header
 ```
 
-So the CORS half passes but the private-network half does not. Browser
-behaviour here is inconsistent and tightening over time — not something to
-build on.
+The CORS half passes, the private-network half does not. Serving from
+`http://localhost` avoids it entirely — both ends are local, so no
+private-network check applies.
 
-Serving from `http://localhost` avoids the problem entirely: both ends are
-local, so no private-network check applies. Ollama allows any `localhost` or
-`127.0.0.1` origin by default, which is why `serve-web.sh` needs no config.
+### How the in-browser page sidesteps all of it
 
-**If you do want it on the public web**, the shape that actually works is a
-small server-side proxy — a host with a GPU running Ollama behind an
-authenticated API, with the static page calling that instead of `127.0.0.1`.
-Note that this exposes your model to the internet, so put auth and rate
-limiting in front of it.
+`web/browser.html` removes the local server from the picture: it downloads the
+weights into browser storage and runs inference in the tab via WebGPU. There is
+no `127.0.0.1` call, so there is nothing for the private-network rules to block.
+**This one can be hosted on GitHub Pages**, and it works for any visitor without
+them installing anything.
+
+The weights do *not* come from Pages — they stream from the Hugging Face CDN
+that [WebLLM](https://github.com/mlc-ai/web-llm) publishes precompiled models
+to. Pages only serves the ~15 KB of HTML. That matters, because Pages caps
+files at 100 MB and sites at ~1 GB, so the weights could never live there.
+
+```bash
+python3 -m http.server 8080 --directory web   # then open /browser.html
+```
+
+To publish it: Settings → Pages → deploy from branch, then visit
+`/browser.html`. Pages must be served over HTTPS for WebGPU to be available.
+
+**Requirements and caveats**
+
+- **WebGPU with a real GPU adapter.** Chrome/Edge 113+, Safari 18+, recent
+  Firefox. The page resolves an actual adapter before offering to load, because
+  `navigator.gpu` can exist on GPU-less VMs where no adapter is obtainable.
+- **First load downloads the weights** — a few hundred MB, shown as a progress
+  bar. After that it loads from cache in seconds and works fully offline.
+- **Storage quota.** The page calls `navigator.storage.persist()` to ask the
+  browser not to evict the weights, and warns when the quota looks too small to
+  hold them. Quotas vary by device and free disk.
+- **Slower than Ollama**, and capped at a 4096-token context.
 
 ## Making it do other things
 
@@ -133,7 +163,8 @@ models/modelfiles/        custom models built on the base (committed)
 models/ollama/            Ollama model store — weights live here (ignored)
 scripts/setup-ollama.sh   install, serve, pull, verify, smoke-test
 scripts/serve-web.sh      serve the chat UI on localhost
-web/index.html            dependency-free streaming chat UI
+web/index.html            streaming chat UI, talks to local Ollama
+web/browser.html          runs the model in-browser via WebGPU (Pages-ready)
 docs/customising.md       how to change what the model does
 ```
 
