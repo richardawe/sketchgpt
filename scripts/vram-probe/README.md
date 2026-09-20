@@ -24,7 +24,13 @@ node run.mjs SmolLM2-360M-Instruct-q4f32_1-MLC \
              SmolLM2-360M-Instruct-q4f32_1_cs1k-webgpu.wasm 1024
 ```
 
-The last argument is the context window; omit it for the record's default.
+Arguments after the wasm are `<ctx> <gen> <sliding_window>`, all optional:
+
+```bash
+# reproduce the gemma3 loading bug, then the one-line fix
+node run.mjs gemma3-1b-it-q4f16_1-MLC gemma3-1b-it-q4f16_1_cs1k-webgpu.wasm
+node run.mjs gemma3-1b-it-q4f16_1-MLC gemma3-1b-it-q4f16_1_cs1k-webgpu.wasm "" "" -1
+```
 
 `extract.py` is the companion: it pulls the `_metadata` JSON out of a compiled
 `.wasm` and prints exact parameter bytes, the KV-cache geometry, and MLC's
@@ -49,7 +55,10 @@ Full results and the models table are in `docs/mobile-models.md`.
 - **SwiftShader cannot generate.** Loading takes seconds; a single token did
   not complete in 25 minutes. These are load-time allocations only, and
   `batch_prefill` / `batch_decode` will add their workspace on first inference.
-- **No `shader-f16`**, so only `q4f32` builds run here.
+- **No `shader-f16`**, so only `q4f32` builds run here. A `q4f16` build fails
+  with `GPUPipelineError: [Invalid ShaderModule]` — including SmolLM2-360M,
+  which is the shipped default and works fine on real hardware. Expect that
+  error and do not read it as a problem with the model.
 - Chromium needs `--enable-unsafe-webgpu`; `run.mjs` passes it. Do not run
   `playwright install` — use the browser already at
   `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.

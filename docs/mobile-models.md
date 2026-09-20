@@ -258,10 +258,21 @@ research did not settle, and is the first thing Stage 5 has to test.
 `context_window_size: 4096` and leaves the sliding window alone. The pipeline
 constructor throws `WindowSizeConfigurationError` when both are positive —
 "Only one of context_window_size and sliding_window_size can be positive."
-Simulating that exact merge against the real config files confirms it for
-gemma3 and clears the other five models checked; the seven Mistral records in
-the prebuilt config avoid it by explicitly overriding
-`sliding_window_size: -1`, and gemma3's record does not.
+**Confirmed by running it**, not just by reading the code: loading gemma3
+through WebLLM 0.2.85 raises
+
+```
+WindowSizeConfigurationError: Only one of context_window_size and
+sliding_window_size can be positive. Got: context_window_size: 4096,
+sliding_window_size: 512
+```
+
+Passing `{ sliding_window_size: -1 }` clears that error; the load then fails on
+the f16 shader, which is this sandbox's limitation rather than the model's — a
+control run of SmolLM2-360M-q4f16, the page's own default, fails identically
+here. The seven Mistral records in the prebuilt config avoid the window
+conflict by explicitly overriding `sliding_window_size: -1`; gemma3's does
+not.
 
 **This model is in the shipped dropdown of `web/browser.html`.** Anyone who
 selects it gets a failed load. The fix is one line of `chatOpts` —
@@ -360,9 +371,9 @@ Stage 3 measures the steady state on hardware. That is still far below
 ### Stage 2 — add the models, tiered
 
 Restructure `MODELS` from a flat array into tiers with per-model metadata:
-download size, KV cost per token, licence, and a `warn` string for things like
-Qwen3.5's `max_history_size: 1`. Group the dropdown by tier so the ladder is
-legible rather than implied by ordering.
+download size, KV cost per token, licence, and a `warn` string where one is
+genuinely needed. Group the dropdown by tier so the ladder is legible rather
+than implied by ordering.
 
 Order of addition, cheapest risk first:
 
@@ -372,7 +383,10 @@ Order of addition, cheapest risk first:
 3. `OLMo-2-1B-q4f16_1` — desktop initially; fully-open weights make it the
    honest comparison point.
 4. `SmolLM2-1.7B` and `Qwen2.5-1.5B` — desktop tier.
-5. `Qwen3.5-0.8B` — **last**, and only with the history warning visible.
+5. `Qwen3.5-0.8B` — **last**. It is cheap on paper (460 MB at 1024 context) but
+   its `batch_decode` workspace is 410 MB, by far the largest of any candidate,
+   and that allocates on first inference. Do not put it on phones until Stage 3
+   has measured the steady state.
 
 Add the fp32 sibling wherever one exists, now that it is known to cost no extra
 download.

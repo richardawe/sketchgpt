@@ -7,6 +7,9 @@ const LIBW  = q.get("wasm");
 // opt-in. On hardware, pass &gen=1 to capture the workspace the first
 // inference allocates on top of the load-time figure.
 const GEN   = q.get("gen") === "1";
+// Some records leave a sliding window set that conflicts with the overridden
+// context window (gemma3). Pass sw=-1 to clear it.
+const SW    = q.get("sw");
 const out = [], log = s => { out.push(s); document.getElementById("o").textContent = out.join("\n"); };
 
 // ---- instrument every GPU buffer allocation ----
@@ -33,14 +36,16 @@ try {
     }],
     useIndexedDBCache: false,
   };
-  const chatOpts = CTX ? { context_window_size: CTX } : undefined;
+  const chatOpts = {};
+  if (CTX) chatOpts.context_window_size = CTX;
+  if (SW !== null) chatOpts.sliding_window_size = parseInt(SW);
   log("model: " + MODEL);
-  log("ctx override: " + (CTX ?? "(none — record default 4096)"));
+  log("chatOpts: " + JSON.stringify(chatOpts));
   const t0 = performance.now();
   const engine = await webllm.CreateMLCEngine(MODEL, {
     appConfig,
     initProgressCallback: r => { document.title = "P" + Math.round((r.progress||0)*100); },
-  }, chatOpts);
+  }, Object.keys(chatOpts).length ? chatOpts : undefined);
   const loadMs = performance.now() - t0;
   log("loaded in " + (loadMs/1000).toFixed(1) + " s");
   const afterLoad = live;
