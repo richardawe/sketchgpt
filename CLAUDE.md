@@ -25,6 +25,7 @@ scripts/serve-web.sh      serve web/ on localhost
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
+docs/fresh-data.md        the plan for retrieval: what the weights cannot know
 docs/mobile-models.md     the phone-suitable models WebLLM ships, and the plan to add them
 docs/roadmap.md           the six-month plan
 ```
@@ -210,7 +211,14 @@ practical fine-tuning.
   SwiftShader could not reach. Budget against floor + that workspace (42 MB
   SmolLM2, 92 MB Llama-3.2-1B, 162 MB Qwen3-0.6B, 410 MB Qwen3.5-0.8B) until a
   real device says otherwise.
-- **RAG never started.** No GPU needed, so it is the realistic next capability.
+- **RAG never started**, but it is now planned — `docs/fresh-data.md` stages it
+  from a date in the system prompt to a local corpus, with the grounded-QA
+  measurement as the gate. Two findings from that pass are usable now:
+  retrieved context costs **12 MB per 1,000 tokens on Qwen2.5-0.5B and 115 MB
+  on Qwen3-0.6B**, so the phone model for retrieval is the one with the
+  cheapest attention rather than the newest; and **`export.arxiv.org` sends no
+  CORS header** while Wikipedia, Open-Meteo, Hacker News, Frankfurter and the
+  GitHub API all do.
 - **Two X threads are drafted** but unposted (in session history): a
   measurement-led one and a user-benefit one covering device detection,
   privacy, formula rendering and storage control.

@@ -69,6 +69,11 @@ On arithmetic the answer is promising: `snowflake-arctic-embed-s-b4` reserves
 a 900 MB phone budget. Whether two WebLLM engines can be resident in one tab is
 untested — see `mobile-models.md`, Stage 5.
 
+The staged plan is in [`fresh-data.md`](fresh-data.md), which widens Phase 3
+from "your documents" to "anything the weights cannot know" — the date, a
+pasted document, and a short allowlist of CORS-clean APIs — and puts the
+measurement that decides whether any of it may ship ahead of the feature.
+
 ## Phase 4 — The practitioner's capability table *(weeks 9–14)*
 
 The bridge from those PDFs to shipping: which tasks survive which sizes at which
