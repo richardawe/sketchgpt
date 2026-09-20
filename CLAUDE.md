@@ -89,6 +89,16 @@ serves **4-bit**, and that gap explains most surprises.
 - **`white-space: pre-wrap` doubles the line breaks** once a message is rendered
   as Markdown, because the markup already carries them. The `.rich` class
   switches it off; plain text and user messages keep it.
+- **`height: 100vh` puts the composer below the fold on a phone.** On mobile
+  `vh` is the viewport with the URL bar *hidden*, so the footer only appeared
+  after dragging the page. `100dvh` (with `vh` as fallback) tracks the visible
+  area. `interactive-widget=resizes-content` in the viewport meta keeps it above
+  the on-screen keyboard.
+- **`rows="1"` clips a placeholder that wraps.** The composer's
+  "Enter to send, Shift+Enter for newline" hint needed two lines at every phone
+  width and was cut in half. Measure the fit **while the element is visible** —
+  a `display:none` element reports `scrollHeight` 0, so a startup check always
+  says it fits.
 - A `file://` page sends a null origin and Ollama rejects it — the local page
   must be served.
 - A constrained preset that persists across reloads must be **visible**, or the
