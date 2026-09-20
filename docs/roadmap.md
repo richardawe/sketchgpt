@@ -45,7 +45,9 @@ mine?"* This does, in thirty seconds, and each visitor leaves a datapoint.
 The model ladder this benchmarks is researched and costed in
 [`mobile-models.md`](mobile-models.md) — which models WebLLM ships at phone
 sizes, what each actually costs to download and to hold in GPU memory, and the
-staged plan to add them.
+staged plan to add them. GPU cost is now a measured formula rather than
+WebLLM's published estimate, which is out by 43% on one model;
+`scripts/vram-probe/` reproduces it without a GPU.
 
 **Asset:** a public device-compatibility matrix — iPhone 14 vs Pixel 8 vs M2
 Air — that grows without further work.
