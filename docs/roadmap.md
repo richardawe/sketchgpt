@@ -42,6 +42,11 @@ tokens/sec, memory ceiling, where it falls over.
 Every blog post reports one author's machine. Nobody answers *"what about
 mine?"* This does, in thirty seconds, and each visitor leaves a datapoint.
 
+The model ladder this benchmarks is researched and costed in
+[`mobile-models.md`](mobile-models.md) — which models WebLLM ships at phone
+sizes, what each actually costs to download and to hold in GPU memory, and the
+staged plan to add them.
+
 **Asset:** a public device-compatibility matrix — iPhone 14 vs Pixel 8 vs M2
 Air — that grows without further work.
 **Content angle:** "tell me your phone, I'll tell you what it runs." The
@@ -56,6 +61,11 @@ The first genuinely *useful* thing rather than an impressive one. Privacy is
 the whole product: notes, records, journals — anything you would not paste into
 a cloud API. Phase 2's data says which devices can hold an index and a model at
 once, which nobody else knows.
+
+On arithmetic the answer is promising: `snowflake-arctic-embed-s-b4` reserves
+239 MB and downloads 67 MB, so an embedder plus SmolLM2-360M is ~615 MB against
+a 900 MB phone budget. Whether two WebLLM engines can be resident in one tab is
+untested — see `mobile-models.md`, Stage 5.
 
 ## Phase 4 — The practitioner's capability table *(weeks 9–14)*
 

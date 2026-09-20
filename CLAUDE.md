@@ -24,6 +24,7 @@ scripts/setup-ollama.sh   install Ollama, pull the pinned model, verify, smoke-t
 scripts/serve-web.sh      serve web/ on localhost
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
+docs/mobile-models.md     the phone-suitable models WebLLM ships, and the plan to add them
 docs/roadmap.md           the six-month plan
 ```
 
@@ -41,6 +42,9 @@ serves **4-bit**, and that gap explains most surprises.
 | **4-bit wrecks instruction-following** | The academic literature agrees; sub-1B degrades hardest. Free generation breaks; this is why open chat read as gibberish on the phone. |
 | **Task shape decides safety** | Tasks with a correct answer (classify, extract, route) fail **silently** — confident, well-formed, wrong. Tasks without one (describe, riff, open questions) degrade to merely **mediocre**, which is visible. Only ship the second kind at this size. |
 | **Small models need a seed** | Given concrete input they produce usable lines. Asked to generate from nothing, or to follow a multi-part format, they waffle or echo the input back. |
+| **Download size is not GPU size** | They diverge up to 4×. Qwen3-0.6B downloads **352 MB** and reserves **1403 MB**; gemma3-1b downloads 602 MB and reserves 711. The page's storage-quota check compares quota against the *reservation*, which is the wrong number. |
+| **Attention shape beats parameter count** | KV cache per token: Qwen2.5-0.5B 12 KiB, Qwen3-0.6B 112 KiB, SmolLM2-1.7B 192 KiB. Gemma 3 1B's sliding window (512, pattern 6) pins its cache at ~28 MB whatever the context. Full table in `docs/mobile-models.md`. |
+| **fp32 builds are a free fallback** | `SmolLM2-360M-q4f32_1` and `-q4f16_1` download **byte-identical** shards. The suffix changes activation precision, not weight storage — fp32 costs GPU memory (376 → 580 MB), not bandwidth. |
 | **Desktop changes everything** | Qwen3-1.7B (2037 MB) produced a genuine multi-chapter book outline. The ceiling above belongs to 360M-class models on phones, not to the page. |
 
 ### Browser gotchas already fixed
@@ -56,6 +60,13 @@ serves **4-bit**, and that gap explains most surprises.
   whole monologue into the answer.
 - Browser storage quota can be smaller than the model; the download then dies
   partway. Compare quota against the requirement before starting.
+- Every **Qwen3.5** build in WebLLM sets `overrides.max_history_size: 1` — only
+  the last turn survives. No other family does. Ship one without surfacing that
+  and multi-turn chat breaks silently.
+- **`required_features` is not a reliable fp16 filter.** Only 29 of 163 prebuilt
+  records declare it; 54 models with `f16` in the id do not, including
+  `gemma3-1b-it-q4f16_1` and every Qwen3.5 build. The page's regex is the more
+  correct filter — keep it.
 - A `file://` page sends a null origin and Ollama rejects it — the local page
   must be served.
 - A constrained preset that persists across reloads must be **visible**, or the
@@ -112,6 +123,12 @@ user's own machine is also CPU-only, which rules out practical fine-tuning.
 - **Old branch `claude/ollama-base-model-setup-hg1iuk` still exists remotely.**
   Strictly behind `main`, nothing unique on it. Needs a manual delete.
 - **Repo topics not set** — `llm webgpu local-llm browser github-pages webllm`.
+- **Six new phone-class models are researched but unintegrated.** Sizes, KV
+  costs, licences and a five-stage plan are in `docs/mobile-models.md`. Stage 0
+  is a pure bug fix and needs no GPU; Stage 1 onward needs a real phone.
+- **The ~900 MB residual in Qwen `vram_required_MB` is unexplained.** Weights
+  plus KV account for the whole figure on SmolLM2 and for only a third of it
+  on Qwen3-0.6B and Qwen3.5-0.8B. Nothing should budget against a guess at it.
 - **RAG never started.** No GPU needed, so it is the realistic next capability.
 - **A launch thread for X is drafted** but unposted (in session history).
 
