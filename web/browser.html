@@ -358,11 +358,55 @@ let CTX = 4096;
 
 let engine = null, history = [], generating = false, stopFlag = false;
 
+// ---- Where the weights get stored ---------------------------------------
+// WebLLM defaults to the Cache API. On some phones that fails in a way that is
+// hard to read: `cache.add()` resolves, the entry is not there afterwards, and
+// the only symptom is "Cannot fetch <url>" on a 2 KB config file — which looks
+// like a network problem and is not one.
+//
+// So probe it before trusting it: round-trip one tiny entry, and fall back to
+// the IndexedDB backend if that does not survive. Sticking with "cache" when it
+// works matters, because the two backends cannot see each other's weights and
+// switching means downloading everything again.
+let APP = null;   // prebuilt model list + whichever backend survived the probe
+
+async function pickCacheBackend() {
+  const probe = "webllm-probe";
+  try {
+    if (typeof caches === "undefined") return "indexeddb";
+    const c = await caches.open(probe);
+    const url = new URL("./?probe", location.href).href;
+    await c.put(new Request(url), new Response("ok"));
+    const back = await c.match(new Request(url));
+    await caches.delete(probe);
+    if (!back) return "indexeddb";          // stored nothing, silently
+    return (await back.text()) === "ok" ? "cache" : "indexeddb";
+  } catch {
+    return "indexeddb";                     // blocked storage, private mode
+  }
+}
+
 const setStatus = (t, s) => { $("status").textContent = t; $("dot").className = "dot" + (s ? " " + s : ""); };
 
+// Terminal: no WebGPU, no usable model. Nothing on the card would help.
 function fail(html) {
   $("wrap").innerHTML = `<div class="err">${html}</div>`;
   setStatus("unavailable", "err");
+}
+
+// Recoverable: this load failed, but picking another model or trying again
+// might work. Keep the card and its controls — replacing them left the page
+// with no way forward except a reload.
+function failSoft(html) {
+  let box = $("loaderr");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "err"; box.id = "loaderr";
+    box.style.marginTop = "14px";
+    $("card").appendChild(box);
+  }
+  box.innerHTML = html;
+  setStatus("load failed", "err");
 }
 
 // ---- WebGPU is the hard requirement -------------------------------------
@@ -388,6 +432,8 @@ async function init() {
          "Try <code>chrome://gpu</code> to see why.<br><br>" + FALLBACK);
     return;
   }
+
+  APP = { ...webllm.prebuiltAppConfig, cacheBackend: await pickCacheBackend() };
 
   // ---- what can this device actually run? ----
   const uaMobile = /Android|iPhone|iPad|iPod|Mobile|Silk/i.test(navigator.userAgent);
@@ -472,7 +518,7 @@ async function init() {
   // consent to — open straight into chat. A first visit still asks, because
   // silently pulling hundreds of MB on someone's mobile data is not ours to do.
   try {
-    if (await webllm.hasModelInCache($("model").value)) {
+    if (await webllm.hasModelInCache($("model").value, APP)) {
       setStatus("loading from cache…", "busy");
       $("load").click();
     }
@@ -484,7 +530,7 @@ init();
 async function refreshMeta() {
   const id = $("model").value;
   let cached = false;
-  try { cached = await webllm.hasModelInCache(id); } catch {}
+  try { cached = await webllm.hasModelInCache(id, APP); } catch {}
 
   const dl = downloadOf(id);
   const gpu = gpuOf(id, CTX);
@@ -553,6 +599,7 @@ $("model").addEventListener("change", () => {
   const safeMB = DEV.budgetMB * HEADROOM;
   CTX = CTX_LADDER.find(c => gpuOf($("model").value, c) <= safeMB)
         ?? CTX_LADDER[CTX_LADDER.length - 1];
+  if ($("loaderr")) $("loaderr").remove();
   refreshMeta();
 });
 
@@ -597,6 +644,7 @@ $("load").addEventListener("click", async () => {
 
   try {
     engine = await webllm.CreateMLCEngine(id, {
+      appConfig: APP,
       initProgressCallback: r => {
         $("barfill").style.width = Math.round((r.progress || 0) * 100) + "%";
         setStatus(r.text ? r.text.slice(0, 60) : "loading…", "busy");
@@ -612,16 +660,79 @@ $("load").addEventListener("click", async () => {
     $("bar").classList.remove("on");
     $("load").disabled = false;
     $("model").disabled = false;
-    fail("<b>Could not load the model.</b><br><br>" + String(e && e.message || e));
+    failSoft(await explainLoadFailure(e, id));
+    const alt = $("swapstore");
+    if (alt) alt.addEventListener("click", () => {
+      // The probe only proves a tiny entry round-trips; a real model can still
+      // fail on the same backend. Offer the other one rather than switching
+      // silently, because the two cannot see each other's weights and a swap
+      // means downloading again.
+      APP = { ...APP, cacheBackend: APP.cacheBackend === "cache" ? "indexeddb" : "cache" };
+      $("loaderr").remove();
+      $("load").click();
+    });
   }
 });
 
+// "Cannot fetch <url>" is WebLLM's message when a file went into the browser
+// store and was not there afterwards. It reads like a network failure and
+// almost never is one: the usual cause is the store being full or unavailable,
+// and the file it names is often a 2 KB config rather than the weights. Say
+// that, with the numbers, instead of forwarding the raw string.
+async function explainLoadFailure(e, id) {
+  const msg = String(e && e.message || e);
+  let est = null;
+  try { est = await navigator.storage.estimate(); } catch {}
+
+  const used = est && est.usage != null ? (est.usage / 1e6).toFixed(0) + " MB" : "unknown";
+  const cap  = est && est.quota ? (est.quota / 1e6).toFixed(0) + " MB" : "unknown";
+  const need = downloadOf(id);
+  const free = est && est.quota != null && est.usage != null
+    ? (est.quota - est.usage) / 1e6 : null;
+
+  let head = "<b>Could not load the model.</b>";
+  let why = "";
+
+  if (/Cannot fetch|QuotaExceeded|quota|Failed to execute 'add' on 'Cache'/i.test(msg)) {
+    head = "<b>This browser would not store the model.</b>";
+    why = "<br><br>The download itself is reachable — the file it names below is " +
+          "usually a small config, not the weights. What failed is writing it into " +
+          "this browser's storage." +
+          `<br><br><b>Storage used:</b> ${used} of ${cap}` +
+          (free !== null ? ` — about ${Math.max(0, free).toFixed(0)} MB free` : "") +
+          (need ? `<br><b>This model needs:</b> ~${need} MB` : "") +
+          `<br><b>Backend in use:</b> ${APP && APP.cacheBackend}` +
+          "<br><br><b>Things that fix it, in order:</b><br>" +
+          "· <b>Clear cache</b> in the header — it now removes every model, not " +
+          "just this one, so a half-finished download from a previous attempt goes too.<br>" +
+          "· Free up space on the device; browsers shrink this allowance when the " +
+          "disk is nearly full.<br>" +
+          "· Leave private/incognito browsing, which caps or forbids this storage.<br>" +
+          "· Try a smaller model — the download size is on every option." +
+          `<br><br><button id="swapstore">Retry using ` +
+          `${APP && APP.cacheBackend === "cache" ? "IndexedDB" : "the Cache API"} instead</button>`;
+  }
+  return head + why + `<br><br><code>${msg}</code>`;
+}
+
+// Clearing only the selected model is not much use once the list is 15 long:
+// what fills the store is usually something you tried earlier, or a download
+// that died halfway. Clear everything the page could have written.
 $("evict").addEventListener("click", async () => {
+  if (!confirm("Remove all cached model weights from this browser?\n\n" +
+               "They will download again next time.")) return;
+  const errs = [];
+  for (const m of MODELS) {
+    try { await webllm.deleteModelAllInfoInCache(m.id, APP); }
+    catch (e) { errs.push(m.id); }
+  }
+  // Anything WebLLM missed, and the other backend's leftovers.
   try {
-    await webllm.deleteModelAllInfoInCache($("model").value);
-    engine = null; history = [];
-    location.reload();
-  } catch (e) { alert("Could not clear cache: " + e.message); }
+    for (const k of await caches.keys()) if (/^webllm/.test(k)) await caches.delete(k);
+  } catch {}
+  engine = null; history = [];
+  if (errs.length === MODELS.length) alert("Could not clear the cache.");
+  location.reload();
 });
 
 // ---- Presets --------------------------------------------------------------

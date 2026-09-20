@@ -99,6 +99,19 @@ serves **4-bit**, and that gap explains most surprises.
   width and was cut in half. Measure the fit **while the element is visible** —
   a `display:none` element reports `scrollHeight` 0, so a startup check always
   says it fits.
+- **"Cannot fetch <url>" is a STORAGE error, not a network one.** WebLLM's
+  `fetchWithCache` raises it when `cache.add()` resolves but the entry is not
+  in the cache afterwards. It usually names `mlc-chat-config.json`, a 2 KB
+  file, which makes it read like a dead URL — the URL is fine. Causes: a full
+  or capped store, private browsing, or a browser that silently evicts.
+  `pickCacheBackend()` probes the Cache API at startup and falls back to
+  WebLLM's `cacheBackend: "indexeddb"`; a failed load also offers a one-tap
+  retry on the other backend. The two backends cannot see each other's
+  weights, so switching means downloading again — never do it silently.
+- **A failed load must not destroy the card.** `fail()` replaces `#wrap`, which
+  removed the model picker and the load button and left a reload as the only
+  way forward. Load failures use `failSoft()` instead, which appends the error
+  and keeps the controls.
 - A `file://` page sends a null origin and Ollama rejects it — the local page
   must be served.
 - A constrained preset that persists across reloads must be **visible**, or the
