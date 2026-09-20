@@ -170,26 +170,89 @@ try {
 }
 
 const $ = id => document.getElementById(id);
+
+// ---- What a model actually costs ----------------------------------------
+// Three different numbers, and the page used to conflate them:
+//
+//   download  bytes pulled over the network into browser storage. This is what
+//             mobile data and the storage quota care about.
+//   gpu       bytes the WebGPU device reserves. This is what kills the tab.
+//   context   how much of `gpu` scales with the context window.
+//
+// WebLLM publishes `vram_required_MB`, which is NONE of them: nothing in
+// WebLLM reads it, and it bakes in a workspace for `batch_verify`, a
+// speculative-decoding entry point WebLLM never binds. On Qwen3-0.6B that
+// makes it 43% too high, which is why this page used to refuse a model that
+// fits comfortably.
+//
+// So budget from the parts instead. Measured against real allocation (see
+// scripts/vram-probe/ and docs/mobile-models.md):
+//
+//   gpuMB(ctx) = paramsMB + kvPerTok * ctx / 1e6 + OVERHEAD_MB
+//
+// paramsMB and kvPerTok are read out of the `_metadata` blob inside each
+// compiled wasm; kvPerTok already accounts for the build's KV dtype (f32 in a
+// q4f32 build, f16 in a q4f16 one). Verified on three models across four
+// context lengths, then used to predict a fourth to within 1% before measuring.
+//
+// wsMB is the largest workspace among the VM functions WebLLM *does* bind. It
+// allocates on first inference, which has not been measured on real hardware
+// yet, so it is added to the budget as a ceiling rather than ignored.
+const OVERHEAD_MB = 23;
+
 // Ordered smallest first. A model too big for the device does not throw — the
 // browser kills the tab, which no try/catch can intercept — so the only defence
 // is refusing to start one that will not fit.
 const MODELS = [
-  ["SmolLM2-360M-Instruct-q4f16_1-MLC", "SmolLM2 360M — smallest, best for phones"],
-  ["SmolLM2-360M-Instruct-q4f32_1-MLC", "SmolLM2 360M (fp32)"],
-  ["gemma3-1b-it-q4f16_1-MLC",          "Gemma 3 1B"],
-  ["Llama-3.2-1B-Instruct-q4f16_1-MLC", "Llama 3.2 1B"],
-  ["Qwen3-0.6B-q4f16_1-MLC",            "Qwen3 0.6B — matches the Ollama setup"],
-  ["Qwen3-0.6B-q4f32_1-MLC",            "Qwen3 0.6B (fp32)"],
-  ["Qwen3-1.7B-q4f16_1-MLC",            "Qwen3 1.7B — desktop only"]
+  { id: "SmolLM2-360M-Instruct-q4f16_1-MLC", label: "SmolLM2 360M — smallest, best for phones",
+    downloadMB: 207, paramsMB: 204, kvPerTok: 40960,  wsMB: 21 },
+  { id: "SmolLM2-360M-Instruct-q4f32_1-MLC", label: "SmolLM2 360M (fp32)",
+    downloadMB: 207, paramsMB: 226, kvPerTok: 81920,  wsMB: 42 },
+  { id: "gemma3-1b-it-q4f16_1-MLC",          label: "Gemma 3 1B",
+    downloadMB: 602, paramsMB: 563, kvPerTok: 26624,  wsMB: 74, slidingWindow: 512 },
+  { id: "Llama-3.2-1B-Instruct-q4f16_1-MLC", label: "Llama 3.2 1B",
+    downloadMB: 705, paramsMB: 695, kvPerTok: 32768,  wsMB: 88 },
+  { id: "Qwen3-0.6B-q4f16_1-MLC",            label: "Qwen3 0.6B — matches the Ollama setup",
+    downloadMB: 352, paramsMB: 335, kvPerTok: 114688, wsMB: 122 },
+  { id: "Qwen3-0.6B-q4f32_1-MLC",            label: "Qwen3 0.6B (fp32)",
+    downloadMB: 352, paramsMB: 373, kvPerTok: 229376, wsMB: 162 },
+  { id: "Qwen3-1.7B-q4f16_1-MLC",            label: "Qwen3 1.7B — desktop only",
+    downloadMB: 984, paramsMB: 968, kvPerTok: 114688, wsMB: 153 }
 ];
+
+// The compiled shader library is fetched alongside the weights.
+const WASM_MB = 6;
+
+// Rungs to try, largest first. 1024 is the floor: below that the model cannot
+// hold a system prompt and a couple of turns, so a smaller model is the better
+// trade.
+const CTX_LADDER = [4096, 2048, 1024];
+
+// Never default to a model sitting at the very top of the budget: that is how
+// a tab gets killed. Everything is chosen against budget * HEADROOM.
+const HEADROOM = 0.7;
+
+const modelOf = id => MODELS.find(m => m.id === id);
+
+// Total bytes this model pulls over the network on a cold load.
+const downloadOf = id => { const m = modelOf(id); return m ? m.downloadMB + WASM_MB : null; };
+
+// A sliding window caps the KV cache regardless of the requested context, so
+// gemma3 costs the same at 4096 as at 1024.
+const kvTokensFor = (m, ctx) => m.slidingWindow ? Math.min(ctx, m.slidingWindow) : ctx;
+
+// Steady-state GPU reservation, workspace included.
+const gpuOf = (id, ctx) => {
+  const m = modelOf(id);
+  if (!m) return null;
+  return m.paramsMB + m.kvPerTok * kvTokensFor(m, ctx) / 1e6 + OVERHEAD_MB + m.wsMB;
+};
 
 // Filled in by init() once the adapter is known.
 let DEV = { mobile: false, f16: true, budgetMB: Infinity, maxBufMB: 0 };
 
-const vramOf = id => {
-  const r = webllm.prebuiltAppConfig.model_list.find(m => m.model_id === id);
-  return r && r.vram_required_MB ? r.vram_required_MB : null;
-};
+// The context this page will actually ask for, chosen per device in init().
+let CTX = 4096;
 
 let engine = null, history = [], generating = false, stopFlag = false;
 
@@ -241,40 +304,55 @@ async function init() {
     DEV.budgetMB = Math.min(DEV.budgetMB, navigator.deviceMemory * 1024 * 0.45);
   }
 
-  const usable = MODELS.filter(([id]) => DEV.f16 || !/q4f16|q0f16/.test(id));
+  // fp16 builds need the shader-f16 adapter feature. Two signals, unioned,
+  // because neither is sufficient alone: the id suffix catches models whose
+  // record omits `required_features` (54 of them in 0.2.85, including every
+  // Qwen3.5 build and gemma3), and `required_features` catches any future
+  // requirement the suffix would not name.
+  const needsF16 = id => {
+    if (/q4f16|q0f16|q4bf16|q0bf16/.test(id)) return true;
+    const rec = webllm.prebuiltAppConfig.model_list.find(m => m.model_id === id);
+    return ((rec && rec.required_features) || []).includes("shader-f16");
+  };
+  const usable = MODELS.filter(m => DEV.f16 || !needsF16(m.id));
   if (!usable.length) {
     fail("<b>No compatible model for this device.</b><br><br>" +
          "It reports no <code>shader-f16</code> support, and no fp32 build is listed.<br><br>" + FALLBACK);
     return;
   }
-  for (const [id, label] of usable) {
+
+  const safeMB = DEV.budgetMB * HEADROOM;
+
+  // Largest context rung this model clears the budget at, or null if even the
+  // smallest rung is too big.
+  const bestCtxFor = id => CTX_LADDER.find(c => gpuOf(id, c) <= safeMB) ?? null;
+
+  for (const m of usable) {
     const o = document.createElement("option");
-    const mb = vramOf(id);
-    o.value = id;
-    o.textContent = label + (mb ? ` · ${Math.round(mb)} MB` : "");
-    if (mb && mb > DEV.budgetMB) o.textContent += " · too big";
+    o.value = m.id;
+    const ctx = bestCtxFor(m.id);
+    o.textContent = `${m.label} · ${m.downloadMB + WASM_MB} MB download`;
+    if (ctx === null) o.textContent += " · too big";
+    else if (ctx !== CTX_LADDER[0]) o.textContent += ` · ${ctx >= 1024 ? (ctx / 1024) + "k" : ctx} context`;
     $("model").appendChild(o);
   }
 
-  // Pick the default deliberately rather than taking the biggest thing that
-  // fits: a model sitting at 98% of the budget is how a tab gets killed.
   // Phones get the smallest capable model; desktops get the one this repo is
   // built around. Both are validated against the budget with headroom to spare.
-  const HEADROOM = 0.7;
-  const safeMB = DEV.budgetMB * HEADROOM;
   const preferred = DEV.mobile
     ? ["SmolLM2-360M-Instruct-q4f16_1-MLC", "SmolLM2-360M-Instruct-q4f32_1-MLC"]
     : ["Qwen3-0.6B-q4f16_1-MLC", "SmolLM2-360M-Instruct-q4f16_1-MLC", "SmolLM2-360M-Instruct-q4f32_1-MLC"];
 
-  const has = id => usable.some(([m]) => m === id);
-  let chosen = preferred.find(id => has(id) && (vramOf(id) || 0) <= safeMB);
+  const has = id => usable.some(m => m.id === id);
+  let chosen = preferred.find(id => has(id) && bestCtxFor(id) !== null);
   if (!chosen) {
-    // Nothing preferred fits — fall back to the largest that clears the headroom,
-    // and failing that the smallest option we have.
-    const fits = usable.filter(([id]) => { const v = vramOf(id); return v && v <= safeMB; });
-    chosen = (fits.length ? fits[fits.length - 1] : usable[0])[0];
+    // Nothing preferred fits — fall back to the largest that clears the
+    // headroom at some rung, and failing that the smallest option we have.
+    const fits = usable.filter(m => bestCtxFor(m.id) !== null);
+    chosen = (fits.length ? fits[fits.length - 1] : usable[0]).id;
   }
   $("model").value = chosen;
+  CTX = bestCtxFor(chosen) ?? CTX_LADDER[CTX_LADDER.length - 1];
 
   await refreshMeta();
   setStatus("ready to load");
@@ -297,8 +375,8 @@ async function refreshMeta() {
   let cached = false;
   try { cached = await webllm.hasModelInCache(id); } catch {}
 
-  const rec = webllm.prebuiltAppConfig.model_list.find(m => m.model_id === id);
-  const vram = rec?.vram_required_MB ? Math.round(rec.vram_required_MB) + " MB" : "unknown";
+  const dl = downloadOf(id);
+  const gpu = gpuOf(id, CTX);
 
   let quota = "";
   try {
@@ -314,23 +392,25 @@ async function refreshMeta() {
 
   // Too large for the device = the tab is killed with no catchable error.
   let toobig = "";
-  const need = rec?.vram_required_MB;
-  if (need && need > DEV.budgetMB) {
+  if (gpu && gpu > DEV.budgetMB) {
     toobig = `<br><span style="color:#c0503f"><b>Too large for this device.</b> ` +
-             `It needs ~${Math.round(need)} MB but this ${DEV.mobile ? "phone" : "device"} ` +
-             `can only be counted on for ~${Math.round(DEV.budgetMB)} MB. Loading it will ` +
-             `crash the tab rather than fail gracefully — pick a smaller model above.</span>`;
+             `It needs ~${Math.round(gpu)} MB of GPU memory but this ` +
+             `${DEV.mobile ? "phone" : "device"} can only be counted on for ` +
+             `~${Math.round(DEV.budgetMB)} MB. Loading it will crash the tab ` +
+             `rather than fail gracefully — pick a smaller model above.</span>`;
   }
 
-  // A quota smaller than the model means the download dies partway through.
+  // A quota smaller than the DOWNLOAD means the transfer dies partway. This
+  // used to compare against the GPU figure, which for Qwen3-0.6B overstated
+  // the disk requirement by about a gigabyte.
   let tight = "";
   try {
     const e = await navigator.storage.estimate();
-    const need = rec?.vram_required_MB;
-    if (e?.quota && need && e.quota < need * 1e6) {
+    if (e?.quota && dl && e.quota < dl * 1e6) {
       tight = `<br><span style="color:#c0503f">This browser only allows ` +
-              `~${(e.quota / 1e6).toFixed(0)} MB of storage, which may be too little ` +
-              `for this model. Free up disk space or pick a smaller one.</span>`;
+              `~${(e.quota / 1e6).toFixed(0)} MB of storage, which is less than ` +
+              `the ${dl} MB this model downloads. Free up disk space or pick a ` +
+              `smaller one.</span>`;
     }
   } catch {}
 
@@ -338,22 +418,58 @@ async function refreshMeta() {
               `, fp16 ${DEV.f16 ? "yes" : "no"}` +
               (DEV.maxBufMB ? `, max buffer ${DEV.maxBufMB} MB` : "");
 
+  // Say why the context is what it is. A window quietly reduced under the
+  // visitor's feet reads as a broken page rather than a deliberate trade.
+  const m = modelOf(id);
+  const capped = m && m.slidingWindow && m.slidingWindow < CTX;
+  const ctxNote = CTX === CTX_LADDER[0]
+    ? `${CTX} tokens`
+    : `${CTX} tokens — reduced to fit this device's memory`;
+
   $("meta").innerHTML =
     `<b>Weights cached here:</b> ${cached ? "yes — loads instantly, works offline" : "no — first load downloads them"}` +
-    `<br><b>Memory needed:</b> ~${vram}` +
+    `<br><b>Download:</b> ${dl ? `~${dl} MB` : "unknown"}${cached ? " (already fetched)" : ""}` +
+    `<br><b>GPU memory:</b> ~${gpu ? Math.round(gpu) : "?"} MB` +
+    `<br><b>Context window:</b> ${ctxNote}` +
+    (capped ? ` <span style="color:var(--muted)">(this model caps its cache at ${m.slidingWindow})</span>` : "") +
     `<br><b>Eviction protection:</b> ${persisted ? "on" : "off (requested at load)"}` +
     dev + quota + tight + toobig;
 
   $("load").textContent = cached ? "Load model (cached)" : "Download & load model";
 }
-$("model").addEventListener("change", refreshMeta);
+$("model").addEventListener("change", () => {
+  const safeMB = DEV.budgetMB * HEADROOM;
+  CTX = CTX_LADDER.find(c => gpuOf($("model").value, c) <= safeMB)
+        ?? CTX_LADDER[CTX_LADDER.length - 1];
+  refreshMeta();
+});
+
+// WebLLM merges mlc-chat-config.json, then ModelRecord.overrides, then these.
+// Two things have to be said explicitly:
+//
+//   context_window_size  the rung chosen for this device. Without it every
+//                        model loads at its record default of 4096.
+//
+//   sliding_window_size  WebLLM throws WindowSizeConfigurationError when both
+//                        window settings are positive, and gemma3 ships a
+//                        sliding window of 512 that its record never clears.
+//                        That makes gemma3-1b-it fail to load at all — not a
+//                        theory, it raises the error on a real load. The seven
+//                        Mistral records clear it themselves; gemma3's does not.
+function chatOptsFor(id) {
+  const m = modelOf(id);
+  const opts = { context_window_size: CTX };
+  if (m && m.slidingWindow) opts.sliding_window_size = -1;
+  return opts;
+}
 
 // ---- Load ----------------------------------------------------------------
 $("load").addEventListener("click", async () => {
   const id = $("model").value;
-  const need = vramOf(id);
+  const need = gpuOf(id, CTX);
   if (need && need > DEV.budgetMB &&
-      !confirm(`This model needs about ${Math.round(need)} MB, more than this device ` +
+      !confirm(`This model needs about ${Math.round(need)} MB of GPU memory at a ` +
+               `${CTX}-token context, more than this device ` +
                `is likely to allow (~${Math.round(DEV.budgetMB)} MB).\n\n` +
                `The browser will probably kill the tab instead of showing an error.\n\n` +
                `Load it anyway?`)) {
@@ -373,7 +489,7 @@ $("load").addEventListener("click", async () => {
         $("barfill").style.width = Math.round((r.progress || 0) * 100) + "%";
         setStatus(r.text ? r.text.slice(0, 60) : "loading…", "busy");
       }
-    });
+    }, chatOptsFor(id));
     $("bar").classList.remove("on");
     $("wrap").innerHTML = "";
     $("foot").classList.add("on");

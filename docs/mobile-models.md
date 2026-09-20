@@ -323,7 +323,7 @@ Ordered so each stage ships something true on its own, and so the correctness
 fixes land before the feature. Stages 0–2 are code; 3–5 are measurement, which
 is the part this project is actually for.
 
-### Stage 0 — separate the three numbers *(no new models)*
+### Stage 0 — separate the three numbers *(no new models)* ✅ shipped
 
 A bug fix, shippable alone.
 
@@ -342,9 +342,9 @@ A bug fix, shippable alone.
 *Verifiable here:* the arithmetic and the filter logic. *Not verifiable here:*
 nothing — this stage needs no GPU.
 
-### Stage 1 — the context-window ladder
+### Stage 1 — the context-window ladder ✅ shipped
 
-No longer blocked, and now the highest-value stage. `CreateMLCEngine(id,
+No longer blocked, and was the highest-value stage. `CreateMLCEngine(id,
 engineConfig, chatOpts)` takes a third argument; `ChatOptions extends
 Partial<ChatConfig>`, which includes `context_window_size` and
 `sliding_window_size`. The page currently passes nothing.

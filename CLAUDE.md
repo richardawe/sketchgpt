@@ -63,12 +63,12 @@ serves **4-bit**, and that gap explains most surprises.
   whole monologue into the answer.
 - Browser storage quota can be smaller than the model; the download then dies
   partway. Compare quota against the requirement before starting.
-- **`gemma3-1b-it-q4f16_1-MLC` cannot load.** Its config sets
+- **`gemma3-1b-it-q4f16_1-MLC` could not load** — its config sets
   `sliding_window_size: 512`, the prebuilt record overrides
   `context_window_size: 4096`, and WebLLM throws `WindowSizeConfigurationError`
-  when both are positive. It is in this page's dropdown today. Fix: pass
-  `{ sliding_window_size: -1 }` in `chatOpts`. The seven Mistral records avoid
-  this by overriding it themselves; gemma3's does not.
+  when both are positive. Fixed by `chatOptsFor()` passing
+  `sliding_window_size: -1`. The seven Mistral records clear it themselves;
+  gemma3's does not, so check this for any new model with a sliding window.
 - **`max_history_size` is RNN state, not chat history.** It is consumed in
   exactly one place — `create_rnn_state`. Qwen3.5 sets it to 1 because it is a
   hybrid attention model, not because it forgets your conversation. (An earlier
@@ -142,8 +142,11 @@ practical fine-tuning.
   costs, licences and a five-stage plan are in `docs/mobile-models.md`. Stages
   0–2 are all doable here now that allocation is measured; only Stage 3 onward
   (throughput, quality, the device ceiling) needs a real phone.
-- **`gemma3-1b-it` is in the shipped dropdown and cannot load.** One line of
-  `chatOpts` fixes it; it is the reason to do Stage 1 first.
+- **Stage 2 is the next one to ship** — adding models, tiered. Stages 0 and 1
+  are done: the page budgets from the measured formula, passes `chatOpts`, and
+  picks a context rung per device. `SmolLM2-135M-q0f16` is the interesting
+  addition (the only sub-400 MB build that is not 4-bit); `Qwen3.5-0.8B` should
+  go last, for its 410 MB `batch_decode` workspace.
 - **Steady-state allocation is still unmeasured.** The figures are load-time
   floors: `batch_prefill` and `batch_decode` allocate on first inference, which
   SwiftShader could not reach. Budget against floor + that workspace (42 MB
