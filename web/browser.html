@@ -200,25 +200,74 @@ const $ = id => document.getElementById(id);
 // yet, so it is added to the budget as a ceiling rather than ignored.
 const OVERHEAD_MB = 23;
 
-// Ordered smallest first. A model too big for the device does not throw — the
-// browser kills the tab, which no try/catch can intercept — so the only defence
-// is refusing to start one that will not fit.
+// Ordered smallest first within each tier. A model too big for the device does
+// not throw — the browser kills the tab, which no try/catch can intercept — so
+// the only defence is refusing to start one that will not fit.
+//
+// `tier` groups the dropdown by parameter scale. It is NOT a claim about which
+// device can run what: that is computed per visitor from the numbers below, and
+// shows up as the context annotation or a "too big" label on each option.
+//
+// No entry here carries a quality claim. The only models this project has
+// actually measured for accuracy are in docs/customising.md, and the finding
+// there is that at this size a confident wrong answer is the normal failure.
 const MODELS = [
-  { id: "SmolLM2-360M-Instruct-q4f16_1-MLC", label: "SmolLM2 360M — smallest, best for phones",
+  // ---- under 1B parameters ----
+  { id: "SmolLM2-135M-Instruct-q0f16-MLC",   label: "SmolLM2 135M (f16, not quantized)", tier: 0,
+    downloadMB: 273, paramsMB: 269, kvPerTok: 23040,  wsMB: 13,
+    note: "The only build here under 400 MB that is <b>not 4-bit</b> — these are full f16 weights. " +
+          "Whether 135M undamaged beats 360M at 4-bit is an open question this page exists to let you test." },
+  { id: "SmolLM2-135M-Instruct-q0f32-MLC",   label: "SmolLM2 135M (fp32, not quantized)", tier: 0,
+    downloadMB: 273, paramsMB: 538, kvPerTok: 46080,  wsMB: 25,
+    note: "Also <b>not 4-bit</b> — full fp32 weights. Same download as the f16 build; the extra " +
+          "cost is entirely GPU memory." },
+  { id: "SmolLM2-360M-Instruct-q4f16_1-MLC", label: "SmolLM2 360M — smallest 4-bit, best for phones", tier: 0,
     downloadMB: 207, paramsMB: 204, kvPerTok: 40960,  wsMB: 21 },
-  { id: "SmolLM2-360M-Instruct-q4f32_1-MLC", label: "SmolLM2 360M (fp32)",
+  { id: "SmolLM2-360M-Instruct-q4f32_1-MLC", label: "SmolLM2 360M (fp32)", tier: 0,
     downloadMB: 207, paramsMB: 226, kvPerTok: 81920,  wsMB: 42 },
-  { id: "gemma3-1b-it-q4f16_1-MLC",          label: "Gemma 3 1B",
-    downloadMB: 602, paramsMB: 563, kvPerTok: 26624,  wsMB: 74, slidingWindow: 512 },
-  { id: "Llama-3.2-1B-Instruct-q4f16_1-MLC", label: "Llama 3.2 1B",
-    downloadMB: 705, paramsMB: 695, kvPerTok: 32768,  wsMB: 88 },
-  { id: "Qwen3-0.6B-q4f16_1-MLC",            label: "Qwen3 0.6B — matches the Ollama setup",
+  { id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC", label: "Qwen2.5 0.5B", tier: 0,
+    downloadMB: 290, paramsMB: 278, kvPerTok: 12288,  wsMB: 118,
+    note: "The cheapest context in this list — 12 KiB per token, so a long window costs almost nothing." },
+  { id: "Qwen2.5-0.5B-Instruct-q4f32_1-MLC", label: "Qwen2.5 0.5B (fp32)", tier: 0,
+    downloadMB: 290, paramsMB: 309, kvPerTok: 24576,  wsMB: 158,
+    note: "The cheapest context in this list — a long window costs almost nothing." },
+  { id: "Qwen3-0.6B-q4f16_1-MLC",            label: "Qwen3 0.6B — matches the Ollama setup", tier: 0,
     downloadMB: 352, paramsMB: 335, kvPerTok: 114688, wsMB: 122 },
-  { id: "Qwen3-0.6B-q4f32_1-MLC",            label: "Qwen3 0.6B (fp32)",
+  { id: "Qwen3-0.6B-q4f32_1-MLC",            label: "Qwen3 0.6B (fp32)", tier: 0,
     downloadMB: 352, paramsMB: 373, kvPerTok: 229376, wsMB: 162 },
-  { id: "Qwen3-1.7B-q4f16_1-MLC",            label: "Qwen3 1.7B — desktop only",
-    downloadMB: 984, paramsMB: 968, kvPerTok: 114688, wsMB: 153 }
+  { id: "Qwen3.5-0.8B-q4f16_1-MLC",          label: "Qwen3.5 0.8B", tier: 0,
+    downloadMB: 447, paramsMB: 424, kvPerTok: 12288,  wsMB: 410,
+    note: "Hybrid attention — only 6 of its 24 layers keep a KV cache, so context is nearly free. " +
+          "But its decode workspace is 410 MB, the largest of any model here, which is what keeps it " +
+          "off phones despite the small download." },
+
+  // ---- around 1B ----
+  { id: "gemma3-1b-it-q4f16_1-MLC",          label: "Gemma 3 1B", tier: 1,
+    downloadMB: 602, paramsMB: 563, kvPerTok: 26624,  wsMB: 74, slidingWindow: 512,
+    note: "Released under the <b>Gemma licence</b>, not Apache-2.0 — check it before redistributing." },
+  { id: "Llama-3.2-1B-Instruct-q4f16_1-MLC", label: "Llama 3.2 1B", tier: 1,
+    downloadMB: 705, paramsMB: 695, kvPerTok: 32768,  wsMB: 88,
+    note: "Llama 3.2 Community Licence. Measured better than SmolLM2-360M at extraction and routing, " +
+          "and worse at sticking to a two-word output format." },
+  { id: "OLMo-2-0425-1B-Instruct-q4f16_1-MLC", label: "OLMo 2 1B — fully open", tier: 1,
+    downloadMB: 845, paramsMB: 835, kvPerTok: 131072, wsMB: 131,
+    note: "Apache-2.0, and the training data and code are published too, which makes it the honest " +
+          "baseline when comparing open models. Its KV cache is the most expensive here at 128 KiB/token." },
+
+  // ---- 1.5B and up ----
+  { id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", label: "Qwen2.5 1.5B", tier: 2,
+    downloadMB: 880, paramsMB: 869, kvPerTok: 28672,  wsMB: 173 },
+  { id: "Qwen3-1.7B-q4f16_1-MLC",            label: "Qwen3 1.7B", tier: 2,
+    downloadMB: 984, paramsMB: 968, kvPerTok: 114688, wsMB: 153,
+    note: "Produced a genuine multi-chapter book outline on a desktop. This is where output stops " +
+          "being a novelty." },
+  { id: "SmolLM2-1.7B-Instruct-q4f16_1-MLC", label: "SmolLM2 1.7B", tier: 2,
+    downloadMB: 966, paramsMB: 963, kvPerTok: 196608, wsMB: 88,
+    note: "No grouped-query attention at all — 192 KiB per token, so its cache costs more than its " +
+          "weights at a full context window." }
 ];
+
+const TIERS = ["Under 1B parameters", "Around 1B", "1.5B and up — desktop"];
 
 // The compiled shader library is fetched alongside the weights.
 const WASM_MB = 6;
@@ -327,14 +376,23 @@ async function init() {
   // smallest rung is too big.
   const bestCtxFor = id => CTX_LADDER.find(c => gpuOf(id, c) <= safeMB) ?? null;
 
-  for (const m of usable) {
-    const o = document.createElement("option");
-    o.value = m.id;
-    const ctx = bestCtxFor(m.id);
-    o.textContent = `${m.label} · ${m.downloadMB + WASM_MB} MB download`;
-    if (ctx === null) o.textContent += " · too big";
-    else if (ctx !== CTX_LADDER[0]) o.textContent += ` · ${ctx >= 1024 ? (ctx / 1024) + "k" : ctx} context`;
-    $("model").appendChild(o);
+  // Group by parameter scale so the ladder is legible, rather than leaving it
+  // implied by ordering in one long list.
+  for (let t = 0; t < TIERS.length; t++) {
+    const inTier = usable.filter(m => m.tier === t);
+    if (!inTier.length) continue;
+    const g = document.createElement("optgroup");
+    g.label = TIERS[t];
+    for (const m of inTier) {
+      const o = document.createElement("option");
+      o.value = m.id;
+      const ctx = bestCtxFor(m.id);
+      o.textContent = `${m.label} · ${m.downloadMB + WASM_MB} MB download`;
+      if (ctx === null) o.textContent += " · too big for this device";
+      else if (ctx !== CTX_LADDER[0]) o.textContent += ` · ${ctx >= 1024 ? (ctx / 1024) + "k" : ctx} context`;
+      g.appendChild(o);
+    }
+    $("model").appendChild(g);
   }
 
   // Phones get the smallest capable model; desktops get the one this repo is
@@ -432,6 +490,7 @@ async function refreshMeta() {
     `<br><b>GPU memory:</b> ~${gpu ? Math.round(gpu) : "?"} MB` +
     `<br><b>Context window:</b> ${ctxNote}` +
     (capped ? ` <span style="color:var(--muted)">(this model caps its cache at ${m.slidingWindow})</span>` : "") +
+    (m && m.note ? `<br><span style="color:var(--muted)">${m.note}</span>` : "") +
     `<br><b>Eviction protection:</b> ${persisted ? "on" : "off (requested at load)"}` +
     dev + quota + tight + toobig;
 

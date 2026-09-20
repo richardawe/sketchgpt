@@ -142,11 +142,17 @@ practical fine-tuning.
   costs, licences and a five-stage plan are in `docs/mobile-models.md`. Stages
   0–2 are all doable here now that allocation is measured; only Stage 3 onward
   (throughput, quality, the device ceiling) needs a real phone.
-- **Stage 2 is the next one to ship** — adding models, tiered. Stages 0 and 1
-  are done: the page budgets from the measured formula, passes `chatOpts`, and
-  picks a context rung per device. `SmolLM2-135M-q0f16` is the interesting
-  addition (the only sub-400 MB build that is not 4-bit); `Qwen3.5-0.8B` should
-  go last, for its 410 MB `batch_decode` workspace.
+- **Stages 0–2 are done; Stage 3 needs the phone.** The page budgets from the
+  measured formula, passes `chatOpts`, picks a context rung per device, and
+  offers 15 models in three tiers. Stages 0+1 are **live**; Stage 2 is on
+  `claude/mobile-phone-integration-plan-1b417b`, verified but not deployed.
+- **Four phone-capable models where there was one.** At a 900 MB budget:
+  SmolLM2-135M-q0f16, SmolLM2-360M-q4f16 and **Qwen2.5-0.5B-q4f16 all at a full
+  4096 context**, Qwen3-0.6B at 1024. Qwen2.5-0.5B is the surprise — 296 MB
+  download against a published 945 MB that excluded it outright.
+- **`gemma3-1b` misses a 900 MB phone budget by 44 MB**, flat at every context
+  rung because its sliding window caps the cache. Worth re-checking once the
+  steady state is measured — the margin is inside the error bar.
 - **Steady-state allocation is still unmeasured.** The figures are load-time
   floors: `batch_prefill` and `batch_decode` allocate on first inference, which
   SwiftShader could not reach. Budget against floor + that workspace (42 MB

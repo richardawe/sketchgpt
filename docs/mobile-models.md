@@ -368,7 +368,7 @@ bound-function workspace from the model's wasm metadata (42 MB for SmolLM2,
 Stage 3 measures the steady state on hardware. That is still far below
 `vram_required_MB` for every Qwen model.
 
-### Stage 2 — add the models, tiered
+### Stage 2 — add the models, tiered ✅ shipped
 
 Restructure `MODELS` from a flat array into tiers with per-model metadata:
 download size, KV cost per token, licence, and a `warn` string where one is
@@ -390,6 +390,31 @@ Order of addition, cheapest risk first:
 
 Add the fp32 sibling wherever one exists, now that it is known to cost no extra
 download.
+
+**What the page now offers**, computed by its own table at a 900 MB phone
+budget (630 MB after headroom). Fifteen entries across three tiers; the ones a
+phone can actually run:
+
+| Model | Download | ctx 4096 | 2048 | 1024 | offered at |
+|---|---:|---:|---:|---:|---|
+| SmolLM2-135M-q0f16 | 279 MB | 399 | 352 | 329 | **4096** |
+| SmolLM2-360M-q4f16 | 213 MB | 416 | 332 | 290 | **4096** |
+| Qwen2.5-0.5B-q4f16 | 296 MB | 469 | 444 | 432 | **4096** |
+| Qwen3-0.6B-q4f16 | 358 MB | 950 | 715 | 597 | **1024** |
+| Qwen3.5-0.8B-q4f16 | 453 MB | 907 | 882 | 870 | too big |
+| gemma3-1b-it | 608 MB | 674 | 674 | 674 | too big |
+
+**One phone-capable model became four.** Qwen2.5-0.5B clears the budget at a
+full 4096 context on 296 MB of download, against a published figure of 945 MB
+that would have excluded it outright.
+
+Two entries are worth the caveat they carry. `Qwen3.5-0.8B` has the cheapest
+KV cache of anything here — 12 KiB/token, because 18 of its 24 layers are
+linear-attention and hold no cache at all — and is still kept off phones by a
+410 MB decode workspace, the largest in the list. And `gemma3-1b` is flat
+across every rung, because its 512-token sliding window caps the cache: it
+misses a 900 MB budget by 44 MB at any context, which is the kind of margin
+worth re-checking once the steady state is measured.
 
 ### Stage 3 — measure the steady state on real hardware
 
