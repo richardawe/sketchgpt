@@ -189,14 +189,15 @@ practical fine-tuning.
 - **Old branch `claude/ollama-base-model-setup-hg1iuk` still exists remotely.**
   Strictly behind `main`, nothing unique on it. Needs a manual delete.
 - **Repo topics not set** — `llm webgpu local-llm browser github-pages webllm`.
-- **Six new phone-class models are researched but unintegrated.** Sizes, KV
-  costs, licences and a five-stage plan are in `docs/mobile-models.md`. Stages
-  0–2 are all doable here now that allocation is measured; only Stage 3 onward
-  (throughput, quality, the device ceiling) needs a real phone.
-- **Stages 0–2 are done; Stage 3 needs the phone.** The page budgets from the
-  measured formula, passes `chatOpts`, picks a context rung per device, and
-  offers 15 models in three tiers. Stages 0+1 are **live**; Stage 2 is on
-  `claude/mobile-phone-integration-plan-1b417b`, verified but not deployed.
+- **Stages 0–2 of `docs/mobile-models.md` are done and live.** The page budgets
+  from the measured formula, passes `chatOpts`, picks a context rung per device,
+  and offers 15 models in three tiers. **Stages 3–5 remain** — steady-state
+  measurement, the 135M-f16-vs-360M-4-bit comparison, and embedding
+  co-residency.
+- **Stage 3 is now partly unblocked.** Qwen3-0.6B has loaded *and generated* on
+  the user's phone, so the measured formula has its first fp16 confirmation.
+  `scripts/vram-probe/` takes `&gen=1` to capture the first-inference workspace
+  on real hardware; that was impossible under SwiftShader.
 - **Four phone-capable models where there was one.** At a 900 MB budget:
   SmolLM2-135M-q0f16, SmolLM2-360M-q4f16 and **Qwen2.5-0.5B-q4f16 all at a full
   4096 context**, Qwen3-0.6B at 1024. Qwen2.5-0.5B is the surprise — 296 MB
@@ -210,7 +211,9 @@ practical fine-tuning.
   SmolLM2, 92 MB Llama-3.2-1B, 162 MB Qwen3-0.6B, 410 MB Qwen3.5-0.8B) until a
   real device says otherwise.
 - **RAG never started.** No GPU needed, so it is the realistic next capability.
-- **A launch thread for X is drafted** but unposted (in session history).
+- **Two X threads are drafted** but unposted (in session history): a
+  measurement-led one and a user-benefit one covering device detection,
+  privacy, formula rendering and storage control.
 
 ---
 
