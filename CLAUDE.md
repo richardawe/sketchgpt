@@ -77,6 +77,18 @@ serves **4-bit**, and that gap explains most surprises.
   records declare it; 54 models with `f16` in the id do not, including
   `gemma3-1b-it-q4f16_1` and every Qwen3.5 build. The page's regex is the more
   correct filter — keep it.
+- **Models emit Markdown and LaTeX whether or not you ask.** A plain-text pane
+  shows raw `**bold**` and `\frac{}{}` and reads as broken. `renderMarkdown()`
+  handles both; KaTeX loads lazily from the CDN only when a message contains
+  maths, and falls back to source text if it cannot be fetched.
+- **`$…$` cannot be detected by a whitespace rule.** Models routinely pad the
+  delimiters — `$ \frac{a}{b} $` — so requiring non-space inside them silently
+  drops real formulas. `isFormula()` judges the *content* instead: LaTeX markup,
+  or short plain algebra containing an operator. That keeps "$5 and $10" as
+  prices.
+- **`white-space: pre-wrap` doubles the line breaks** once a message is rendered
+  as Markdown, because the markup already carries them. The `.rich` class
+  switches it off; plain text and user messages keep it.
 - A `file://` page sends a null origin and Ollama rejects it — the local page
   must be served.
 - A constrained preset that persists across reloads must be **visible**, or the
