@@ -112,6 +112,22 @@ serves **4-bit**, and that gap explains most surprises.
   removed the model picker and the load button and left a reload as the only
   way forward. Load failures use `failSoft()` instead, which appends the error
   and keeps the controls.
+- **iOS zooms the page when a focused form control is under 16px.** `font:
+  inherit` on the composer resolved to the body's 15px, so tapping it magnified
+  everything and clipped the header and the answer text on the right. It looks
+  exactly like horizontal overflow and is not — nothing is overflowing, the page
+  is magnified. `@media (pointer: coarse) { … font-size: 16px }` stops it.
+  **Chromium does not auto-zoom, so emulation will never catch this.**
+- **`$v$` is the commonest inline formula and has no operator to detect.** A
+  content rule built around operators drops single symbols. `isFormula()` also
+  accepts a lone short identifier, letter-first so "$5" stays a price.
+- **Small models drop closing braces.** `\frac{\Delta t}{\sqrt{1 - v^2/c^2)}`
+  came out of a real answer. `balanceBraces()` closes what is open and retries;
+  only then does it fall back to source text. Do **not** use KaTeX's
+  `throwOnError: false` — its red error styling blames the page for what the
+  model got wrong.
+- **A bare `###` is how a truncated answer ends.** It is not a heading and not
+  prose; the renderer drops empty headings rather than printing them.
 - A `file://` page sends a null origin and Ollama rejects it — the local page
   must be served.
 - A constrained preset that persists across reloads must be **visible**, or the

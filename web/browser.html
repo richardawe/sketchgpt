@@ -142,6 +142,14 @@
      clipped — which on a phone reads as a broken input. Give it a floor that
      fits a line comfortably and let the autosize handler grow it from there. */
   #input { flex: 1; resize: none; min-height: 38px; max-height: 180px; overflow-y: auto; }
+  /* iOS zooms the whole page in when a focused form control is under 16px,
+     which pushes the layout wider than the screen and clips it on the right —
+     the header and the answer text both. Nothing here is actually overflowing;
+     the page is magnified. 16px on touch devices stops it. */
+  @media (pointer: coarse) {
+    select, button, input, textarea { font-size: 16px; }
+    #input { min-height: 42px; }
+  }
 </style>
 </head>
 <body>
@@ -875,6 +883,9 @@ const isFormula = c => {
   const t = c.trim();
   if (!t) return false;
   if (/[\\^_{}]/.test(t)) return true;
+  // A lone symbol — $v$, $c$, $E$ — is the commonest inline formula of all and
+  // has no operator to detect. Require a letter first so "$5" stays a price.
+  if (/^[A-Za-z][A-Za-z0-9]{0,2}$/.test(t)) return true;
   return t.length <= 60 &&
          /^[A-Za-z0-9\s+\-*/=<>().,:;|']+$/.test(t) &&
          /[+\-*/=<>]/.test(t);
@@ -906,6 +917,9 @@ function renderMarkdown(src) {
   const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
 
   for (let line of lines) {
+    // A bare "###" with nothing after it is how a truncated answer ends. It is
+    // not a heading and it is not prose; drop it rather than printing it.
+    if (/^\s*#{1,6}\s*$/.test(line)) { closeList(); continue; }
     const h = line.match(/^(#{1,6})\s+(.*)$/);
     const ul = line.match(/^\s*[-*+]\s+(.*)$/);
     const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
@@ -963,21 +977,34 @@ function inline(t) {
 
 // KaTeX if it loaded, otherwise the source, which is what a formula looked
 // like in the terminal anyway.
+// Small models drop closing braces routinely — `\frac{a}{\sqrt{b)}` was in a
+// real answer. Count unescaped braces and close what is open; it is the one
+// repair that recovers the model's evident intent without inventing content.
+function balanceBraces(src) {
+  let depth = 0;
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] === "\\") { i++; continue; }        // escaped, skip the pair
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}") depth--;
+  }
+  return depth > 0 ? src + "}".repeat(depth) : src;
+}
+
 function math(src, display) {
-  if (!window.katex) {
-    return `<code class="tex">${esc(display ? `$$${src}$$` : `$${src}$`)}</code>`;
+  const raw = src.trim();
+  if (!window.katex) return `<code class="tex">${esc(raw)}</code>`;
+
+  const opts = { displayMode: display, throwOnError: true, trust: false,
+                 strict: false, output: "html" };
+  // As written, then with braces closed, then give up.
+  for (const attempt of [raw, balanceBraces(raw)]) {
+    try { return window.katex.renderToString(attempt, opts); } catch {}
+    if (attempt === balanceBraces(raw)) break;
   }
-  try {
-    return window.katex.renderToString(src.trim(), {
-      displayMode: display,
-      throwOnError: false,   // a malformed formula shows in red, not a crash
-      trust: false,          // no \href, no \includegraphics
-      strict: false,
-      output: "html",
-    });
-  } catch {
-    return `<code class="tex">${esc(src)}</code>`;
-  }
+  // KaTeX's own error styling is red and alarming, which puts the blame on the
+  // page rather than on the model that emitted broken LaTeX. Show the source
+  // quietly instead — it is what the answer said.
+  return `<code class="tex" title="This formula could not be parsed">${esc(raw)}</code>`;
 }
 
 const hasMath = t =>
