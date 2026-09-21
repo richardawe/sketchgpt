@@ -1,0 +1,61 @@
+<!doctype html><meta charset=utf-8><body><pre id=o>starting…</pre><script type="module">
+// What does WebLLM's initProgressCallback actually say, and when?
+//
+// The answer decides what a loading UI can honestly show. Every callback is
+// logged with the time it arrived and the gap since the last one, alongside a
+// twice-a-second sample of navigator.storage.estimate() — the only other
+// signal a page has while a model downloads.
+const q = new URLSearchParams(location.search);
+const MODEL = q.get("model"), LIBW = q.get("wasm");
+const BACKEND = q.get("backend") || "cache";
+const CTX = q.get("ctx") ? parseInt(q.get("ctx")) : 1024;
+
+const out = [], samples = [];
+const t0 = performance.now();
+const at = () => ((performance.now() - t0) / 1000).toFixed(1).padStart(6) + "s";
+const draw = () => {
+  document.getElementById("o").textContent = out.join("\n") +
+    "\n\nstorage.estimate() delta, MB (last 16 samples):\n" +
+    samples.slice(-16).map(([t, m]) => t.toFixed(1) + "s=" + m.toFixed(1)).join("  ");
+};
+const log = s => { out.push(s); draw(); };
+
+let base = null;
+const used = async () => { try { return (await navigator.storage.estimate()).usage || 0; } catch { return null; } };
+base = await used();
+const timer = setInterval(async () => {
+  const u = await used();
+  if (u !== null && base !== null) { samples.push([(performance.now() - t0) / 1000, (u - base) / 1e6]); draw(); }
+}, 500);
+
+try {
+  const webllm = await import("./lib/webllm.js");
+  log("model:   " + MODEL);
+  log("backend: " + BACKEND + "   ctx: " + CTX);
+  log("--- initProgressCallback timeline ---");
+  let last = 0;
+  await webllm.CreateMLCEngine(MODEL, {
+    appConfig: {
+      cacheBackend: BACKEND,
+      model_list: [{
+        model: new URL("./models/" + MODEL + "/", location.href).href,
+        model_id: MODEL,
+        model_lib: new URL("./lib/" + LIBW, location.href).href,
+        overrides: { context_window_size: 4096 },
+      }],
+    },
+    initProgressCallback: r => {
+      const now = (performance.now() - t0) / 1000;
+      log(at() + "  (+" + (now - last).toFixed(1).padStart(5) + "s)  " +
+          String(Math.round((r.progress || 0) * 100)).padStart(3) + "%  " + r.text);
+      last = now;
+    },
+  }, { context_window_size: CTX });
+  log(at() + "  ENGINE READY");
+} catch (e) {
+  log("ERROR: " + (e && e.stack || e));
+}
+clearInterval(timer);
+draw();
+document.title = "DONE";
+</script></body>

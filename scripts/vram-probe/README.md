@@ -50,6 +50,46 @@ KV dtype follows the build suffix: f32 in a `q4f32` build, f16 in a `q4f16`
 one. The formula predicted Llama-3.2-1B to within 1% before it was measured.
 Full results and the models table are in `docs/mobile-models.md`.
 
+## progress.html — what the loading UI can honestly show
+
+`progress.html` is the companion probe for the *other* question a load raises:
+not how much memory it takes, but what the page is allowed to tell you while it
+happens. It logs every `initProgressCallback` with the gap since the last one,
+and samples `navigator.storage.estimate()` twice a second beside it.
+
+```bash
+python3 serve.py 8099 site &
+node run-progress.mjs SmolLM2-360M-Instruct-q4f32_1-MLC \
+                      SmolLM2-360M-Instruct-q4f32_1_cs1k-webgpu.wasm 30000
+```
+
+The third argument throttles the connection through CDP, which is the whole
+point — the finding is invisible over localhost.
+
+What it found, on a cold load of SmolLM2-360M (204 MB in 7 shards, 4 fetched in
+parallel):
+
+```
+ (nothing)                        config, the ~6 MB wasm runtime, the tokenizer
+ 4.5s            0%  Start to fetch params            <- first callback, ever
+14.8s (+10.3s)  16%  Fetching param cache[1/7]        <- first real progress
+23.6s (+ 8.9s)  33%  Fetching param cache[2/7]
+```
+
+- **One shard is the progress quantum**, and the first lands about a quarter of
+  the way through the download. Until then the only thing to report is
+  `Start to fetch params` at 0%, for 0.8 s over localhost and minutes on a
+  phone. That is what "stuck on start to get params" was.
+- **`navigator.storage.estimate()` is no finer.** It steps one whole shard at a
+  time, in lockstep with the callback — 74.6 → 107.8 → 141.0 → 174.2 MB — because
+  the Cache API backend downloads inside `cache.add()`, where nothing can watch
+  the stream. It is still worth polling: it is the only thing that moves during
+  the silent pre-params phase, so it works as a liveness signal.
+- **WebLLM counts 0→100% three times** — fetch, upload to GPU, compile shaders.
+  A bar wired straight to `progress` rewinds twice.
+
+`web/browser.html` is built against all three.
+
 ## Limits
 
 - **SwiftShader cannot generate.** Loading takes seconds; a single token did

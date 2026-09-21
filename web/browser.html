@@ -61,6 +61,14 @@
   #bar { height: 3px; background: var(--line); display: none; }
   #bar.on { display: block; }
   #barfill { height: 100%; width: 0; background: var(--accent); transition: width 0.25s; }
+  /* Before the first weight shard lands there is genuinely nothing to count —
+     see the Load section. A bar frozen at 0% claims otherwise; a moving one
+     says "working, no estimate", which is the truth. */
+  #bar.wait #barfill { width: 30%; transition: none; animation: crawl 1.5s ease-in-out infinite; }
+  @keyframes crawl { from { margin-left: -30%; } to { margin-left: 100%; } }
+  @media (prefers-reduced-motion: reduce) {
+    #bar.wait #barfill { animation: none; margin-left: 0; opacity: 0.5; }
+  }
   #settings { padding: 12px 16px; border-bottom: 1px solid var(--line);
               background: var(--panel); display: none; }
   #settings.open { display: block; }
@@ -129,6 +137,12 @@
     max-width: 760px; margin: 0 auto 14px; padding: 10px 12px; border-radius: var(--radius);
     background: #c0503f18; border: 1px solid #c0503f55; font-size: 14px;
   }
+  /* A slow load is not a failed one. The stall notice has to be visibly milder
+     than .err, or a download that is merely crawling reads as broken. */
+  .warn {
+    margin-top: 14px; padding: 10px 12px; border-radius: var(--radius);
+    background: #d9a44118; border: 1px solid #d9a44155; font-size: 14px;
+  }
   code { background: var(--user-bg); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
   footer {
     border-top: 1px solid var(--line); background: var(--panel); display: none;
@@ -195,9 +209,12 @@
     <p>
       The weights download once from the Hugging Face CDN into this browser's
       cache, then inference runs locally on your GPU. No server, no install —
-      and it keeps working offline afterwards.
+      and it keeps working offline afterwards. They arrive in parts of a few
+      tens of megabytes, so the progress bar only moves when a whole part
+      lands; on a slow connection the first one can take a few minutes.
     </p>
     <button class="go" id="load">Download &amp; load model</button>
+    <button id="cancel" style="display:none">Cancel</button>
     <div class="meta" id="meta"></div>
   </div>
 </div></div>
@@ -608,6 +625,7 @@ $("model").addEventListener("change", () => {
   CTX = CTX_LADDER.find(c => gpuOf($("model").value, c) <= safeMB)
         ?? CTX_LADDER[CTX_LADDER.length - 1];
   if ($("loaderr")) $("loaderr").remove();
+  clearLoadNote();
   refreshMeta();
 });
 
@@ -631,6 +649,165 @@ function chatOptsFor(id) {
 }
 
 // ---- Load ----------------------------------------------------------------
+// WebLLM's init callback is far quieter than it looks, and the page used to
+// forward it raw. Measured with scripts/vram-probe/ on a cold load of
+// SmolLM2-360M — 204 MB in 7 shards of ~33 MB, four fetched in parallel:
+//
+//   (nothing)                     mlc-chat-config.json, the ~6 MB wasm runtime
+//                                 from raw.githubusercontent.com, the tokenizer
+//   "Start to fetch params"   0%  the FIRST callback the engine ever emits
+//   "Fetching param cache[1/7]"  16%  only once a whole 33 MB shard has landed
+//
+// So one shard is the progress quantum, and the first one lands about a quarter
+// of the way through the download. Over localhost that gap is 0.8 s. Throttled
+// to 30 Mbit/s it is 10.3 s; on a phone pulling several hundred MB it is
+// minutes, and for all of them the status read "Start to fetch params" and the
+// bar read 0%. That is the "stuck on start to get params" report: nothing is
+// wrong, and the page gives no way to tell that from a hang.
+//
+// There is no finer signal available. navigator.storage.estimate() was measured
+// as a candidate and steps by exactly one shard at a time, in lockstep with the
+// callback (74.6 → 107.8 → 141.0 → 174.2 MB), because the Cache API backend
+// downloads inside cache.add(), where nothing can observe the stream. So the
+// page does not pretend to a smooth percentage it cannot have:
+//
+//   * a bar frozen at 0% claims progress that is not being made, so the window
+//     before the first shard gets a moving indeterminate bar instead;
+//   * the status says what is actually known — parts finished, total size,
+//     and a running clock, so a slow load is visibly alive;
+//   * WebLLM counts 0→100% three separate times (fetch, upload to GPU, compile
+//     shaders) and the bar used to rewind twice. Map them onto one scale.
+//   * storage.estimate() is still worth polling as a liveness signal: it is the
+//     only thing that moves during the silent pre-params phase.
+//   * and a load that genuinely wedges looks exactly like a slow one, so say
+//     when nothing has moved, and offer a way out.
+const STALL_S = 45;          // silence this long is worth mentioning
+let LOAD = null;             // state of the load in flight, null when idle
+
+// The stall notice is advisory, so it lives in its own box and disappears the
+// moment anything moves again. It goes above the meta block, not after it:
+// appended to the card it landed below the fold on a phone, which is the one
+// place it is most needed.
+function loadNote(html) {
+  let box = $("loadnote");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "warn"; box.id = "loadnote";
+    $("card").insertBefore(box, $("meta"));
+  }
+  box.innerHTML = html;
+}
+function clearLoadNote() { const b = $("loadnote"); if (b) b.remove(); }
+
+// Progress only ever goes forward. Each pass reports its own 0→100%, and on a
+// warm load the download pass does not happen at all, so the spans differ.
+function bump(pct) { LOAD.pct = Math.max(LOAD.pct, Math.min(100, pct)); }
+
+const mb = n => Math.round(n) + " MB";
+
+function renderLoad() {
+  if (!LOAD) return;
+  const secs = Math.round((performance.now() - LOAD.t0) / 1000);
+  const clock = secs < 60 ? secs + "s"
+              : Math.floor(secs / 60) + "m" + String(secs % 60).padStart(2, "0");
+  let what;
+  if (LOAD.phase === "shader")        what = "compiling shaders";
+  else if (LOAD.phase === "gpu")      what = "moving weights to the GPU" +
+                                             (LOAD.of ? ` — part ${LOAD.i} of ${LOAD.of}` : "");
+  else if (!LOAD.cold)                what = "loading from this browser's cache";
+  else if (LOAD.of)                   what = `downloading — part ${LOAD.i} of ${LOAD.of}`;
+  else if (LOAD.sawCallback)          what = `downloading${LOAD.expectMB ? " ~" + mb(LOAD.expectMB) : ""}` +
+                                             " — first part not finished yet";
+  else                                what = "fetching the runtime" +
+                                             (LOAD.gotMB >= 1 ? ` — ${mb(LOAD.gotMB)} stored` : "");
+  setStatus(`${what} · ${clock}`, "busy");
+  // Determinate only once something countable has happened. Before that even a
+  // warm load has no parts to count, so it crawls too.
+  const known = LOAD.of > 0 || LOAD.phase === "shader";
+  $("bar").classList.toggle("wait", !known);
+  if (known) $("barfill").style.width = Math.round(LOAD.pct) + "%";
+}
+
+// The browser's own accounting of what this origin has stored. It steps one
+// shard at a time so it is no use as a percentage, but it is the only thing
+// that moves before the first callback, and it tells the watchdog below that
+// bytes really are arriving.
+async function pollStore() {
+  if (!LOAD || !LOAD.cold || LOAD.base === null) return;
+  let usage = null;
+  try { usage = (await navigator.storage.estimate()).usage; } catch {}
+  if (usage == null) return;
+  const got = Math.max(LOAD.gotMB, (usage - LOAD.base) / 1e6);
+  if (got > LOAD.gotMB + 0.5) { LOAD.gotMB = got; LOAD.moved = performance.now(); clearLoadNote(); }
+}
+
+function checkStall() {
+  if (!LOAD || (performance.now() - LOAD.moved) / 1000 < STALL_S) return;
+  const idle = Math.round((performance.now() - LOAD.moved) / 1000);
+  // A long first wait is expected and a long wait later is not, so they get
+  // different headings. Crying "stall" at the normal case is how a page teaches
+  // people to ignore it.
+  let head, why;
+  if (!LOAD.sawCallback) {
+    // Still on the config, the wasm runtime and the tokenizer — a different set
+    // of hosts from the weights, and raw.githubusercontent.com is the one
+    // networks tend to block.
+    head = "Still fetching the runtime.";
+    why = "This part comes from <code>huggingface.co</code> and " +
+          "<code>raw.githubusercontent.com</code>. Networks that allow the first " +
+          "often block the second.";
+  } else if (LOAD.cold && !LOAD.of) {
+    head = "Still downloading the first part.";
+    why = "The weights arrive in parts of a few tens of megabytes and nothing " +
+          "moves until a whole one lands, so this wait is normal — it is the " +
+          "slowest-looking stretch of the load.";
+  } else {
+    head = `Nothing has moved for ${idle} seconds.`;
+    why = "The load is waiting on <code>huggingface.co</code>. A slow connection " +
+          "looks like this too, but if it does not recover, something is blocking it.";
+  }
+  loadNote(
+    `<b>${head}</b><br><br>${why}` +
+    (LOAD.cold && LOAD.gotMB >= 1
+      ? `<br><br><b>Stored so far:</b> ${mb(LOAD.gotMB)}` +
+        (LOAD.expectMB ? ` of about ${mb(LOAD.expectMB)}` : "")
+      : "") +
+    "<br><br><b>Cancel</b> is safe: parts that finished downloading stay in this " +
+    "browser, and loading again picks up from there rather than starting over.");
+}
+
+function endLoad() {
+  if (LOAD && LOAD.timer) clearInterval(LOAD.timer);
+  LOAD = null;
+  $("bar").classList.remove("on", "wait");
+  $("cancel").style.display = "none";
+}
+
+$("cancel").addEventListener("click", async () => {
+  if (!LOAD) return;
+  LOAD.cancelled = true;
+  $("cancel").disabled = true;
+  setStatus("cancelling…", "busy");
+  // unload() aborts the reload's AbortController, which is the only handle
+  // WebLLM gives us on an in-flight fetch. CreateMLCEngine hides the engine
+  // until it resolves, which is why the load below constructs it directly.
+  try { await LOAD.engine.unload(); } catch {}
+});
+
+// Both exits from a cancelled load — the quiet one and the thrown one — end
+// here, so the page never reports a deliberate cancel as a failure.
+async function cancelled() {
+  endLoad();
+  clearLoadNote();
+  $("load").disabled = false;
+  $("model").disabled = false;
+  setStatus("cancelled");
+  loadNote("<b>Load cancelled.</b><br><br>Parts that finished downloading are " +
+           "still in this browser, so loading again resumes rather than starting " +
+           "over. <b>Clear cache</b> in the header discards them.");
+  await refreshMeta();
+}
+
 $("load").addEventListener("click", async () => {
   const id = $("model").value;
   const need = gpuOf(id, CTX);
@@ -645,27 +822,82 @@ $("load").addEventListener("click", async () => {
   $("load").disabled = true;
   $("model").disabled = true;
   $("bar").classList.add("on");
-  setStatus("loading…", "busy");
+  clearLoadNote();
+  setStatus("starting…", "busy");
 
   // Ask the browser not to evict the weights under storage pressure.
   try { await navigator.storage.persist(); } catch {}
 
-  try {
-    engine = await webllm.CreateMLCEngine(id, {
-      appConfig: APP,
-      initProgressCallback: r => {
-        $("barfill").style.width = Math.round((r.progress || 0) * 100) + "%";
-        setStatus(r.text ? r.text.slice(0, 60) : "loading…", "busy");
+  // A warm load skips the download pass entirely, so the phase weights have to
+  // know which one this is. A resumed load counts as cold and its stored-MB
+  // figure counts only the new bytes, not the parts already here.
+  let cold = true;
+  try { cold = !(await webllm.hasModelInCache(id, APP)); } catch {}
+  let base = null;
+  try { base = (await navigator.storage.estimate()).usage ?? null; } catch {}
+
+  LOAD = {
+    t0: performance.now(), moved: performance.now(),
+    phase: "fetch", pct: 0, i: 0, of: 0,
+    cold, base, gotMB: 0, expectMB: cold ? downloadOf(id) : null,
+    sawCallback: false, cancelled: false, engine: null, timer: null,
+  };
+  $("cancel").disabled = false;
+  $("cancel").style.display = "";
+  LOAD.timer = setInterval(() => { pollStore(); checkStall(); renderLoad(); }, 1000);
+  renderLoad();
+
+  const engineOpts = {
+    appConfig: APP,
+    initProgressCallback: r => {
+      if (!LOAD) return;
+      const t = r.text || "";
+      LOAD.sawCallback = true;
+      LOAD.moved = performance.now();
+      clearLoadNote();
+      const frac = r.progress || 0;
+      const part = t.match(/\[(\d+)\/(\d+)\]/);
+      if (/Finish loading/.test(t)) { LOAD.phase = "shader"; bump(100); }
+      else if (/Loading GPU shader/.test(t)) {
+        LOAD.phase = "shader";
+        bump((LOAD.cold ? 95 : 90) + (LOAD.cold ? 5 : 10) * frac);
+      } else if (/Loading model from cache/.test(t)) {
+        if (LOAD.phase !== "gpu") { LOAD.phase = "gpu"; LOAD.i = 0; LOAD.of = 0; }
+        if (part) { LOAD.i = +part[1]; LOAD.of = +part[2]; }
+        bump(LOAD.cold ? 75 + 20 * frac : 90 * frac);
+      } else {
+        // "Start to fetch params" carries no counts; "Fetching param cache[i/n]"
+        // does, and is the first thing that can move a determinate bar.
+        LOAD.phase = "fetch";
+        if (part) { LOAD.i = +part[1]; LOAD.of = +part[2]; }
+        bump(75 * frac);
       }
-    }, chatOptsFor(id));
-    $("bar").classList.remove("on");
+      renderLoad();
+    }
+  };
+
+  try {
+    // Constructed rather than CreateMLCEngine()'d so the Cancel button has
+    // something to call before the load finishes.
+    const eng = new webllm.MLCEngine(engineOpts);
+    LOAD.engine = eng;
+    await eng.reload(id, chatOptsFor(id));
+    // reload() recognises its own AbortError and returns quietly, but an abort
+    // that lands inside cache.add() comes back as a TypeError instead and is
+    // rethrown — measured, it is what Cancel actually produces. So the flag,
+    // not the error, decides; both exits route through cancelled() below.
+    if (LOAD.cancelled) return cancelled();
+    engine = eng;
+    endLoad();
     $("wrap").innerHTML = "";
     $("foot").classList.add("on");
     fitPlaceholder();
     setStatus("ready — running locally", "on");
     $("input").focus();
   } catch (e) {
-    $("bar").classList.remove("on");
+    if (LOAD && LOAD.cancelled) return cancelled();
+    endLoad();
+    clearLoadNote();
     $("load").disabled = false;
     $("model").disabled = false;
     failSoft(await explainLoadFailure(e, id));

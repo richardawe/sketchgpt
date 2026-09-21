@@ -128,6 +128,28 @@ serves **4-bit**, and that gap explains most surprises.
   model got wrong.
 - **A bare `###` is how a truncated answer ends.** It is not a heading and not
   prose; the renderer drops empty headings rather than printing them.
+- **"Stuck on start to get params" is a reporting bug, not a load bug.**
+  `Start to fetch params` is the *first* callback WebLLM ever emits — the
+  config, the ~6 MB wasm runtime and the tokenizer all fetch in silence before
+  it — and the next one only arrives when a whole ~33 MB shard has landed, four
+  in parallel, so the first lands about a quarter of the way in. Measured with
+  `scripts/vram-probe/progress.html`: 0.8 s over localhost, 10.3 s throttled to
+  30 Mbit/s, minutes on a phone, all of it showing one unchanged line at 0%.
+  `navigator.storage.estimate()` is **no finer** — it steps one whole shard at a
+  time in lockstep with the callback, because the Cache API backend downloads
+  inside `cache.add()` where nothing can watch the stream. So the page does not
+  fake a percentage it cannot have: an indeterminate bar until the first part
+  lands, parts-finished and a running clock in the status, storage polled only
+  as a liveness signal, and a notice after 45 s of silence that says which hosts
+  it is waiting on. There is also a **Cancel** button now: `CreateMLCEngine`
+  hides the engine until it resolves, so the page constructs `MLCEngine`
+  directly and calls `unload()`, which aborts the reload. Cancel arrives as a
+  `TypeError` out of `cache.add()`, not the `AbortError` WebLLM handles, so a
+  flag and not the error decides whether it was deliberate.
+- **WebLLM counts 0→100% three separate times** — fetch, upload to GPU, compile
+  shaders — so a bar wired straight to `progress` rewinds twice. They are mapped
+  onto one monotone scale, with different spans for a warm load, which skips the
+  fetch pass entirely.
 - A `file://` page sends a null origin and Ollama rejects it — the local page
   must be served.
 - A constrained preset that persists across reloads must be **visible**, or the

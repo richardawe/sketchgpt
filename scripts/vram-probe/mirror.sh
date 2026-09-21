@@ -22,4 +22,5 @@ for f in json.load(sys.stdin):
 [ -s site/lib/webllm.js ] || curl -sS -o site/lib/webllm.js \
   "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm"
 cp -f measure.html site/measure.html
+cp -f progress.html site/progress.html
 du -sh "site/models/$M"
