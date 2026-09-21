@@ -376,7 +376,7 @@ const gpuOf = (id, ctx) => {
 };
 
 // Filled in by init() once the adapter is known.
-let DEV = { mobile: false, f16: true, budgetMB: Infinity, maxBufMB: 0 };
+let DEV = { mobile: false, f16: true, budgetMB: Infinity, maxBufMB: 0, gpu: "" };
 
 // The context this page will actually ask for, chosen per device in init().
 let CTX = 4096;
@@ -470,6 +470,12 @@ async function init() {
   // q4f16 / q0f16 builds need the shader-f16 feature; without it they fail.
   try { DEV.f16 = adapter.features.has("shader-f16"); } catch { DEV.f16 = false; }
   try { DEV.maxBufMB = Math.round((adapter.limits.maxBufferSize || 0) / 1e6); } catch {}
+  // Which GPU and driver. A load that fails only on someone else's machine is
+  // almost always a driver story, and without this there is nothing to go on.
+  try {
+    const info = adapter.info || (adapter.requestAdapterInfo ? await adapter.requestAdapterInfo() : null);
+    if (info) DEV.gpu = [info.vendor, info.architecture, info.description].filter(Boolean).join(" ").trim();
+  } catch {}
 
   // Phones kill the tab long before desktop does, so budget conservatively.
   DEV.budgetMB = DEV.mobile ? 900 : Infinity;
@@ -901,6 +907,19 @@ $("load").addEventListener("click", async () => {
     $("load").disabled = false;
     $("model").disabled = false;
     failSoft(await explainLoadFailure(e, id));
+    const copy = $("copydiag");
+    if (copy) copy.addEventListener("click", async () => {
+      const text = $("diag").textContent;
+      // navigator.clipboard needs a secure context and can still be refused;
+      // selecting the block is the fallback that always works.
+      try { await navigator.clipboard.writeText(text); copy.textContent = "Copied"; }
+      catch {
+        const r = document.createRange();
+        r.selectNodeContents($("diag"));
+        const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        copy.textContent = "Selected — copy it";
+      }
+    });
     const alt = $("swapstore");
     if (alt) alt.addEventListener("click", () => {
       // The probe only proves a tiny entry round-trips; a real model can still
@@ -914,13 +933,69 @@ $("load").addEventListener("click", async () => {
   }
 });
 
-// "Cannot fetch <url>" is WebLLM's message when a file went into the browser
-// store and was not there afterwards. It reads like a network failure and
-// almost never is one: the usual cause is the store being full or unavailable,
-// and the file it names is often a 2 KB config rather than the weights. Say
-// that, with the numbers, instead of forwarding the raw string.
+// What a failed load is allowed to say.
+//
+// Only one class used to get a real explanation — the storage one — and every
+// other error fell through to "Could not load the model." plus a raw string.
+// That is not enough to act on and not enough to report: it names no model, no
+// cache backend, no GPU. So each class that can actually be told apart gets its
+// own remedy, and every failure ends with a copyable block.
+//
+// The raw message is interpolated into HTML, so it goes through the same esc()
+// the message renderer uses. An error string is no different from model output:
+// neither is trusted markup.
+// Does the network actually answer? Two small requests, only ever on a failure,
+// against the two hosts a load needs. Returns true / false / null (not checked).
+async function reachTest(id) {
+  const rec = webllm.prebuiltAppConfig.model_list.find(m => m.model_id === id);
+  if (!rec) return [null, null];
+  const ping = async url => {
+    if (!url) return null;
+    try {
+      // Range keeps this to a byte of the wasm rather than another 6 MB. A
+      // server that ignores it answers 200, which is just as good an answer.
+      const r = await fetch(url, { cache: "no-store", headers: { Range: "bytes=0-0" } });
+      return r.ok || r.status === 206 || r.status === 416;
+    } catch { return false; }
+  };
+  return Promise.all([ping(new URL("mlc-chat-config.json", resolveBase(rec.model)).href),
+                      ping(rec.model_lib)]);
+}
+
+// WebLLM does not fetch from the repo URL in the record — it rewrites it to the
+// resolve path first. Probing the bare URL instead returns Hugging Face's 404
+// page and reports the host as unreachable on every single failure, which is
+// the confidently-wrong answer this probe exists to replace. Same rule as
+// WebLLM's own: add a trailing slash, then resolve/main/ unless one is there.
+function resolveBase(url) {
+  let u = url + (url.endsWith("/") ? "" : "/");
+  if (!u.match(/.+\/resolve\/.+\//)) u += "resolve/main/";
+  return new URL(u).href;
+}
+
+// The things a report needs and nobody can be expected to dig out of a console.
+function diagBlock(id, name, msg, used, cap) {
+  const diag = [
+    `model:    ${id}`,
+    `context:  ${CTX}`,
+    `backend:  ${APP && APP.cacheBackend}`,
+    `gpu:      ${DEV.gpu || "unknown"}`,
+    `device:   ${DEV.mobile ? "mobile" : "desktop"}, fp16 ${DEV.f16 ? "yes" : "no"}, ` +
+      `max buffer ${DEV.maxBufMB} MB, budget ${Math.round(DEV.budgetMB)} MB`,
+    `storage:  ${used} of ${cap}`,
+    `lib:      ${LIB}`,
+    `ua:       ${navigator.userAgent}`,
+    `error:    ${name ? name + ": " : ""}${msg}`,
+  ].join("\n");
+  return `<br><br><details><summary>Details to copy into a bug report</summary>` +
+    `<pre id="diag" style="white-space:pre-wrap;word-break:break-word;font-size:12px;` +
+    `margin:8px 0 0">${esc(diag)}</pre>` +
+    `<button id="copydiag">Copy</button></details>`;
+}
+
 async function explainLoadFailure(e, id) {
   const msg = String(e && e.message || e);
+  const name = (e && e.name) || "";
   let est = null;
   try { est = await navigator.storage.estimate(); } catch {}
 
@@ -934,14 +1009,37 @@ async function explainLoadFailure(e, id) {
   let why = "";
 
   if (/Cannot fetch|QuotaExceeded|quota|Failed to execute 'add' on 'Cache'/i.test(msg)) {
+    // Measured: a 404 on a weight shard and a store that is full both come back
+    // as the same "Failed to execute 'add' on 'Cache': Request failed" — the
+    // Cache API swallows the HTTP status. The page used to call all of them
+    // storage problems, which is confidently wrong half the time. So ask the
+    // network directly before saying which one it was.
+    const [cfgOk, libOk] = await reachTest(id);
+    const netProblem = cfgOk === false || libOk === false;
+    const checked =
+      `<br><br><b>Checked just now:</b><br>` +
+      `· <code>huggingface.co</code> — ${cfgOk === null ? "not checked" : cfgOk ? "reachable" : "unreachable"}<br>` +
+      `· <code>raw.githubusercontent.com</code> — ${libOk === null ? "not checked" : libOk ? "reachable" : "unreachable"}`;
+
+    if (netProblem) {
+      head = "<b>The download could not be reached.</b>";
+      why = "<br><br>The browser reported this as a storage failure, but the " +
+            "store is not the problem — one of the two hosts the load needs did " +
+            "not answer. Networks and extensions that allow Hugging Face often " +
+            "block <code>raw.githubusercontent.com</code>, which is where the " +
+            "compiled runtime lives." + checked +
+            "<br><br>Try another network, or disable content blockers for this page.";
+      return head + why + diagBlock(id, name, msg, used, cap);
+    }
+
     head = "<b>This browser would not store the model.</b>";
-    why = "<br><br>The download itself is reachable — the file it names below is " +
-          "usually a small config, not the weights. What failed is writing it into " +
-          "this browser's storage." +
+    why = "<br><br>Both hosts answered, so what failed is writing the file into " +
+          "this browser's storage rather than fetching it. The file named below " +
+          "is often a small config rather than the weights, which makes this read " +
+          "like a network error when it is not." + checked +
           `<br><br><b>Storage used:</b> ${used} of ${cap}` +
           (free !== null ? ` — about ${Math.max(0, free).toFixed(0)} MB free` : "") +
           (need ? `<br><b>This model needs:</b> ~${need} MB` : "") +
-          `<br><b>Backend in use:</b> ${APP && APP.cacheBackend}` +
           "<br><br><b>Things that fix it, in order:</b><br>" +
           "· <b>Clear cache</b> in the header — it now removes every model, not " +
           "just this one, so a half-finished download from a previous attempt goes too.<br>" +
@@ -951,8 +1049,53 @@ async function explainLoadFailure(e, id) {
           "· Try a smaller model — the download size is on every option." +
           `<br><br><button id="swapstore">Retry using ` +
           `${APP && APP.cacheBackend === "cache" ? "IndexedDB" : "the Cache API"} instead</button>`;
+
+  } else if (/exceeds shard size|Tensor-cache record|Failed to load shard|arrayDecodeStorage/i.test(msg)) {
+    // The weights arrived but would not decode. A shard that was stored short —
+    // an interrupted download, an eviction part-way — reads exactly like this.
+    head = "<b>The stored weights are damaged.</b>";
+    why = "<br><br>The download finished but a part of it would not decode, which " +
+          "is what a shard that was stored incomplete looks like — an interrupted " +
+          "download, or the browser evicting part of it under storage pressure." +
+          "<br><br><b>Clear cache</b> in the header and load again. It discards " +
+          "every stored model, including the damaged part, so the next load starts " +
+          "clean rather than resuming onto the bad data.";
+
+  } else if (/device was lost|DeviceLost|out of memory|OutOfMemory/i.test(msg) || name === "DeviceLostError") {
+    // The tab usually dies outright instead of reporting this, so when it does
+    // arrive it is worth naming the budget the page was working to.
+    head = "<b>The GPU gave up on this model.</b>";
+    why = "<br><br>The device lost its GPU context, which at this size means the " +
+          "model did not fit. The page budgets against a measured estimate, and " +
+          "this device came in under it." +
+          `<br><br><b>Estimated need:</b> ~${Math.round(gpuOf(id, CTX) || 0)} MB at a ` +
+          `${CTX}-token context<br><b>Assumed budget:</b> ~${Math.round(DEV.budgetMB)} MB` +
+          "<br><br>Pick a smaller model — the list is ordered smallest first, and " +
+          "each option carries its download size and the context it would run at.";
+
+  } else if (/ShaderModule|GPUPipelineError|createShaderModule|shader-f16|compilation/i.test(msg)) {
+    // A driver that advertises a feature and then will not compile against it.
+    const twin = id.replace("q4f16_1", "q4f32_1").replace("q0f16", "q0f32");
+    head = "<b>This GPU would not compile the model's shaders.</b>";
+    why = "<br><br>The adapter advertised the features this build needs and then " +
+          "refused the code, which is a driver problem rather than a problem with " +
+          "the model." +
+          (twin !== id && MODELS.some(m => m.id === twin)
+            ? "<br><br>There is an fp32 build of the same weights in the list — the " +
+              "suffix changes activation precision, not the weights, so it is the " +
+              "same model at higher GPU cost. Try that one."
+            : "<br><br>Try another model from the list.");
+
+  } else if (/NetworkError|Failed to fetch|ERR_|net::|CORS|Load failed/i.test(msg)) {
+    head = "<b>The download could not be reached.</b>";
+    why = "<br><br>The weights come from <code>huggingface.co</code> and the " +
+          "runtime from <code>raw.githubusercontent.com</code>. Networks and " +
+          "extensions that allow the first often block the second, so a working " +
+          "Hugging Face page does not rule this out." +
+          "<br><br>Try another network, or disable content blockers for this page.";
   }
-  return head + why + `<br><br><code>${msg}</code>`;
+
+  return head + why + diagBlock(id, name, msg, used, cap);
 }
 
 // Clearing only the selected model is not much use once the list is 15 long:

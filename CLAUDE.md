@@ -150,6 +150,18 @@ serves **4-bit**, and that gap explains most surprises.
   shaders — so a bar wired straight to `progress` rewinds twice. They are mapped
   onto one monotone scale, with different spans for a warm load, which skips the
   fetch pass entirely.
+- **`cache.add()` reports a 404 and a full store identically.** Both come back
+  as `TypeError: Failed to execute 'add' on 'Cache': Request failed`, with no
+  URL and no status — the Cache API swallows them. The page used to call every
+  one of these a storage problem, which is wrong whenever a host is blocked.
+  `reachTest()` now pings the two hosts on failure and says which one answered.
+  Note the probe must apply WebLLM's own `resolve/main/` rewrite: probing the
+  bare repo URL gets Hugging Face's 404 page and reports the host as unreachable
+  on *every* failure.
+- **A truncated shard fails at decode, not at fetch**, with
+  `Tensor-cache record range [0, N) exceeds shard size M`. That is the signature
+  of an interrupted download, and the remedy is Clear cache, not a retry — a
+  retry resumes onto the bad data.
 - A `file://` page sends a null origin and Ollama rejects it — the local page
   must be served.
 - A constrained preset that persists across reloads must be **visible**, or the
