@@ -28,6 +28,7 @@ scripts/serve-web.sh      serve web/ on localhost
 scripts/build-stamps.mjs  regenerate web/stamps.mjs from Lucide
 scripts/token-budget.mjs  measure sketch cost against Qwen3's real tokenizer
 scripts/sketch-bench.mjs  run the real prompt through real models, judged by the real parser
+scripts/record-demo.mjs   record a clip of sketch mode (Playwright + ffmpeg, no video framework)
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
