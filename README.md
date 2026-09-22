@@ -129,6 +129,28 @@ also starts Ollama if it is not already running.
 | Model storage | `models/ollama/` on disk | Browser cache, persisted |
 | Speed | Faster | Slower, but no setup |
 
+### Simple sketches
+
+In the browser page, choose **Sketch** in the header, load a model, and describe
+what to draw, for example “a house beside a tree”. The same text model produces
+validated drawing commands for lines, circles, rectangles, curves, and labels.
+The page renders these locally as an SVG; **Download SVG** saves an editable file.
+No image model or extra model download is needed.
+
+Sketch mode uses constrained JSON output, a 400×400 canvas, and at most 40
+commands. Invalid or unfinished output shows a retry message. Chat and sketch
+histories are separate; follow-up sketch prompts request a complete revised drawing.
+The mode is saved across reloads, but drawings and conversation history are not.
+This feature is in `web/browser.html`; the Ollama page is unchanged.
+
+Start with simple requests. Qwen3-0.6B and Qwen3-1.7B are candidates to evaluate;
+drawing quality has not yet been benchmarked with real models or on phones.
+
+Checks: `node --test tests/sketch.test.mjs`. With Playwright and Chromium
+available, run `node tests/sketch-browser.mjs` (or set `PLAYWRIGHT_MODULE` to
+Playwright's `index.mjs`). The browser checks use a mock model, covering rendering,
+SVG export, mobile layout, validation errors, cancellation, and mode/history handling.
+
 ### Why the Ollama page can't go on GitHub Pages
 
 Your model runs at `http://127.0.0.1:11434` on *your* machine. A Pages site is

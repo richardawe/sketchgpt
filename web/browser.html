@@ -119,6 +119,7 @@
      the markup carries the line breaks and pre-wrap would double them. */
   .body { white-space: pre-wrap; word-wrap: break-word; }
   .body.rich { white-space: normal; }
+  .sketch svg { display: block; width: 100%; max-width: 400px; height: auto; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; }
   .msg.user .body { background: var(--user-bg); padding: 10px 12px; border-radius: var(--radius); }
   .think {
     font-size: 13px; color: var(--muted); border-left: 2px solid var(--line);
@@ -171,6 +172,7 @@
   <span class="dot" id="dot"></span>
   <h1>sketchgpt</h1>
   <select id="model" title="Model"></select>
+  <select id="output" aria-label="Output mode"><option value="chat">Chat</option><option value="sketch">Sketch</option></select>
   <span id="status">checking…</span>
   <span id="mode" hidden></span>
   <span class="spacer"></span>
@@ -228,6 +230,7 @@
 </footer>
 
 <script type="module">
+import { SKETCH_PROMPT, SKETCH_SCHEMA, renderSketch } from "./sketch.mjs";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
 
@@ -381,6 +384,7 @@ let DEV = { mobile: false, f16: true, budgetMB: Infinity, maxBufMB: 0, gpu: "" }
 // The context this page will actually ask for, chosen per device in init().
 let CTX = 4096;
 
+let sketchHistory = [];
 let engine = null, history = [], generating = false, stopFlag = false;
 
 // ---- Where the weights get stored ---------------------------------------
@@ -1159,7 +1163,7 @@ function save() {
     localStorage.setItem("sketchgpt.cfg", JSON.stringify({
       preset: $("preset").value, system: $("system").value,
       temp: $("temp").value, single: $("single").checked,
-      think: $("think").checked
+      think: $("think").checked, output: $("output").value
     }));
   } catch {}
 }
@@ -1173,6 +1177,7 @@ function restore() {
     $("temp").value = c.temp != null ? c.temp : 0.7;
     $("single").checked = !!c.single;
     $("think").checked = !!c.think;
+    $("output").value = c.output === "sketch" ? "sketch" : "chat";
     $("hint").textContent = HINTS[$("preset").value] || "";
     syncBadge();
   } else {
@@ -1200,6 +1205,7 @@ $("mode").addEventListener("click", () => $("settings").classList.add("open"));
 $("mode").style.cursor = "pointer";
 $("mode").title = "Constrained mode — tap to change";
 restore();
+$("output").addEventListener("change", () => { save(); fitPlaceholder(); });
 
 // ---- Rendering model output ----------------------------------------------
 // Small models emit Markdown and LaTeX whether or not you ask for it, so a
@@ -1435,8 +1441,10 @@ $("form").addEventListener("submit", async e => {
   if (!text || !engine || generating) return;
   $("input").value = ""; $("input").style.height = "auto";
 
+  const sketching = $("output").value === "sketch";
+  const conversation = sketching ? sketchHistory : history;
   addMsg("user", text);
-  history.push({ role: "user", content: text });
+  conversation.push({ role: "user", content: text });
   const out = addMsg("assistant", "");
 
   generating = true; stopFlag = false;
@@ -1444,19 +1452,21 @@ $("form").addEventListener("submit", async e => {
   setStatus("generating…", "busy");
 
   let raw = "";
+  if (sketching) out.body.textContent = "Drawing…";
   try {
     // One-at-a-time sends just this turn: for classification, earlier turns
     // bias the answer rather than help it. Clone so wrapping cannot corrupt
     // the stored history.
     const preset = PRESETS[$("preset").value];
-    let base = ($("single").checked ? [history[history.length - 1]] : history)
+    let base = ($("single").checked ? [conversation[conversation.length - 1]] : conversation)
                  .map(m => ({ ...m }));
 
     if (preset && preset.wrap && base.length && base[base.length - 1].role === "user") {
       base[base.length - 1].content = preset.wrap(base[base.length - 1].content);
     }
     const sys = $("system").value.trim();
-    if (sys) base.unshift({ role: "system", content: sys });
+    if (sketching) base.unshift({ role: "system", content: SKETCH_PROMPT + (sys ? "\nStyle preference: " + sys : "") });
+    else if (sys) base.unshift({ role: "system", content: sys });
 
     const temp = parseFloat($("temp").value);
     const req = { messages: base, stream: true };
@@ -1464,13 +1474,17 @@ $("form").addEventListener("submit", async e => {
 
     // Reasoning models otherwise spend most of their output budget thinking
     // out loud before the answer. Off by default; the block is collapsed when on.
-    if (!$("think").checked) req.extra_body = { enable_thinking: false };
+    if (sketching || !$("think").checked) req.extra_body = { enable_thinking: false };
 
     // Single-turn means a short structured answer is expected, so cap the
     // output. Without this a model that loops emits a wall of repeated text.
     const cap = preset && preset.maxTokens ? preset.maxTokens
               : ($("single").checked ? 12 : 0);
-    if (cap) req.max_tokens = cap;
+    if (sketching) {
+      req.max_tokens = Math.min(1200, Math.floor(CTX / 2));
+      req.temperature = 0.2;
+      req.response_format = { type: "json_object", schema: SKETCH_SCHEMA };
+    } else if (cap) req.max_tokens = cap;
 
     let stream;
     try {
@@ -1488,21 +1502,29 @@ $("form").addEventListener("submit", async e => {
       if (stopFlag) { await engine.interruptGenerate(); break; }
       raw += chunk.choices?.[0]?.delta?.content || "";
       const { think, answer } = splitThink(raw);
-      if (think) { out.think.style.display = ""; out.think.textContent = think.trim(); }
-      out.body.textContent = answer.trim();
+      if (think && !sketching) { out.think.style.display = ""; out.think.textContent = think.trim(); }
+      if (!sketching) out.body.textContent = answer.trim();
       $("log").scrollTop = $("log").scrollHeight;
     }
     // Now the message is whole, format it.
-    const done = splitThink(raw).answer.trim();
-    await paint(out.body, done);
+    let done = sketching ? raw.trim() : splitThink(raw).answer.trim();
+    if (sketching && stopFlag) {
+      out.body.textContent = "Drawing stopped. Try again with fewer details.";
+      conversation.pop();
+      setStatus("ready — running locally", "on");
+      return;
+    }
+    if (sketching) done = renderSketch(out.body, done);
+    else await paint(out.body, done);
     $("log").scrollTop = $("log").scrollHeight;
-    history.push({ role: "assistant", content: done });
+    conversation.push({ role: "assistant", content: done });
     setStatus("ready — running locally", "on");
   } catch (err) {
-    out.body.textContent = "";
-    $("wrap").insertAdjacentHTML("beforeend", `<div class="err">Generation failed: ${err.message}</div>`);
-    history.pop();
-    setStatus("error", "err");
+    out.body.textContent = sketching
+      ? (stopFlag ? "Drawing stopped." : "Could not finish a valid sketch. Try a simpler request or a larger model. " + err.message)
+      : "Generation failed: " + err.message;
+    conversation.pop();
+    setStatus(stopFlag ? "ready — running locally" : "error", stopFlag ? "on" : "err");
   } finally {
     generating = false;
     $("send").disabled = false; $("stop").style.display = "none";
@@ -1510,7 +1532,7 @@ $("form").addEventListener("submit", async e => {
   }
 });
 
-$("stop").addEventListener("click", () => { stopFlag = true; });
+$("stop").addEventListener("click", () => { stopFlag = true; engine?.interruptGenerate(); });
 $("input").addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("form").requestSubmit(); }
 });
@@ -1531,6 +1553,7 @@ const PLACEHOLDER_SHORT = "Send a message…";
 
 function fitPlaceholder() {
   const el = $("input");
+  if ($("output").value === "sketch") { el.placeholder = "Describe a sketch…"; return; }
   if (!matchMedia("(pointer: fine)").matches) { el.placeholder = PLACEHOLDER_SHORT; return; }
   if (el.value || !$("foot").classList.contains("on")) return;  // nothing to measure
   el.placeholder = PLACEHOLDER_FULL;
