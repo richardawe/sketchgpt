@@ -1132,14 +1132,14 @@ $("form").addEventListener("submit", async e => {
       $("log").scrollTop = $("log").scrollHeight;
     }
     // Now the message is whole, format it.
-    const done = sketching ? raw.trim() : splitThink(raw).answer.trim();
+    let done = sketching ? raw.trim() : splitThink(raw).answer.trim();
     if (sketching && stopFlag) {
       out.body.textContent = "Drawing stopped. Try again with fewer details.";
       conversation.pop();
       setStatus("ready — running locally", "on");
       return;
     }
-    if (sketching) renderSketch(out.body, done);
+    if (sketching) done = renderSketch(out.body, done);
     else await paint(out.body, done);
     $("log").scrollTop = $("log").scrollHeight;
     conversation.push({ role: "assistant", content: done });

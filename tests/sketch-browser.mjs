@@ -47,6 +47,7 @@ export async function CreateMLCEngine() { return {
   await page.selectOption('#output', 'sketch');
   const send = async text => { await page.fill('#input', text); await page.click('#send');
     await page.waitForFunction(() => !document.querySelector('#send').disabled); };
+  await page.evaluate(() => { window.drawing = window.result; window.result = '<think>Plan the shapes.</think>\n' + window.drawing; });
   await send('Draw a house');
   assert.equal(await page.locator('.sketch svg').count(), 1);
   assert.equal(await page.locator('.sketch script').count(), 0);
@@ -61,6 +62,10 @@ export async function CreateMLCEngine() { return {
   assert.match(exported, /&lt;script&gt;/);
   assert.doesNotMatch(exported, /<script>/);
   await page.screenshot({ path: '/tmp/sketch-preview.png' });
+  await page.evaluate(() => { window.result = '</think>\n```json\n' + window.drawing + '\n```'; });
+  await send('Draw the house again');
+  assert.equal(await page.locator('.sketch svg').count(), 2);
+  assert.equal(await page.evaluate(() => requests.at(-1).messages.filter(m => m.role === 'assistant').every(m => m.content.startsWith('{'))), true);
   await page.evaluate(() => { window.result = '{'; });
   await send('Broken drawing');
   assert.match(await page.locator('.msg.assistant').last().textContent(), /Could not finish a valid sketch/);

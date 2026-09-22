@@ -26,9 +26,25 @@ export const SKETCH_SCHEMA = JSON.stringify({
 
 const object = value => value && typeof value === "object" && !Array.isArray(value);
 const only = (value, keys) => Object.keys(value).every(k => keys.includes(k));
+// Qwen templates can prefill <think>, leaving only </think> in the stream,
+// even with thinking disabled. Strip wrappers only BEFORE the JSON; tags in
+// JSON labels are ordinary text and must survive unchanged.
+function drawingJSON(raw) {
+  let text = raw.trim();
+  if (!text.startsWith("{") && !text.startsWith("```")) {
+    const end = text.indexOf("</think>");
+    if (end !== -1) text = text.slice(end + 8).trim();
+    else if (text.startsWith("<think>")) throw new Error("The model stopped before completing its drawing.");
+  }
+  const fenced = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i);
+  if (fenced) text = fenced[1].trim();
+  return text;
+}
 export function parseSketch(raw) {
   if (typeof raw !== "string" || raw.length > 24000) throw new Error("Drawing is too large.");
-  const data = JSON.parse(raw);
+  let data;
+  try { data = JSON.parse(drawingJSON(raw)); }
+  catch { throw new Error("The model did not return a complete drawing. Please try again."); }
   if (!object(data) || !only(data, ["title", "commands"]) ||
       typeof data.title !== "string" || data.title.length > 120 ||
       !Array.isArray(data.commands) || !data.commands.length || data.commands.length > 40) {
@@ -96,4 +112,5 @@ export function renderSketch(container, raw) {
   });
   container.replaceChildren(svg, caption, download);
   container.classList.add("rich", "sketch");
+  return JSON.stringify(drawing); // Keep reasoning and fences out of future prompts.
 }
