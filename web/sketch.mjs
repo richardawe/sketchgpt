@@ -30,16 +30,21 @@ const STROKE = 2.5;
 // to a label, so the vocabulary costs nothing to widen.
 const EXAMPLE_STAMPS = "house tree sun cloud car person cat dog flower star mountain boat";
 
+// A worked example, not just a grammar. Qwen3-0.6B given the rules alone
+// returned a single circle for "a house beside a tree" and echoed the request
+// back as the title — the waffle-or-echo failure this project has already
+// measured twice. The example uses nouns that are deliberately NOT the ones in
+// the usual test phrase, so copying it would be visible rather than look like
+// success.
 export function sketchPrompt(maxCommands = 14) {
-  return `Draw the user's request. Return only JSON: {"t":"short title","c":["command","command"]}
+  return `Draw the user's request as JSON: {"t":"short title","c":["command","command"]}
 Each command is one line of text. The grid is 0 to 100, x right, y down.
-<object> x y size — draws that object, centred on x y. Use a plain noun, for example: ${EXAMPLE_STAMPS}.
-line x1 y1 x2 y2
-box x y w h — top-left corner, then size
-circle x y r — centre, then radius
-curve x1 y1 cx cy x2 y2 — cx cy bends the line
-label x y some words
-Prefer objects to lines: "house 25 55 40" beats drawing a house from lines. Use ${maxCommands} commands or fewer. No SVG, no code, no explanation. Return the whole drawing every time, including when changing an earlier one.`;
+Name one object for each thing in the request:
+<object> x y size — draws that object centred on x y. Objects: ${EXAMPLE_STAMPS}.
+For anything else: line x1 y1 x2 y2 / box x y w h / circle x y r / curve x1 y1 cx cy x2 y2 / label x y words
+Example. "a cat beside a flower" gives:
+{"t":"A cat beside a flower","c":["cat 35 55 30","flower 72 58 24","line 5 82 95 82"]}
+Use ${maxCommands} commands or fewer. No SVG, no code, no explanation. Draw the whole picture every time, including when changing an earlier one.`;
 }
 
 // The schema fixes the shape of the envelope; the line format inside each
@@ -241,21 +246,29 @@ export function parseSketch(raw) {
   return { title: data.t.slice(0, 80), commands, dropped, truncated: !!data.truncated };
 }
 
+export function commandLines(drawing) {
+  return drawing.commands.map(c =>
+    c.tool === "stamp" ? `${c.text} ${c.args.join(" ")}`
+    : c.tool === "label" ? `label ${c.args.join(" ")} ${c.text}`
+    : `${c.tool} ${c.args.join(" ")}`);
+}
+
 // The canonical form a drawing is stored and re-sent in: no reasoning, no
 // fences, no invalid commands, and cheaper than whatever the model emitted.
 export function toSource(drawing) {
-  return JSON.stringify({ t: drawing.title, c: drawing.commands.map(c =>
-    c.tool === "stamp" ? `${c.text} ${c.args.join(" ")}`
-    : c.tool === "label" ? `label ${c.args.join(" ")} ${c.text}`
-    : `${c.tool} ${c.args.join(" ")}`) });
+  return JSON.stringify({ t: drawing.title, c: commandLines(drawing) });
 }
 
 // ---- Rendering ------------------------------------------------------------
-// Rough.js is loaded only when a sketch is first drawn, and the page renders
-// clean SVG if it cannot be fetched — the same bargain the KaTeX loader makes.
-// It costs no model tokens at all: the hand-drawn look is applied to geometry
-// the model already sent.
-const ROUGH_URL = "https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.esm.js";
+// Rough.js is loaded only when a sketch mode is first entered, and the page
+// renders clean SVG if that fails. It costs no model tokens at all: the
+// hand-drawn look is applied to geometry the model already sent.
+//
+// It is vendored beside this file rather than fetched from a CDN, unlike
+// KaTeX, because the page promises to work offline once the weights are
+// cached — and a CDN import would cost every offline sketch its line without
+// ever saying so.
+const ROUGH_URL = "./rough.mjs";
 let roughPromise = null;
 export function loadRough(url = ROUGH_URL) {
   if (url === null) return Promise.resolve(null);   // explicitly turned off
@@ -336,6 +349,18 @@ export function renderSketch(container, raw, { rough = null } = {}) {
   if (drawing.truncated) caption.textContent += " — the model ran out of room, so this drawing is unfinished.";
   else if (drawing.dropped) caption.textContent += ` — ${drawing.dropped} command${drawing.dropped > 1 ? "s" : ""} could not be read.`;
 
+  // What the model actually said. Without this every test on a device nobody
+  // here can reach is a guess: a drawing that comes back nearly empty looks
+  // identical to one that was misparsed, and the page used to throw the
+  // evidence away.
+  const source = doc.createElement("details");
+  source.className = "source";
+  const summary = doc.createElement("summary");
+  summary.textContent = `Show commands (${drawing.commands.length})`;
+  const pre = doc.createElement("pre");
+  pre.textContent = commandLines(drawing).join("\n");
+  source.append(summary, pre);
+
   const download = doc.createElement("button");
   download.type = "button"; download.textContent = "Download SVG";
   download.addEventListener("click", () => {
@@ -346,7 +371,7 @@ export function renderSketch(container, raw, { rough = null } = {}) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
 
-  container.replaceChildren(svg, caption, download);
+  container.replaceChildren(svg, caption, download, source);
   container.classList.add("rich", "sketch");
   return toSource(drawing); // Keep reasoning, fences and bad commands out of future prompts.
 }

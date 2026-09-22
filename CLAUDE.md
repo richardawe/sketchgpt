@@ -21,6 +21,7 @@ web/browser.html          in-browser inference (WebGPU via WebLLM) — the publi
 web/index.html            local chat against Ollama — development only
 web/sketch.mjs            sketch format, context budget, SVG rendering
 web/stamps.mjs            generated Lucide path data — never edit by hand
+web/rough.mjs             vendored rough.js 4.6.6 (MIT) — verbatim, keep it so
 scripts/setup-pages.sh    push, enable Pages, deploy, print URL (needs the user's gh)
 scripts/setup-ollama.sh   install Ollama, pull the pinned model, verify, smoke-test
 scripts/serve-web.sh      serve web/ on localhost
@@ -56,7 +57,9 @@ serves **4-bit**, and that gap explains most surprises.
 | **A digit is a token, and so is the space before it** | Qwen3 tokenizes `" 160"` as four tokens — `" "`,`"1"`,`"6"`,`"0"`. In any structured output, **the numbers are the cost and the syntax is a rounding error**. Shortening `rectangle` to `r` across ten sketch commands saved 0 tokens; moving the grid from 0–400 to 0–100 saved 19%. Measured with Qwen3-0.6B's real tokenizer via `scripts/token-budget.mjs`. |
 | **Move the shape into the page, not the model** | A stamp — `house 25 55 40`, a noun plus three numbers — costs 13 tokens and draws a recognisable house from bundled Lucide path data. Drawing the same house from primitives costs 5 commands and looks worse. One scene: 235 tokens as JSON objects → 66 as stamps, **3.6× cheaper and better**. Naming a noun is the easiest thing a small model does; composing a recognisable object from line segments is among the hardest. |
 | **Enrichment is free if it needs no tokens** | rough.js redraws geometry the model already sent, so the hand-drawn look costs nothing at inference. Anything that makes output *prettier* belongs on the page; only what makes it *different* belongs in the prompt. |
-| **A chat history of drawings is unbounded and does not need to be** | Sketch history grew by a whole drawing per turn. Carrying only the previous drawing and the instruction that produced it makes the prompt **O(1) in turns** — measured flat at 294 tokens from turn 2 onward at 4096, 2048 and 1024 context. A revision needs a seed, not a transcript. |
+| **A cheap format does not buy a good drawing** | First real-device run, Qwen3-0.6B on a phone, "draw a house beside a tree": **one circle**, and the title was the request echoed back. No dropped commands — so the model emitted almost nothing, valid. Making a drawing affordable and making a 0.6B model *compose* one are separate problems, and only the first is solved. |
+| **The page was throwing away the only evidence** | That one circle is indistinguishable from a misparse without the model's raw output, and nothing in the UI showed it. Anything shipped to a device nobody here can reach needs its raw output one tap away, or every report is a guess. |
+| **A chat history of drawings is unbounded and does not need to be** | Sketch history grew by a whole drawing per turn. Carrying only the previous drawing and the instruction that produced it makes the prompt **O(1) in turns** — measured flat at 312 tokens from turn 2 onward at 4096, 2048 and 1024 context. A revision needs a seed, not a transcript. |
 
 ### Browser gotchas already fixed
 
@@ -209,16 +212,25 @@ practical fine-tuning.
 
 ## Open threads
 
-- **No real model has ever drawn a sketch.** The format, the budget and the
-  rendering are all measured or tested; the *drawing* is not. Unknown until a
-  device runs it: whether a 360M model picks sensible coordinates, how often it
-  names a stamp that resolves, and whether the 0–100 grid reads better to it
-  than 0–400 did. This is the first thing to try on the user's phone, and the
-  one claim the README refuses to make.
+- **Qwen3-0.6B drew one circle for "a house beside a tree".** The first real
+  run on the user's phone. Three things were wrong at once and only one is
+  confirmed fixed: a leftover chat system prompt was being appended to every
+  sketch as a "Style preference" (fixed — sketch mode no longer sends it), the
+  raw output was invisible (fixed — "Show commands"), and the prompt had rules
+  but no worked example (**a one-shot example was added, and is untested**).
+  Whether the example is what a 0.6B needs is the open question; the next run
+  on a real device answers it, and "Show commands" is what makes that run
+  readable.
 - **The stamp vocabulary is a guess.** 133 Lucide icons and 84 aliases chosen
   by imagining what a model would say. The right way to size it is to log the
   nouns real models emit and see what misses; until then unknown nouns fall
-  back to a label, which is visible rather than silent.
+  back to a label, which is visible rather than silent. Nothing yet observed
+  whether a real model reaches for stamps at all — the one circle suggests not.
+- **Whether rough.js ever loaded on the phone is unknown.** The circle in the
+  report is perfectly smooth, where the hand-drawn line should wobble. It was
+  a CDN import at the time and failed silently by design. Now vendored in
+  `web/rough.mjs`, which removes the CDN from the question — and which the
+  page's own offline claim required anyway.
 - **`setup-pages.sh` has never run end to end.** Guards, branch rewrite and the
   missing-`gh` path are verified; a real `gh repo create` is not. First real run
   is the test.

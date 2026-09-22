@@ -112,6 +112,12 @@
   .body { white-space: pre-wrap; word-wrap: break-word; }
   .body.rich { white-space: normal; }
   .sketch svg { display: block; width: 100%; max-width: 400px; height: auto; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; }
+  /* What the model actually said, one tap away — the only way to tell a
+     nearly-empty drawing from a misparsed one on a device we cannot reach. */
+  .source { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .source summary { cursor: pointer; }
+  .source pre { white-space: pre-wrap; word-break: break-word; margin: 6px 0 0;
+    padding: 8px; background: var(--user-bg); border-radius: 8px; font-size: 12px; }
   .msg.user .body { background: var(--user-bg); padding: 10px 12px; border-radius: var(--radius); }
   .think {
     font-size: 13px; color: var(--muted); border-left: 2px solid var(--line);
@@ -773,7 +779,10 @@ const MODE_LABEL = { concise: "concise", custom: "custom prompt" };
 function syncBadge() {
   const name = $("preset").value;
   $("mode").hidden = name === "chat";
-  $("mode").textContent = MODE_LABEL[name] || "";
+  // Sketch mode does not send the chat prompt, so a badge that just says
+  // "custom prompt" would claim an effect it no longer has.
+  $("mode").textContent = (MODE_LABEL[name] || "") +
+    ($("output").value === "sketch" ? " — not used for sketches" : "");
 }
 
 function applyPreset(name) {
@@ -838,7 +847,7 @@ restore();
 // Fetch the sketch renderer as soon as the mode is chosen, so the first
 // drawing is not waiting on a CDN after the model has already answered.
 const warmRough = () => { if ($("output").value === "sketch") loadRough(ROUGH); };
-$("output").addEventListener("change", () => { save(); fitPlaceholder(); warmRough(); });
+$("output").addEventListener("change", () => { save(); fitPlaceholder(); warmRough(); syncBadge(); });
 warmRough();
 
 // ---- Rendering model output ----------------------------------------------
@@ -1094,7 +1103,11 @@ $("form").addEventListener("submit", async e => {
     // the previous drawing and the instruction that produced it, so the prompt
     // stays the same size on turn ten as on turn two. Letting the history grow
     // ran a 1024-token phone into the context wall on the third drawing.
-    const plan = sketching ? planSketchTurn(conversation, CTX, sys) : null;
+    // The chat system prompt is written for prose and is not passed here: a
+    // leftover "answer concisely in plain English" silently fought the drawing
+    // instructions on every sketch, and the only visible sign was a badge in
+    // the header. Say the style in the request instead.
+    const plan = sketching ? planSketchTurn(conversation, CTX) : null;
     // One-at-a-time sends just this turn: for classification, earlier turns
     // bias the answer rather than help it. Clone so wrapping cannot corrupt
     // the stored history.
@@ -1168,6 +1181,18 @@ $("form").addEventListener("submit", async e => {
     out.body.textContent = sketching
       ? (stopFlag ? "Drawing stopped." : "Could not finish a valid sketch. Try a simpler request or a larger model. " + err.message)
       : "Generation failed: " + err.message;
+    // Keep the evidence. A sketch that fails on a device nobody here can reach
+    // is undiagnosable without the text the model actually produced.
+    if (sketching && !stopFlag && raw.trim()) {
+      const details = document.createElement("details");
+      details.className = "source";
+      const summary = document.createElement("summary");
+      summary.textContent = "Show what the model returned";
+      const pre = document.createElement("pre");
+      pre.textContent = raw.trim();   // textContent: never parsed as markup
+      details.append(summary, pre);
+      out.body.append(details);
+    }
     conversation.pop();
     setStatus(stopFlag ? "ready — running locally" : "error", stopFlag ? "on" : "err");
   } finally {

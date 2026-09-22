@@ -168,7 +168,7 @@ next to the numbers.
 
 The prompt is **planned, not accumulated**. Only the previous drawing and the
 instruction that produced it are carried, so the prompt is the same size on
-turn ten as on turn two — measured flat at 294 tokens at every context rung.
+turn ten as on turn two — measured flat at 312 tokens at every context rung.
 `max_tokens` is set from the room actually left, never past it, because
 generation that reaches the context edge stops silently mid-drawing. The
 command budget is derived from that room.
@@ -176,8 +176,18 @@ command budget is derived from that room.
 Two rendering touches cost no model tokens at all, because they are applied to
 geometry the model already sent: [rough.js](https://roughjs.com) draws every
 shape with a hand-drawn line, and the stamps are [Lucide](https://lucide.dev)
-icons. Rough.js is fetched from a CDN on first use and the page renders clean
-SVG if it cannot be reached; `?rough=0` turns it off.
+icons. Rough.js is vendored in `web/rough.mjs` rather than fetched from a CDN,
+because this page claims to work offline once the weights are cached and a CDN
+import would quietly cost every offline sketch its line. The page renders clean
+SVG if the module fails to load; `?rough=0` turns it off.
+
+**Show commands** under any drawing reveals the exact lines it was built from,
+and a sketch that fails shows the raw model output the same way. On a phone
+that is the difference between a bug report and a guess.
+
+The chat system prompt in Settings is **not** sent in sketch mode — it is
+written for prose, and a leftover "answer concisely in plain English" silently
+fought the drawing instructions. Ask for a style in the request instead.
 
 Output cut off mid-JSON still renders the commands that arrived, captioned as
 unfinished. A few unreadable commands are dropped and counted; mostly-bad
@@ -189,12 +199,18 @@ and `web/stamps.mjs`; the Ollama page is unchanged.
 
 #### Not yet measured
 
-**No real model has drawn anything through this.** There is no GPU in the
-environment it was built in, and SwiftShader loads models but cannot generate.
-Every number above is a token count or a render from a mock; whether a 360M
-model picks sensible coordinates, and how often it names a stamp that exists,
-is unknown until it runs on a real device. Qwen3-0.6B and Qwen3-1.7B are the
-candidates to try first.
+There is no GPU in the environment this was built in, and SwiftShader loads
+models but cannot generate, so every number above is a token count or a render
+from a mock.
+
+The one real run so far: **Qwen3-0.6B on a phone returned a single circle** for
+"a house beside a tree", with the request echoed back as the title. Nothing was
+dropped or misparsed — the model simply emitted almost nothing. Three causes
+were addressed (a chat prompt bleeding into the instructions, invisible raw
+output, and a prompt with rules but no worked example); **whether the worked
+example is what a 0.6B needs is untested.** Making a drawing cheap and making a
+small model compose one are separate problems, and only the first has numbers
+behind it.
 
 #### Checks
 
@@ -307,6 +323,7 @@ web/index.html            streaming chat UI, talks to local Ollama
 web/browser.html          runs the model in-browser via WebGPU (Pages-ready)
 web/sketch.mjs            sketch format, context budget, SVG rendering
 web/stamps.mjs            generated icon geometry (do not edit by hand)
+web/rough.mjs             vendored rough.js 4.6.6 (MIT), the hand-drawn line
 docs/customising.md       how to change what the model does
 ```
 
@@ -316,8 +333,8 @@ docs/customising.md       how to change what the model does
   inference this page is a front end for.
 - **[Lucide](https://lucide.dev)** (ISC) — the icon geometry behind sketch
   stamps, vendored as path data in `web/stamps.mjs`.
-- **[rough.js](https://roughjs.com)** (MIT) — the hand-drawn line, loaded from
-  a CDN on demand.
+- **[rough.js](https://roughjs.com)** (MIT) — the hand-drawn line, vendored
+  verbatim in `web/rough.mjs` so sketches keep it offline.
 - **[KaTeX](https://katex.org)** (MIT) — maths in chat answers, loaded from a
   CDN on demand.
 

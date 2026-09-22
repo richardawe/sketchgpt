@@ -1,20 +1,13 @@
 // Run with Playwright installed, or set PLAYWRIGHT_MODULE to its index.mjs.
-// Rough.js is served from the local package when it is present; otherwise the
-// run exercises the clean-SVG fallback, which is the path a visitor gets when
-// the CDN is unreachable.
 import { readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
-// SKETCH_ROUGH=0 forces the fallback even when roughjs is installed, so both
-// rendering paths can be checked from one machine.
-let roughSource = null;
-if (process.env.SKETCH_ROUGH === '0') console.log('note: rough.js disabled — checking the clean-SVG fallback');
-else try {
-  roughSource = await readFile(createRequire(import.meta.url)
-    .resolve('roughjs/bundled/rough.esm.js'), 'utf8');
-} catch { console.log('note: roughjs not installed — checking the clean-SVG fallback'); }
+// rough.js is vendored in web/, so these checks exercise the file that ships
+// rather than a copy from node_modules. SKETCH_ROUGH=0 forces the clean-SVG
+// fallback instead — the path a visitor gets if the module fails to load.
+const withRough = process.env.SKETCH_ROUGH !== '0';
+if (!withRough) console.log('note: rough.js disabled — checking the clean-SVG fallback');
 
 const browser = await chromium.launch({ headless: true });
 try {
@@ -48,9 +41,8 @@ export async function CreateMLCEngine() { return {
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.pathname === '/mock.mjs') return route.fulfill({ contentType: 'text/javascript', body: stub });
-    if (url.pathname === '/rough.mjs') return route.fulfill({ contentType: 'text/javascript', body: roughSource || '' });
     const name = url.pathname.replace(/^.*\//, '');
-    const file = /^(sketch|stamps)\.mjs$/.test(name) ? name : 'browser.html';
+    const file = /^(sketch|stamps|rough)\.mjs$/.test(name) ? name : 'browser.html';
     await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
@@ -59,7 +51,7 @@ export async function CreateMLCEngine() { return {
     await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
     await page.click('#load');
   };
-  await open(roughSource ? '&rough=/rough.mjs' : '&rough=0');
+  await open(withRough ? '' : '&rough=0');
   await page.selectOption('#output', 'sketch');
   const send = async text => { await page.fill('#input', text); await page.click('#send');
     await page.waitForFunction(() => !document.querySelector('#send').disabled); };
@@ -75,7 +67,7 @@ export async function CreateMLCEngine() { return {
   // Three stamps became real geometry rather than three words.
   const stampPaths = await page.locator('.sketch svg g[transform] path').count();
   assert.ok(stampPaths >= 9, `stamps drew ${stampPaths} paths`);
-  if (roughSource) {
+  if (withRough) {
     // Rough redraws each primitive as its own sketchy path set, so the
     // element count climbs well past the eight commands sent.
     const paths = await page.locator('.sketch svg path').count();
@@ -89,6 +81,12 @@ export async function CreateMLCEngine() { return {
   }
   assert.equal(await page.evaluate(() => requests[0].response_format.type), 'json_object');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+
+  // The commands are recoverable from the page. On a device nobody here can
+  // reach, a nearly-empty drawing is indistinguishable from a misparsed one
+  // without them.
+  assert.match(await page.locator('.sketch details summary').textContent(), /Show commands \(8\)/);
+  assert.match(await page.locator('.sketch details pre').textContent(), /^house 25 55 40\ntree-deciduous 78 50 34/);
 
   const downloadEvent = page.waitForEvent('download');
   await page.getByText('Download SVG', { exact: true }).click();
@@ -123,17 +121,31 @@ export async function CreateMLCEngine() { return {
   assert.equal(await page.locator('.msg.assistant').last().locator('svg').count(), 1);
   assert.match(await page.locator('.msg.assistant').last().textContent(), /ran out of room/);
 
-  // Output that is not a drawing at all says so.
+  // Output that is not a drawing at all says so — and keeps the evidence.
   await page.evaluate(() => { window.result = 'I cannot draw that.'; });
   await send('Broken drawing');
   assert.match(await page.locator('.msg.assistant').last().textContent(), /Could not finish a valid sketch/);
+  assert.equal(await page.locator('.msg.assistant').last().locator('details pre').textContent(), 'I cannot draw that.');
 
-  // Chat mode is untouched: no schema, no sketch prompt, its own history.
+  // A chat system prompt must not ride along with a drawing. A leftover
+  // "answer in plain English" silently fought the JSON instructions, and the
+  // only sign was a badge in the header.
+  await page.evaluate(() => { document.querySelector('#system').value = 'Answer concisely in plain English.'; });
+  await page.evaluate(() => { window.result = window.drawing; });
+  await send('Draw a boat');
+  assert.equal(await page.evaluate(() =>
+    requests.at(-1).messages.some(m => m.content.includes('plain English'))), false);
+  assert.match(await page.locator('#mode').textContent(), /not used for sketches/);
+
+  // Chat mode is untouched: no schema, no sketch prompt, its own history, and
+  // the system prompt it was written for still applies there.
   await page.evaluate(() => { window.result = 'Hello'; });
   await page.selectOption('#output', 'chat');
   await send('Hello');
   assert.equal(await page.evaluate(() => requests.at(-1).messages.filter(m => m.role === 'user').length), 1);
   assert.equal(await page.evaluate(() => requests.at(-1).response_format), undefined);
+  assert.equal(await page.evaluate(() =>
+    requests.at(-1).messages.some(m => m.content.includes('plain English'))), true);
 
   await page.selectOption('#output', 'sketch');
   await page.evaluate(() => { window.slow = true; });
@@ -145,6 +157,6 @@ export async function CreateMLCEngine() { return {
   await page.reload();
   assert.equal(await page.locator('#output').inputValue(), 'sketch');
   assert.deepEqual(errors, []);
-  console.log(`Browser checks passed${roughSource ? ' with rough.js' : ' on the clean-SVG fallback'}:` +
+  console.log(`Browser checks passed${withRough ? ' with the vendored rough.js' : ' on the clean-SVG fallback'}:` +
     ' stamps, render, export, mobile width, flat prompt, truncation, invalid output, history, stop, saved mode.');
 } finally { await browser.close(); }
