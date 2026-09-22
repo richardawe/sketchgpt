@@ -88,7 +88,29 @@ export async function CreateMLCEngine() { return {
   assert.match(await page.locator('.sketch details summary').textContent(), /Show commands \(8\)/);
   // The model's own noun, not the resolved stamp name: it typed "tree", the
   // page drew tree-deciduous, and the panel has to report the former.
-  assert.match(await page.locator('.sketch details pre').textContent(), /^house 25 55 40\ntree 78 50 34\n/);
+  assert.match(await page.locator('.sketch details textarea').inputValue(), /^house 25 55 40\ntree 78 50 34\n/);
+
+  // The commands panel is editable: change a number, press Redraw.
+  const panel = page.locator('.sketch details').last();
+  await panel.locator('summary').click();
+  const box = panel.locator('textarea');
+  assert.match(await box.inputValue(), /^house 25 55 40\n/);
+  await box.fill('house 50 50 60 red\ntree 20 30 20');
+  await panel.getByText('Redraw', { exact: true }).click();
+  const after = page.locator('.sketch details').last();
+  assert.match(await after.locator('summary').textContent(), /Show commands \(2\)/);
+  assert.equal(await after.locator('textarea').inputValue(), 'house 50 50 60 red\ntree 20 30 20');
+  assert.equal(await page.locator('.sketch svg g[transform]').count(), 2, 'redraw did not redraw');
+  assert.ok(await after.evaluate(d => d.open), 'the panel closed itself after a redraw');
+  // A bad edit keeps the drawing and says so, rather than blanking the pane.
+  await after.locator('textarea').fill('nonsense\nmore nonsense');
+  await after.getByText('Redraw', { exact: true }).click();
+  assert.match(await page.locator('.sketch .note').last().textContent(), /unchanged/);
+  assert.equal(await page.locator('.sketch svg').last().locator('g[transform]').count(), 2);
+  // Put it back so the checks below see the drawing they expect.
+  await page.locator('.sketch details').last().locator('textarea')
+    .fill('house 25 55 40\ntree 78 50 34\nsun 15 15 14\nline 2 88 98 88\ncurve 40 88 50 78 60 88\ncircle 50 30 4\nbox 60 70 12 10\nlabel 30 96 <script>bad()</script>');
+  await page.locator('.sketch details').last().getByText('Redraw', { exact: true }).click();
 
   const downloadEvent = page.waitForEvent('download');
   await page.getByText('Download SVG', { exact: true }).click();
@@ -124,8 +146,8 @@ export async function CreateMLCEngine() { return {
   await send('Draw a house with a tree and a car');
   const piled = page.locator('.msg.assistant').last();
   assert.match(await piled.locator('details summary').textContent(), /2 moved apart/);
-  assert.match(await piled.locator('details pre').textContent(), /^house 50 50 30\n/);
-  assert.match(await piled.locator('details pre').textContent(), /spread them out/);
+  assert.match(await piled.locator('details textarea').inputValue(), /^house 50 50 30\n/);
+  assert.match(await piled.locator('details .note').textContent(), /spread them out/);
   const centres = await piled.locator('svg g[transform]').evaluateAll(nodes =>
     nodes.map(n => n.getAttribute('transform').match(/translate\(([\d.-]+) ([\d.-]+)\)/).slice(1).map(Number)));
   assert.equal(centres.length, 3);
@@ -140,7 +162,7 @@ export async function CreateMLCEngine() { return {
   assert.ok(strokes.includes('#c0392b'), `no red stroke: ${strokes}`);
   assert.ok(strokes.includes('#2e7d4f'), `no green stroke: ${strokes}`);
   assert.ok(strokes.includes('#202020'), `the uncoloured sun lost its ink: ${strokes}`);
-  assert.match(await painted.locator('details pre').textContent(), /house 25 55 40 red/);
+  assert.match(await painted.locator('details textarea').inputValue(), /house 25 55 40 red/);
   await page.screenshot({ path: '/tmp/sketch-colour.png', fullPage: true });
 
   // Output cut off mid-JSON still renders what arrived.

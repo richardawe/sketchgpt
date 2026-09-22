@@ -131,6 +131,18 @@ test('the commands shown are the model\'s own, and the ones re-sent are the tidi
   assert.equal(parseSketch(toSource(d)).moved, 0, 'the tidied drawing must be stable');
 });
 
+test('a person\'s own coordinates are never tidied', () => {
+  // spreadStamps exists to correct a model that cannot place things. Someone
+  // who types two coordinates on purpose means them, so an edit is parsed
+  // with spreading off and comes back exactly as written.
+  const piled = draw('house 50 50 30', 'tree 50 52 30', 'car 50 54 30');
+  assert.equal(parseSketch(piled).moved, 2);
+  const edited = parseSketch(piled, { spread: false });
+  assert.equal(edited.moved, 0);
+  assert.deepEqual(commandLines(edited),
+    ['house 50 50 30', 'tree-deciduous 50 52 30', 'car 50 54 30']);
+});
+
 // ---- colour ---------------------------------------------------------------
 
 test('a colour word at the end of a command is the pen, not an argument', () => {

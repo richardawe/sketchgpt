@@ -116,8 +116,16 @@
      nearly-empty drawing from a misparsed one on a device we cannot reach. */
   .source { margin-top: 10px; font-size: 13px; color: var(--muted); }
   .source summary { cursor: pointer; }
-  .source pre { white-space: pre-wrap; word-break: break-word; margin: 6px 0 0;
-    padding: 8px; background: var(--user-bg); border-radius: 8px; font-size: 12px; }
+  /* The commands are editable: change a number, press Redraw. The coarse
+     pointer rule below already sizes this at 16px, which is what stops iOS
+     zooming the whole page when it is tapped. */
+  .source textarea { display: block; width: 100%; box-sizing: border-box; margin: 6px 0 0;
+    padding: 8px; background: var(--user-bg); border: 1px solid var(--line);
+    border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; line-height: 1.5; color: inherit; resize: vertical; }
+  .source button { margin-top: 6px; }
+  .source .note { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+  .source .note.bad { color: #b3261e; }
   .msg.user .body { background: var(--user-bg); padding: 10px 12px; border-radius: var(--radius); }
   .think {
     font-size: 13px; color: var(--muted); border-left: 2px solid var(--line);
@@ -1186,7 +1194,11 @@ $("form").addEventListener("submit", async e => {
       setStatus("ready — running locally", "on");
       return;
     }
-    if (sketching) done = renderSketch(out.body, done, { rough: await loadRough(ROUGH) });
+    if (sketching) done = renderSketch(out.body, done, { rough: await loadRough(ROUGH),
+      // An edit replaces the stored drawing, so a following "make it bigger"
+      // builds on what the person drew, not on what the model sent.
+      onEdit: edited => { const last = conversation[conversation.length - 1];
+        if (last && last.role === "assistant") last.content = edited; } });
     else await paint(out.body, done);
     $("log").scrollTop = $("log").scrollHeight;
     conversation.push({ role: "assistant", content: done });

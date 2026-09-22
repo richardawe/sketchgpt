@@ -350,7 +350,11 @@ function spreadStamps(commands) {
   return moved;
 }
 
-export function parseSketch(raw) {
+// `spread` is false when a person edited the commands: spreadStamps exists to
+// correct a model that cannot place things, and a human who types two
+// coordinates means those two coordinates. The page corrects the model, never
+// the person.
+export function parseSketch(raw, { spread = true } = {}) {
   if (typeof raw !== "string" || raw.length > 24000) throw new Error("Drawing is too large.");
   const text = drawingJSON(raw);
   let data;
@@ -378,7 +382,7 @@ export function parseSketch(raw) {
   // the only window onto a device nobody here can reach, and it would be
   // worth much less showing coordinates the page had written itself.
   const source = commandLines({ commands }, { said: true });
-  const moved = spreadStamps(commands);
+  const moved = spread ? spreadStamps(commands) : 0;
   return { title: data.t.slice(0, 80), commands, dropped, moved, source,
            truncated: !!data.truncated };
 }
@@ -442,8 +446,8 @@ function drawStamp(doc, parent, rough, { args: [x, y, size], text, colour }) {
   parent.append(group);
 }
 
-export function renderSketch(container, raw, { rough = null } = {}) {
-  const drawing = parseSketch(raw); // Validate the whole drawing before touching the DOM.
+export function renderSketch(container, raw, { rough = null, onEdit = null, spread = true } = {}) {
+  const drawing = parseSketch(raw, { spread }); // Validate the whole drawing before touching the DOM.
   const doc = container.ownerDocument;
   const svg = svgNode(doc, "svg", { xmlns: "http://www.w3.org/2000/svg",
     viewBox: `0 0 ${CANVAS} ${CANVAS}`, width: CANVAS, height: CANVAS, role: "img",
@@ -493,20 +497,55 @@ export function renderSketch(container, raw, { rough = null } = {}) {
   if (drawing.truncated) caption.textContent += " — the model ran out of room, so this drawing is unfinished.";
   else if (drawing.dropped) caption.textContent += ` — ${drawing.dropped} command${drawing.dropped > 1 ? "s" : ""} could not be read.`;
 
-  // What the model actually said. Without this every test on a device nobody
-  // here can reach is a guess: a drawing that comes back nearly empty looks
-  // identical to one that was misparsed, and the page used to throw the
-  // evidence away.
+  // What the model actually said, and a place to change it. Without this every
+  // test on a device nobody here can reach is a guess: a drawing that comes
+  // back nearly empty looks identical to one that was misparsed. Making it
+  // editable costs nothing extra and turns the panel from a disclosure into
+  // the most useful part of the page — change a number, press Redraw.
   const source = doc.createElement("details");
   source.className = "source";
   const summary = doc.createElement("summary");
   summary.textContent = `Show commands (${drawing.commands.length})` +
     (drawing.moved ? ` · ${drawing.moved} moved apart` : "");
-  const pre = doc.createElement("pre");
-  pre.textContent = (drawing.source || commandLines(drawing)).join("\n") +
-    (drawing.moved ? `\n\nThe model placed ${drawing.moved} of these on top of` +
-      ` each other, so the page spread them out.` : "");
-  source.append(summary, pre);
+
+  const lines = drawing.source || commandLines(drawing);
+  const editor = doc.createElement("textarea");
+  editor.className = "commands";
+  editor.rows = Math.min(14, lines.length + 1);
+  editor.spellcheck = false;
+  editor.value = lines.join("\n");
+  editor.setAttribute("aria-label", "Drawing commands — edit and press Redraw");
+
+  const redraw = doc.createElement("button");
+  redraw.type = "button";
+  redraw.textContent = "Redraw";
+  const note = doc.createElement("p");
+  note.className = "note";
+  note.textContent = drawing.moved
+    ? `The model placed ${drawing.moved} of these on top of each other, so the page spread them out. Change a number and press Redraw.`
+    : "Change a number and press Redraw.";
+
+  redraw.addEventListener("click", () => {
+    const edited = JSON.stringify({ t: drawing.title,
+      c: editor.value.split("\n").map(l => l.trim()).filter(Boolean) });
+    try {
+      // renderSketch parses before it touches the DOM, so a bad edit throws
+      // here with the drawing still on screen.
+      const kept = renderSketch(container, edited, { rough, onEdit, spread: false });
+      const panel = container.querySelector("details.source");
+      if (panel) {
+        panel.open = true;
+        const box = panel.querySelector("textarea");
+        if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+      }
+      if (onEdit) onEdit(kept);
+    } catch (err) {
+      note.textContent = err.message + " The drawing below is unchanged.";
+      note.classList.add("bad");
+    }
+  });
+
+  source.append(summary, editor, redraw, note);
 
   const download = doc.createElement("button");
   download.type = "button"; download.textContent = "Download SVG";

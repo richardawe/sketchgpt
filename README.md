@@ -211,6 +211,15 @@ not the page's tidied version — and says how many stamps it had to move apart.
 A sketch that fails shows the raw model output the same way. On a phone that is
 the difference between a bug report and a guess.
 
+Those commands are **editable**. Change `house 30 60 30` to `house 30 60 60`,
+press **Redraw**, and the house doubles; add `red` on the end and it changes
+colour. It is the cheapest way to fix something the model got slightly wrong,
+and the clearest way to show a child that a picture is a handful of shapes at
+a handful of positions. An edit is parsed with the auto-spacing switched off,
+because that exists to correct a model that cannot place things — a person who
+types two coordinates means them. An edit also replaces the stored drawing, so
+a following "make it bigger" builds on what you drew.
+
 The chat system prompt in Settings is **not** sent in sketch mode — it is
 written for prose, and a leftover "answer concisely in plain English" silently
 fought the drawing instructions. Ask for a style in the request instead.
