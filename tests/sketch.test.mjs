@@ -145,6 +145,28 @@ test('the estimator never reads low on the characters that matter', () => {
   assert.equal(estimateTokens(''), 0);
 });
 
+test('the prompt teaches only commands the page can actually draw', () => {
+  // Every example the prompt shows is parsed back through the real parser. A
+  // noun in the example that did not resolve would teach the model a word
+  // that silently degrades to a text label.
+  const prompt = sketchPrompt(14);
+  // Only the worked examples, not the empty template on the first line.
+  const examples = [...prompt.matchAll(/-> (\{"t":.*?\]\})/g)].map(m => m[1]);
+  assert.ok(examples.length >= 2, 'needs more than one example');
+  for (const example of examples) {
+    const drawing = parseSketch(example);
+    assert.equal(drawing.dropped, 0, example);
+    for (const c of drawing.commands) assert.notEqual(c.tool, 'label', `unresolved noun in ${example}`);
+  }
+  // Qwen3-0.6B copied a single example's shape — two objects and a ground
+  // line — and drew two houses when asked for one. The examples must differ
+  // in length, or they teach a fixed answer rather than a rule.
+  const lengths = new Set(examples.map(e => JSON.parse(e).c.length));
+  assert.ok(lengths.size > 1, `examples all have the same command count: ${[...lengths]}`);
+  // And a title that strips the imperative, since it echoed "Draw a house" back.
+  for (const example of examples) assert.doesNotMatch(JSON.parse(example).t, /^Draw /i);
+});
+
 test('the prompt stops growing after the first revision', () => {
   const drawing = toSource(parseSketch(draw('house 25 55 40', 'tree 80 45 30')));
   const history = [];

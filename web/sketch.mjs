@@ -36,14 +36,23 @@ const EXAMPLE_STAMPS = "house tree sun cloud car person cat dog flower star moun
 // measured twice. The example uses nouns that are deliberately NOT the ones in
 // the usual test phrase, so copying it would be visible rather than look like
 // success.
-export function sketchPrompt(maxCommands = 14) {
+const EXAMPLES = [
+  `Draw a cat -> {"t":"A cat","c":["cat 50 52 34","line 5 82 95 82"]}`,
+  `Draw a boat and two birds under the sun -> {"t":"A boat and two birds","c":["sun 82 14 16","bird 28 26 10","bird 44 20 10","boat 48 60 30","line 5 78 95 78"]}`,
+];
+
+// `brief` drops the second example for a context too small to hold both. That
+// costs the varying command count, which is the whole point of having two — so
+// it is a last resort, not a tier. No rung on the page's context ladder
+// reaches it; the planner keeps it so that fitting the window is a guarantee
+// rather than a hope.
+export function sketchPrompt(maxCommands = 14, brief = false) {
   return `Draw the user's request as JSON: {"t":"short title","c":["command","command"]}
 Each command is one line of text. The grid is 0 to 100, x right, y down.
-Name one object for each thing in the request:
 <object> x y size — draws that object centred on x y. Objects: ${EXAMPLE_STAMPS}.
 For anything else: line x1 y1 x2 y2 / box x y w h / circle x y r / curve x1 y1 cx cy x2 y2 / label x y words
-Example. "a cat beside a flower" gives:
-{"t":"A cat beside a flower","c":["cat 35 55 30","flower 72 58 24","line 5 82 95 82"]}
+Draw only what was asked for. The number of commands follows the request:
+${(brief ? EXAMPLES.slice(0, 1) : EXAMPLES).join("\n")}
 Use ${maxCommands} commands or fewer. No SVG, no code, no explanation. Draw the whole picture every time, including when changing an earlier one.`;
 }
 
@@ -97,8 +106,8 @@ export function planSketchTurn(history, ctx, style = "") {
   const seed = history.slice(-3, -1).filter(m => m.content).map(m => ({ ...m }));
   const suffix = style ? "\nStyle preference: " + style : "";
 
-  const fit = commands => {
-    const system = { role: "system", content: sketchPrompt(commands) + suffix };
+  const fit = (commands, brief) => {
+    const system = { role: "system", content: sketchPrompt(commands, brief) + suffix };
     const withSeed = [system, ...seed, ...tail];
     const cost = list => list.reduce((n, m) => n + messageTokens(m), 0);
     const messages = cost(withSeed) + RESERVE + MIN_COMMANDS * COMMAND_TOKENS < ctx
@@ -109,10 +118,12 @@ export function planSketchTurn(history, ctx, style = "") {
   // maxCommands depends on the room left, and the room depends on the prompt
   // that quotes maxCommands. Two passes settle it; the number changes by at
   // most a character.
-  let plan = fit(MAX_COMMANDS);
+  const floor = MIN_COMMANDS * COMMAND_TOKENS;
+  let brief = fit(MAX_COMMANDS, false).room < floor;
+  let plan = fit(MAX_COMMANDS, brief);
   const commands = Math.max(MIN_COMMANDS,
     Math.min(MAX_COMMANDS, Math.floor((plan.room - 12) / COMMAND_TOKENS)));
-  plan = fit(commands);
+  plan = fit(commands, brief);
 
   return {
     messages: plan.messages,

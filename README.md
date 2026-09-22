@@ -168,7 +168,7 @@ next to the numbers.
 
 The prompt is **planned, not accumulated**. Only the previous drawing and the
 instruction that produced it are carried, so the prompt is the same size on
-turn ten as on turn two — measured flat at 312 tokens at every context rung.
+turn ten as on turn two — measured flat at 374 tokens at every context rung.
 `max_tokens` is set from the room actually left, never past it, because
 generation that reaches the context edge stops silently mid-drawing. The
 command budget is derived from that room.
@@ -203,14 +203,17 @@ There is no GPU in the environment this was built in, and SwiftShader loads
 models but cannot generate, so every number above is a token count or a render
 from a mock.
 
-The one real run so far: **Qwen3-0.6B on a phone returned a single circle** for
-"a house beside a tree", with the request echoed back as the title. Nothing was
-dropped or misparsed — the model simply emitted almost nothing. Three causes
-were addressed (a chat prompt bleeding into the instructions, invisible raw
-output, and a prompt with rules but no worked example); **whether the worked
-example is what a 0.6B needs is untested.** Making a drawing cheap and making a
-small model compose one are separate problems, and only the first has numbers
-behind it.
+Two real runs so far, both Qwen3-0.6B on a phone. The first returned **a single
+circle** for "a house beside a tree" — nothing dropped or misparsed, the model
+simply emitted almost nothing. Adding a worked example fixed that: the second
+run drew real stamps. But asked for *one* house it drew **two**, copying the
+single example's shape — two objects and a ground line — rather than its rule.
+The prompt now carries two examples of different lengths. **That fix is
+untested**, like the one before it.
+
+Making a drawing cheap and making a small model compose one are separate
+problems. The first has numbers behind it; the second is being bought one
+worked example at a time.
 
 #### Checks
 
