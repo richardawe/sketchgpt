@@ -33,6 +33,7 @@ scripts/record-demo.mjs   record clips of sketch mode, one per claim (Playwright
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
+                          (classification AND structured output — two task families)
 docs/mobile-models.md     the phone-suitable models WebLLM ships, and the plan to add them
 docs/roadmap.md           the six-month plan
 ```
@@ -254,13 +255,15 @@ practical fine-tuning.
 
 ## Open threads
 
-- **Sketch mode works on a real phone.** Four rounds on the user's device got
-  there: one circle → two houses → two cats → three correct nouns stacked in
-  one spot → readable. What is confirmed working: stamps resolve, rough.js
-  renders, "Show commands" reports, the page spreads a collapsed pile. What is
-  still unknown is everything past the simplest request — nothing harder than
-  "a house with a tree and a car" has been tried, and no other model has been
-  tried at all.
+- **Sketch mode works on a real phone, and is finished for now.** Four rounds
+  on the user's device got there: one circle → two houses → two cats → three
+  correct nouns stacked in one spot → readable. Confirmed working: stamps
+  resolve, rough.js renders, "Show commands" reports and edits, the page
+  spreads a collapsed pile, colour lands on desktop rungs, the page opens
+  offline. Two models are benched (`scripts/sketch-bench.mjs`). **What is still
+  unknown on a real device is everything past the simplest request** — nothing
+  harder than "a house with a tree and a car" has been tried in a browser, and
+  the editable commands panel has never been used on a phone.
 - **Bigger desktop models are worth offering, and the page does not.** The
   desktop default is still Qwen3-0.6B (~500 MB) while Qwen3-1.7B draws 4x the
   commands and covers more of the request. Changing the default trades a
@@ -305,9 +308,23 @@ practical fine-tuning.
   SmolLM2, 92 MB Llama-3.2-1B, 162 MB Qwen3-0.6B, 410 MB Qwen3.5-0.8B) until a
   real device says otherwise.
 - **RAG never started.** No GPU needed, so it is the realistic next capability.
-- **Two X threads are drafted** but unposted (in session history): a
-  measurement-led one and a user-benefit one covering device detection,
-  privacy, formula rendering and storage control.
+- **Phase 4 got much cheaper and the roadmap has not absorbed it.** Ollama on
+  CPU in this sandbox means capability-table work no longer needs a GPU or a
+  round trip to a phone. `sketch-bench.mjs` is the harness and takes any Ollama
+  tag; extending it to non-Qwen models is an afternoon.
+- **Three X threads are drafted and none are posted.** The two older ones (a
+  measurement-led one, and a user-benefit one covering device detection,
+  privacy, formula rendering and storage control) are in session history. The
+  third is six first-person posts about sketch mode with a recorded clip each —
+  `scripts/record-demo.mjs` regenerates the clips. Three unposted drafts is
+  itself the finding: for a lab whose thesis is distribution, the bottleneck is
+  no longer what is built.
+- **Read `docs/roadmap.md` before starting anything new.** Its status table was
+  reviewed against the build at the end of this session, and it names a
+  decision that is still open: sketch mode is not in the roadmap, it is now the
+  most developed part of the product, and it either becomes the Phase 2
+  engagement hook or gets called a detour. Adding to it without deciding is the
+  named failure mode.
 
 ---
 
