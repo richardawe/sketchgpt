@@ -61,6 +61,8 @@ serves **4-bit**, and that gap explains most surprises.
 | **A worked example teaches its shape, not its rule** | With one example — two objects and a ground line — Qwen3-0.6B asked for "a house" drew **two houses and a ground line**. It copied the example's command count and filled both object slots with the only noun it had. The same applies to the title: the example's title has to show the imperative being stripped, or the model echoes "Draw a house" back as the caption. |
 | **Two examples were not enough; the model must see the degenerate case** | After adding a second, longer example it *still* drew two cats for "a cat". Every shape it had been shown held at least two commands — including the empty template on the prompt's first line, `"c":["command","command"]`. **A small model does not infer that one is allowed; it has to see a one-command answer.** Count the slots in your template, not just your examples. |
 | **State the rule and show it — neither alone worked** | "The number of commands follows the request" plus two examples still duplicated. What the prompt now carries is both an explicit rule ("Draw each thing once. One cat is one command.") and a one-command example. Each iteration cost a round trip to a real phone; nothing here was visible from a mock. |
+| **Naming is the easy half; placing is the hard half** | With the duplication fixed, Qwen3-0.6B returned three *correct* nouns for "a house with a tree and a car" — and put them all at x=50, y=50/52/54. It had anchored on an example's coordinates and added 2 each time. **Arithmetic is what a 0.6B is worst at, and it is the one thing the page can simply do instead.** `spreadStamps()` separates stamps that have collapsed, keeping the order the model listed them in, and leaves a deliberate overlap (a sun behind a cloud) alone. Fixed in code, verified against the exact output the phone produced — no round trip needed. |
+| **Four prompt rounds, then the page** | Duplication took three prompt iterations and a phone trip each; layout took one code change tested in seconds. The rule that keeps paying: **if the page can compute it, the prompt should not ask for it.** Prompt tokens also cost the phone its output budget — 197 → 391 across those rounds took a 1024-context phone from 437 output tokens to 299. |
 | **`label` is a trap door out of the drawing** | Listed plainly among the tools, the model reached for `label 35 55 cat` instead of `cat 35 55 30` — printing the word rather than drawing the thing, on the same request that had worked a minute earlier at temperature 0.2. It is now described as being for words written *on* the picture, never for naming something drawable. |
 | **The page was throwing away the only evidence** | That one circle is indistinguishable from a misparse without the model's raw output, and nothing in the UI showed it. Anything shipped to a device nobody here can reach needs its raw output one tap away, or every report is a guess. |
 | **A chat history of drawings is unbounded and does not need to be** | Sketch history grew by a whole drawing per turn. Carrying only the previous drawing and the instruction that produced it makes the prompt **O(1) in turns** — measured flat at 391 tokens from turn 2 onward at 4096, 2048 and 1024 context. A revision needs a seed, not a transcript. |
@@ -216,25 +218,23 @@ practical fine-tuning.
 
 ## Open threads
 
-- **Qwen3-0.6B drew one circle for "a house beside a tree".** The first real
-  run on the user's phone. Three things were wrong at once and only one is
-  confirmed fixed: a leftover chat system prompt was being appended to every
-  sketch as a "Style preference" (fixed — sketch mode no longer sends it), the
-  raw output was invisible (fixed — "Show commands"), and the prompt had rules
-  but no worked example (**a one-shot example was added, and is untested**).
-  Whether the example is what a 0.6B needs is the open question; the next run
-  on a real device answers it, and "Show commands" is what makes that run
-  readable.
+- **Sketch mode works on a real phone.** Four rounds on the user's device got
+  there: one circle → two houses → two cats → three correct nouns stacked in
+  one spot → readable. What is confirmed working: stamps resolve, rough.js
+  renders, "Show commands" reports, the page spreads a collapsed pile. What is
+  still unknown is everything past the simplest request — nothing harder than
+  "a house with a tree and a car" has been tried, and no other model has been
+  tried at all.
 - **The stamp vocabulary is a guess.** 133 Lucide icons and 84 aliases chosen
   by imagining what a model would say. The right way to size it is to log the
   nouns real models emit and see what misses; until then unknown nouns fall
-  back to a label, which is visible rather than silent. Nothing yet observed
-  whether a real model reaches for stamps at all — the one circle suggests not.
-- **Whether rough.js ever loaded on the phone is unknown.** The circle in the
-  report is perfectly smooth, where the hand-drawn line should wobble. It was
-  a CDN import at the time and failed silently by design. Now vendored in
-  `web/rough.mjs`, which removes the CDN from the question — and which the
-  page's own offline claim required anyway.
+  back to a label, which is visible rather than silent. Real models do reach
+  for stamps: house, tree and car all resolved first time on the phone. Nothing
+  outside that handful has been observed.
+- **rough.js is confirmed working on the phone** since it was vendored — the
+  hand-drawn wobble is visible in the screenshots. Whether the earlier CDN
+  import was the cause of the smooth circle was never established, and no
+  longer matters.
 - **`setup-pages.sh` has never run end to end.** Guards, branch rewrite and the
   missing-`gh` path are verified; a real `gh repo create` is not. First real run
   is the test.

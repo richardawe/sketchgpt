@@ -67,6 +67,70 @@ test('coordinates outside the grid are clamped onto it', () => {
   assert.deepEqual(parseSketch(draw('line -20 0 400 50')).commands[0].args, [0, 0, GRID, 50]);
 });
 
+// ---- placing what the model could only name -------------------------------
+
+const stamps = d => d.commands.filter(c => c.tool === 'stamp');
+const closest = d => {
+  const s = stamps(d);
+  let worst = Infinity;
+  for (let i = 0; i < s.length; i++) for (let j = i + 1; j < s.length; j++) {
+    worst = Math.min(worst, Math.hypot(s[i].args[0] - s[j].args[0], s[i].args[1] - s[j].args[1])
+      / ((s[i].args[2] + s[j].args[2]) / 2));
+  }
+  return worst;
+};
+const onCanvas = d => stamps(d).every(c => {
+  const r = c.args[2] / 2;
+  return c.args[0] - r >= -0.5 && c.args[0] + r <= GRID + 0.5
+      && c.args[1] - r >= -0.5 && c.args[1] + r <= GRID + 0.5;
+});
+
+test('stamps the model piled up are spread out, in the order it listed them', () => {
+  // Exactly what Qwen3-0.6B returned on a phone for "a house with a tree and
+  // a car": three correct nouns, all at x=50, y two apart.
+  const d = parseSketch(draw('house 50 50 30', 'tree-deciduous 50 52 30', 'car 50 54 30'));
+  assert.equal(d.moved, 2);
+  assert.ok(closest(d) > 0.85, `still overlapping: ${closest(d)}`);
+  assert.ok(onCanvas(d));
+  // The order it gave is the only intent it expressed, so it survives.
+  assert.deepEqual(stamps(d).map(c => c.text), ['house', 'tree-deciduous', 'car']);
+  const ys = stamps(d).map(c => c.args[1]);
+  assert.deepEqual(ys, [...ys].sort((a, b) => a - b), 'the listed order was scrambled');
+});
+
+test('stamps at the very same point fan out rather than stacking', () => {
+  const d = parseSketch(draw('house 50 50 30', 'tree 50 50 30', 'car 50 50 30', 'sun 50 50 30'));
+  assert.ok(closest(d) > 0.85, `still overlapping: ${closest(d)}`);
+  assert.ok(onCanvas(d));
+  assert.equal(d.moved, 4);
+});
+
+test('a drawing that was already placed well is left alone', () => {
+  for (const d of [
+    parseSketch(draw('house 25 55 40', 'tree 78 50 34', 'sun 15 15 14')),
+    // A sun tucked behind a cloud is a composition, not a collapse.
+    parseSketch(draw('cloud 50 30 30', 'sun 62 24 20')),
+    parseSketch(draw('cat 50 52 34', 'line 5 82 95 82')),
+  ]) assert.equal(d.moved, 0);
+});
+
+test('only stamps are moved — a primitive means what it says', () => {
+  const d = parseSketch(draw('circle 50 50 20', 'box 45 45 10 10', 'line 50 50 50 52',
+    'house 50 50 30', 'tree 50 51 30'));
+  assert.deepEqual(d.commands.find(c => c.tool === 'circle').args, [50, 50, 20]);
+  assert.deepEqual(d.commands.find(c => c.tool === 'box').args, [45, 45, 10, 10]);
+  assert.deepEqual(d.commands.find(c => c.tool === 'line').args, [50, 50, 50, 52]);
+  assert.equal(d.moved, 2);
+});
+
+test('the commands shown are the model\'s own, and the ones re-sent are the tidied ones', () => {
+  const d = parseSketch(draw('house 50 50 30', 'tree-deciduous 50 52 30'));
+  assert.deepEqual(d.source, ['house 50 50 30', 'tree-deciduous 50 52 30']);
+  // The next turn is seeded with coordinates that work, not the pile.
+  assert.notDeepEqual(JSON.parse(toSource(d)).c, d.source);
+  assert.equal(parseSketch(toSource(d)).moved, 0, 'the tidied drawing must be stable');
+});
+
 // ---- failure, and the difference between sloppy and broken ----------------
 
 test('a few bad commands are dropped, and counted', () => {

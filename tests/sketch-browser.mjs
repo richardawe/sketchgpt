@@ -115,6 +115,20 @@ export async function CreateMLCEngine() { return {
   assert.equal(early, late, `prompt grew from ${early} to ${late} chars over six turns`);
   assert.ok(await page.evaluate(() => requests.at(-1).max_tokens > 0));
 
+  // A pile of stamps is spread by the page, and it says so rather than
+  // quietly presenting its own coordinates as the model's.
+  await page.evaluate(() => { window.result = JSON.stringify({ t: 'A house with a tree and a car',
+    c: ['house 50 50 30', 'tree-deciduous 50 52 30', 'car 50 54 30'] }); });
+  await send('Draw a house with a tree and a car');
+  const piled = page.locator('.msg.assistant').last();
+  assert.match(await piled.locator('details summary').textContent(), /2 moved apart/);
+  assert.match(await piled.locator('details pre').textContent(), /^house 50 50 30\n/);
+  assert.match(await piled.locator('details pre').textContent(), /spread them out/);
+  const centres = await piled.locator('svg g[transform]').evaluateAll(nodes =>
+    nodes.map(n => n.getAttribute('transform').match(/translate\(([\d.-]+) ([\d.-]+)\)/).slice(1).map(Number)));
+  assert.equal(centres.length, 3);
+  assert.equal(new Set(centres.map(c => c.join(','))).size, 3, 'stamps still drawn on top of each other');
+
   // Output cut off mid-JSON still renders what arrived.
   await page.evaluate(() => { window.result = '{"t":"Cut off","c":["house 25 55 40","tree 78 5'; });
   await send('A long drawing');

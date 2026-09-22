@@ -243,6 +243,83 @@ function parseCommand(line) {
                : { tool: "label", args: [a[0], a[1]], text: head.replace(/-/g, " ") };
 }
 
+// Small models name objects well and place them badly. Qwen3-0.6B returned
+// "house 50 50 30 / tree 50 52 30 / car 50 54 30" — three correct nouns
+// stacked into one unreadable blob, having anchored on an example's
+// coordinates and added 2 each time. Prompting did not reach it; three
+// rounds of that were spent on the duplication bug alone, and arithmetic is
+// the thing a 0.6B is worst at. The page can do arithmetic.
+//
+// This only separates stamps, and only when they have genuinely collapsed —
+// a sun tucked behind a cloud is a composition, not a mistake. Primitives are
+// never touched: a line is explicit geometry the model may mean exactly.
+const COLLAPSED = 0.5;  // centres closer than half the touching distance
+const SETTLE = 0.9;     // spread to just under touching, so a scene still groups
+
+function spreadStamps(commands) {
+  const stamps = commands.filter(c => c.tool === "stamp");
+  if (stamps.length < 2) return 0;
+  const touching = (a, b) => (a.args[2] + b.args[2]) / 2;
+  const apart = (a, b) => Math.hypot(a.args[0] - b.args[0], a.args[1] - b.args[1]);
+  const collapsed = stamps.some((a, i) =>
+    stamps.slice(i + 1).some(b => apart(a, b) < COLLAPSED * touching(a, b)));
+  if (!collapsed) return 0;
+
+  const before = stamps.map(c => c.args.slice(0, 2));
+  for (let pass = 0; pass < 24; pass++) {
+    let shifted = false;
+    for (let i = 0; i < stamps.length; i++) {
+      for (let j = i + 1; j < stamps.length; j++) {
+        const a = stamps[i].args, b = stamps[j].args;
+        const want = SETTLE * (a[2] + b[2]) / 2;
+        let dx = b[0] - a[0], dy = b[1] - a[1];
+        let d = Math.hypot(dx, dy);
+        if (d >= want) continue;
+        if (d < 1e-6) {
+          // Exactly coincident has no direction to push along. The golden
+          // angle gives a different one per pair and never repeats, so a
+          // pile of stamps opens into a fan rather than a line.
+          const angle = (i * stamps.length + j) * 2.399963;
+          dx = Math.cos(angle); dy = Math.sin(angle); d = 1;
+        }
+        const push = (want - d) / 2 / d;
+        a[0] -= dx * push; a[1] -= dy * push;
+        b[0] += dx * push; b[1] += dy * push;
+        shifted = true;
+      }
+    }
+    for (const c of stamps) {
+      const r = Math.min(c.args[2], GRID) / 2;
+      c.args[0] = Math.max(r, Math.min(GRID - r, c.args[0]));
+      c.args[1] = Math.max(r, Math.min(GRID - r, c.args[1]));
+    }
+    if (!shifted) break;
+  }
+
+  // Pushing pairs apart finds room but scrambles the order: house/tree/car
+  // came back as house/car/tree. The order the model listed them in, and the
+  // order of the coordinates it did give, are the only intent it expressed —
+  // so the positions are kept and re-dealt to the stamps in that order.
+  const shifted = stamps.filter((c, i) => c.args[0] !== before[i][0] || c.args[1] !== before[i][1]);
+  if (shifted.length > 1) {
+    const spread = a => Math.max(...shifted.map(c => c.args[a])) - Math.min(...shifted.map(c => c.args[a]));
+    const axis = spread(1) > spread(0) ? 1 : 0;     // whichever way they opened up
+    const places = shifted.map(c => c.args.slice(0, 2)).sort((p, q) => p[axis] - q[axis]);
+    const order = shifted
+      .map((c, i) => ({ c, was: before[stamps.indexOf(c)][axis], i }))
+      .sort((p, q) => p.was - q.was || p.i - q.i);
+    order.forEach(({ c }, i) => { c.args[0] = places[i][0]; c.args[1] = places[i][1]; });
+  }
+
+  let moved = 0;
+  stamps.forEach((c, i) => {
+    c.args[0] = Math.round(c.args[0]);
+    c.args[1] = Math.round(c.args[1]);
+    if (c.args[0] !== before[i][0] || c.args[1] !== before[i][1]) moved++;
+  });
+  return moved;
+}
+
 export function parseSketch(raw) {
   if (typeof raw !== "string" || raw.length > 24000) throw new Error("Drawing is too large.");
   const text = drawingJSON(raw);
@@ -267,7 +344,13 @@ export function parseSketch(raw) {
   if (!commands.length || dropped > commands.length) {
     throw new Error("The model did not return a drawing in the expected format.");
   }
-  return { title: data.t.slice(0, 80), commands, dropped, truncated: !!data.truncated };
+  // Keep what the model said before the page tidies it. "Show commands" is
+  // the only window onto a device nobody here can reach, and it would be
+  // worth much less showing coordinates the page had written itself.
+  const source = commandLines({ commands });
+  const moved = spreadStamps(commands);
+  return { title: data.t.slice(0, 80), commands, dropped, moved, source,
+           truncated: !!data.truncated };
 }
 
 export function commandLines(drawing) {
@@ -380,9 +463,12 @@ export function renderSketch(container, raw, { rough = null } = {}) {
   const source = doc.createElement("details");
   source.className = "source";
   const summary = doc.createElement("summary");
-  summary.textContent = `Show commands (${drawing.commands.length})`;
+  summary.textContent = `Show commands (${drawing.commands.length})` +
+    (drawing.moved ? ` · ${drawing.moved} moved apart` : "");
   const pre = doc.createElement("pre");
-  pre.textContent = commandLines(drawing).join("\n");
+  pre.textContent = (drawing.source || commandLines(drawing)).join("\n") +
+    (drawing.moved ? `\n\nThe model placed ${drawing.moved} of these on top of` +
+      ` each other, so the page spread them out.` : "");
   source.append(summary, pre);
 
   const download = doc.createElement("button");

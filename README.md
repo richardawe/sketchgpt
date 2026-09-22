@@ -181,9 +181,17 @@ because this page claims to work offline once the weights are cached and a CDN
 import would quietly cost every offline sketch its line. The page renders clean
 SVG if the module fails to load; `?rough=0` turns it off.
 
-**Show commands** under any drawing reveals the exact lines it was built from,
-and a sketch that fails shows the raw model output the same way. On a phone
-that is the difference between a bug report and a guess.
+The page also **places** what the model could only name. A small model will
+happily return three correct nouns at the same coordinates; when stamps have
+collapsed into each other the page separates them, keeping the order they were
+listed in. A deliberate overlap — a sun behind a cloud — is left alone, and
+primitives are never moved, because a line is geometry the model may mean
+exactly.
+
+**Show commands** under any drawing reveals the exact lines the model sent —
+not the page's tidied version — and says how many stamps it had to move apart.
+A sketch that fails shows the raw model output the same way. On a phone that is
+the difference between a bug report and a guess.
 
 The chat system prompt in Settings is **not** sent in sketch mode — it is
 written for prose, and a leftover "answer concisely in plain English" silently
@@ -218,10 +226,22 @@ prompt rather than the code:
    rule. The same request also once printed the *word* "cat" twice instead of
    drawing it, by reaching for `label`; that tool is now described as being
    for words written on the picture, never for naming something drawable.
+4. **Three correct nouns, all in the same spot.** `house 50 50 30 /
+   tree-deciduous 50 52 30 / car 50 54 30` — it named the objects perfectly
+   and stacked them into a blob, having anchored on an example's coordinates
+   and added 2 each time. That one is fixed in the page, not the prompt:
+   `spreadStamps()` separates stamps that have collapsed, keeps the order they
+   were listed in, and leaves a deliberate overlap alone. It was verified
+   against that exact output in a test, with no round trip needed.
 
-**The third fix is untested**, like the two before it. Making a drawing cheap
-and making a small model compose one are separate problems: the first has
-numbers behind it, the second is being bought one round trip at a time.
+Duplication took three prompt iterations and a trip to a real phone each;
+layout took one code change tested in seconds. The rule that keeps paying:
+**if the page can compute it, the prompt should not ask for it.** Prompt
+tokens are not free either — 197 to 391 across those rounds took a
+1024-context phone from 437 output tokens to 299.
+
+Nothing harder than "a house with a tree and a car" has been tried, and no
+model other than Qwen3-0.6B has been tried at all.
 
 #### Checks
 
