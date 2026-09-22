@@ -410,7 +410,7 @@ scripts/serve-web.sh      serve the chat UI on localhost
 scripts/build-stamps.mjs  regenerates web/stamps.mjs from Lucide
 scripts/token-budget.mjs  measures sketch cost against Qwen3's tokenizer
 scripts/sketch-bench.mjs  runs the real prompt through real models on CPU
-scripts/record-demo.mjs   records an mp4/gif of sketch mode for posting
+scripts/record-demo.mjs   records mp4/gif clips of sketch mode for posting
 web/index.html            streaming chat UI, talks to local Ollama
 web/browser.html          runs the model in-browser via WebGPU (Pages-ready)
 web/sketch.mjs            sketch format, context budget, SVG rendering

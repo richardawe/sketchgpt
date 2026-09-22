@@ -14,6 +14,7 @@
 //   offline  reload with no network at all, then draw — "aeroplane mode"
 //   svg      draw, then download the SVG              — "drop it into a worksheet"
 //   charm    three sketches in a row                  — "it draws like a five-year-old"
+//   edit     change the numbers, press Redraw         — "a picture is a few shapes"
 //
 // HONESTY, two parts, and both matter if you post these.
 //
@@ -48,6 +49,7 @@ const HOUSE = { t: "A red house with a green tree", c: [
   "house 25 55 40 red", "tree 75 55 34 green", "sun 82 14 16 yellow",
   "line 5 82 95 82"] };
 const CAT = { t: "A cat", c: ["cat 50 52 34", "line 5 82 95 82"] };
+const PLAIN = { t: "A house with a tree", c: ["house 30 60 30", "tree 72 60 28"] };
 const PARTY = { t: "A house with a tree and a car", c: [
   "house 50 50 30", "tree-deciduous 50 52 30", "car 50 54 30"] };
 
@@ -127,6 +129,31 @@ const CLIPS = {
     await page.waitForTimeout(2000);
   } },
 
+  // The commands panel is the point here, so this one needs a taller frame:
+  // the drawing alone is 400px and the editor sits under it.
+  edit: { caption: null, size: { width: 640, height: 940 }, async run(page) {
+    await ask(page, "a house with a tree", PLAIN);
+    await page.waitForTimeout(500);
+    await page.evaluate(() => {
+      const d = [...document.querySelectorAll(".sketch details")].pop();
+      if (d) { d.open = true; d.scrollIntoView({ block: "end" }); }
+    });
+    await page.waitForTimeout(800);
+    const box = page.locator(".sketch textarea").last();
+    await box.click();
+    await box.fill("");
+    await box.pressSequentially("house 30 60 60 red\ntree 75 55 40 green\nsun 15 15 12 yellow",
+      { delay: 34 });
+    await page.waitForTimeout(400);
+    await page.getByText("Redraw", { exact: true }).last().click();
+    await page.waitForTimeout(700);
+    await page.evaluate(() => {
+      const d = [...document.querySelectorAll(".sketch details")].pop();
+      if (d) d.scrollIntoView({ block: "end" });
+    });
+    await page.waitForTimeout(2200);
+  } },
+
   charm: { caption: null, async run(page) {
     await ask(page, "a cat", CAT);
     await page.waitForTimeout(700);
@@ -157,10 +184,8 @@ for (const name of names) {
   await mkdir(dir, { recursive: true });
 
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
-    viewport: { width: 700, height: 700 },
-    recordVideo: { dir, size: { width: 700, height: 700 } },
-  });
+  const size = clip.size || { width: 700, height: 700 };
+  const context = await browser.newContext({ viewport: size, recordVideo: { dir, size } });
   try {
     const page = await context.newPage();
     await page.addInitScript(() => {
@@ -188,7 +213,7 @@ for (const name of names) {
     ? `,drawbox=x=0:y=ih-46:w=iw:h=46:color=black@0.82:t=fill,` +
       `drawtext=fontfile='${FONT}':text='${clip.caption}':fontcolor=white:fontsize=21:x=(w-tw)/2:y=h-32`
     : "";
-  await run(["-y", "-i", src, "-vf", `scale=700:-2:flags=lanczos,fps=25${band}`,
+  await run(["-y", "-i", src, "-vf", `scale=${size.width}:-2:flags=lanczos,fps=25${band}`,
     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23", "-movflags", "+faststart",
     `${out}/sketchgpt-${name}.mp4`]);
   await run(["-y", "-i", src, "-filter_complex",
