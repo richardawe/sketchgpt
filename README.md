@@ -318,6 +318,7 @@ node --test tests/work.test.mjs       # the file cap, passages, retrieval, refus
 node tests/sketch-browser.mjs         # needs Playwright + Chromium
 node tests/work-browser.mjs           # Work mode in a real page
 node tests/stop.mjs                   # Stop stops, and chat survives it
+node tests/failure.mjs                # what the page says when generation fails
 node tests/offline.mjs                # loads the page with the network cut
 node scripts/retrieval-bench.mjs      # BM25 vs an embedder; Ollama optional
 node scripts/token-budget.mjs         # real tokenizer; needs @lenml/tokenizers

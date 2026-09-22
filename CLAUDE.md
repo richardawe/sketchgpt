@@ -86,11 +86,33 @@ serves **4-bit**, and that gap explains most surprises.
 | **A cap is not about bandwidth** | Nothing is uploaded, so the 512 KB file cap is about memory, index time, and honesty: only a few hundred tokens of it ever reach the model, and a page that swallows a 40 MB log implies otherwise. Checked against `file.size` **before** a byte is read. |
 | **Six passages, not as many as fit** | The window held twelve and they pushed the answer off the top of a phone — at which point nobody reads the passages, which is the entire design. The bench says the right sentence is in the top 3. Also: scroll the *top* of a work answer into view, not the bottom of the message; the default chat scroll puts the last passage on screen and hides the answer. |
 | **The page corrects the model, never the person** | The commands panel is editable — change a number, press Redraw. `spreadStamps()` is skipped on an edit: it exists to fix a model that cannot place things, and someone who types two coordinates on purpose means them. The same rule decides every one of these behaviours, and it is the line to hold if anything else ever tidies user input. |
+| **Generation failures were a rumour, not a report** | Sketch failures kept the model's raw output; chat and Work printed `"Generation failed: " + err.message` and nothing else. The first phone run of Work mode returned a WebKit GPU error and the page said nothing about which GPU, which context, how long the prompt was, or that the engine was now dead. Every failure now carries a copyable block. **The rule that keeps paying: if a device nobody here can reach can produce it, the page has to report it.** |
 | **The page was throwing away the only evidence** | That one circle is indistinguishable from a misparse without the model's raw output, and nothing in the UI showed it. Anything shipped to a device nobody here can reach needs its raw output one tap away, or every report is a guess. |
 | **A chat history of drawings is unbounded and does not need to be** | Sketch history grew by a whole drawing per turn. Carrying only the previous drawing and the instruction that produced it makes the prompt **O(1) in turns** — measured flat at 391 tokens from turn 2 onward at 4096, 2048 and 1024 context. A revision needs a seed, not a transcript. |
 
 ### Browser gotchas already fixed
 
+- **`.err` as a bare class name collided with the status dot, and shipped.**
+  `setStatus(t, "err")` sets the dot's class to `"dot err"`, and the page-level
+  error PANEL was also `.err`. So on every error the 8px dot picked up that
+  rule's `padding: 10px 12px`, `border: 1px` and `margin: 0 auto` and became a
+  **26x22 box drifting toward the middle of the header, shoving the title
+  right**. `.dot { width: 8px }` loses because `.err` is later in the sheet and
+  equally specific, and `box-sizing: border-box` floors the used width at
+  padding+border. Live for months; found in the first phone screenshot of Work
+  mode, and reproducible in headless Chromium at 390px — so this one was never
+  a hardware-only bug, just a never-looked-at state. Panel renamed `.errbox`.
+  **A one-word class on a page-level component will eventually collide with a
+  modifier**; `tests/failure.mjs` now pins the dot at 8x8 in the error state.
+- **"map async was not successful" is WebKit's, not WebLLM's.** The string
+  appears nowhere in web-llm 0.2.85 — it is Safari refusing `GPUBuffer
+  .mapAsync`, which tvmjs calls in `deviceCopyFromGPU` on every readback. It
+  means the GPU device is gone, almost always out of memory, and it is **not
+  retryable**: the engine is dead and every later turn fails identically. The
+  page used to print it bare and keep accepting messages, which reads as "this
+  app is broken" rather than "reload". Now classified, reported with the facts
+  that matter (GPU, context, prompt tokens, max_tokens, backend, UA), and the
+  composer closes with a one-tap reload at a smaller context rung.
 - **Breaking out of a WebLLM stream leaks its lock and bricks chat.**
   `chat.completions.create()` acquires a per-model `CustomLock` *before*
   returning the async generator, and the generator releases it at the end of
@@ -348,6 +370,19 @@ practical fine-tuning.
   SwiftShader could not reach. Budget against floor + that workspace (42 MB
   SmolLM2, 92 MB Llama-3.2-1B, 162 MB Qwen3-0.6B, 410 MB Qwen3.5-0.8B) until a
   real device says otherwise.
+- **Work mode failed on the first real phone, and we do not yet know why.**
+  SmolLM2-360M, iPhone, Safari: `Generation failed: map async was not
+  successful` — a WebKit GPU error, so the device dropped the model rather than
+  the model getting it wrong. **Unknown: whether this is Work-mode-specific or
+  whether that phone/model pair fails in Chat too.** The page could not say,
+  which is why it now reports the facts and offers `?ctx=` a rung down. The
+  leading hypothesis is GPU memory at the 4096 rung SmolLM2-360M is given, and
+  it is consistent with the open "steady-state allocation is unmeasured" thread
+  — the workspace `batch_prefill`/`batch_decode` take on first inference has
+  never been measured on real hardware. **The next phone run decides it**, and
+  the copyable block is what makes that run readable. Note the prompt was NOT
+  unusually long: ~330 estimated tokens, below sketch mode's 391, so "Work mode
+  sends more" is not the explanation.
 - **Work mode is built and shipped — Phase 3's Layer 1 and a scoped Layer 2.**
   `web/work.mjs` + the Work tab: a 512 KB file cap, passage splitting, BM25
   retrieval, 17 tasks, and a planner that decides *before the model runs*

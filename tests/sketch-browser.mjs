@@ -175,7 +175,7 @@ export async function CreateMLCEngine() { return {
   await page.evaluate(() => { window.result = 'I cannot draw that.'; });
   await send('Broken drawing');
   assert.match(await page.locator('.msg.assistant').last().textContent(), /Could not finish a valid sketch/);
-  assert.equal(await page.locator('.msg.assistant').last().locator('details pre').textContent(), 'I cannot draw that.');
+  assert.equal(await page.locator('.msg.assistant').last().locator('details.raw pre').textContent(), 'I cannot draw that.');
 
   // A chat system prompt must not ride along with a drawing. A leftover
   // "answer in plain English" silently fought the JSON instructions, and the

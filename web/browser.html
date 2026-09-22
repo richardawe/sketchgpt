@@ -163,7 +163,15 @@
   .card .go { background: var(--accent); color: #fff; border-color: var(--accent); padding: 9px 18px; font-weight: 500; }
   .meta { font-size: 13px; color: var(--muted); margin-top: 14px; line-height: 1.8; }
   .meta b { color: var(--ink); font-weight: 600; }
-  .err {
+  /* The page-level error panel. It was called `.err`, which the status dot
+     ALSO matched: setStatus(..., "err") gives the dot class "dot err", so on
+     every error the 8px dot picked up this rule's padding, border and
+     `margin: 0 auto` and inflated into a 26x22 box floated toward the middle
+     of the header, shoving the title to the right. Visible on a real phone;
+     `.dot { width: 8px }` loses because this rule is later and equally
+     specific. Renamed rather than out-specified, because a bare `err` is too
+     generic for a page-level component to own. */
+  .errbox {
     max-width: 760px; margin: 0 auto 14px; padding: 10px 12px; border-radius: var(--radius);
     background: #c0503f18; border: 1px solid #c0503f55; font-size: 14px;
   }
@@ -267,7 +275,7 @@
 </footer>
 
 <script type="module">
-import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough } from "./sketch.mjs";
+import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, estimateTokens } from "./sketch.mjs";
 import { TASKS, taskById, planWorkTurn, splitPassages, buildIndex, wordCount,
          rejectFile, rejectText, fmtBytes, article, MAX_FILE_BYTES, FILE_ACCEPT } from "./work.mjs";
 const LIB = new URLSearchParams(location.search).get("lib")
@@ -285,7 +293,7 @@ try {
   webllm = await import(LIB);
 } catch (e) {
   document.getElementById("wrap").innerHTML =
-    '<div class="err"><b>Could not load the WebLLM library.</b><br><br>' +
+    '<div class="errbox"><b>Could not load the WebLLM library.</b><br><br>' +
     'The page needs to fetch it from a CDN on first load. Check your network ' +
     'or any extension blocking <code>cdn.jsdelivr.net</code>, then reload.<br><br>' +
     String(e && e.message || e) + '</div>';
@@ -423,7 +431,16 @@ const gpuOf = (id, ctx) => {
 };
 
 // Filled in by init() once the adapter is known.
-let DEV = { mobile: false, f16: true, budgetMB: Infinity, maxBufMB: 0 };
+let DEV = { mobile: false, f16: true, budgetMB: Infinity, maxBufMB: 0, gpu: "unreported" };
+
+// A context override, so a device that runs out of GPU memory at the rung the
+// page chose has somewhere to go. ?ctx=1024 is what the failure message links
+// to; the ladder still caps it, so this can only ever ask for less.
+const CTX_PARAM = parseInt(new URLSearchParams(location.search).get("ctx"), 10);
+
+// Set when the GPU device itself fails. Everything after that fails the same
+// way, so the page stops offering to try again and says what to do instead.
+let engineDead = false;
 
 // The context this page will actually ask for, chosen per device in init().
 let CTX = 4096;
@@ -471,7 +488,7 @@ const setStatus = (t, s) => { $("status").textContent = t; $("dot").className = 
 
 // Terminal: no WebGPU, no usable model. Nothing on the card would help.
 function fail(html) {
-  $("wrap").innerHTML = `<div class="err">${html}</div>`;
+  $("wrap").innerHTML = `<div class="errbox">${html}</div>`;
   setStatus("unavailable", "err");
 }
 
@@ -482,7 +499,7 @@ function failSoft(html) {
   let box = $("loaderr");
   if (!box) {
     box = document.createElement("div");
-    box.className = "err"; box.id = "loaderr";
+    box.className = "errbox"; box.id = "loaderr";
     box.style.marginTop = "14px";
     $("card").appendChild(box);
   }
@@ -526,6 +543,13 @@ async function init() {
   // q4f16 / q0f16 builds need the shader-f16 feature; without it they fail.
   try { DEV.f16 = adapter.features.has("shader-f16"); } catch { DEV.f16 = false; }
   try { DEV.maxBufMB = Math.round((adapter.limits.maxBufferSize || 0) / 1e6); } catch {}
+  // Captured here because the adapter is not kept: a GPU-level failure during
+  // generation is undiagnosable without knowing which GPU it was.
+  try {
+    const i = adapter.info || {};
+    DEV.gpu = [i.vendor, i.architecture, i.device, i.description]
+      .filter(Boolean).join(" ") || "unreported";
+  } catch { DEV.gpu = "unreported"; }
 
   // Phones kill the tab long before desktop does, so budget conservatively.
   DEV.budgetMB = DEV.mobile ? 900 : Infinity;
@@ -554,7 +578,14 @@ async function init() {
 
   // Largest context rung this model clears the budget at, or null if even the
   // smallest rung is too big.
-  const bestCtxFor = id => CTX_LADDER.find(c => gpuOf(id, c) <= safeMB) ?? null;
+  // `?ctx=` can only ask for LESS than the budget allows. A device that failed
+  // at the chosen rung needs a smaller one; nothing should be able to talk the
+  // page into a bigger one, because overshooting kills the tab outright.
+  const bestCtxFor = id => {
+    const fits = CTX_LADDER.find(c => gpuOf(id, c) <= safeMB) ?? null;
+    if (fits === null || !CTX_PARAM) return fits;
+    return CTX_LADDER.find(c => c <= Math.min(fits, CTX_PARAM)) ?? fits;
+  };
 
   // Group by parameter scale so the ladder is legible, rather than leaving it
   // implied by ordering in one long list.
@@ -678,8 +709,10 @@ async function refreshMeta() {
 }
 $("model").addEventListener("change", () => {
   const safeMB = DEV.budgetMB * HEADROOM;
-  CTX = CTX_LADDER.find(c => gpuOf($("model").value, c) <= safeMB)
+  const fits = CTX_LADDER.find(c => gpuOf($("model").value, c) <= safeMB)
         ?? CTX_LADDER[CTX_LADDER.length - 1];
+  // Same rule as bestCtxFor: ?ctx= narrows, never widens.
+  CTX = CTX_PARAM ? (CTX_LADDER.find(c => c <= Math.min(fits, CTX_PARAM)) ?? fits) : fits;
   if ($("loaderr")) $("loaderr").remove();
   refreshMeta();
 });
@@ -1296,6 +1329,114 @@ function showUsed(el, passages, label, open = true) {
   el.appendChild(d);
 }
 
+// ---- When generation fails ------------------------------------------------
+// Load failures have explainLoadFailure(). Generation failures had
+// "Generation failed: " + err.message and nothing else, which on a device
+// nobody here can reach is not a bug report, it is a rumour. The first real
+// phone run of Work mode returned "map async was not successful" — a string
+// that appears nowhere in WebLLM, because it is WebKit's, raised when Safari
+// refuses to map a GPU buffer. Nothing in the page said which GPU, which
+// context, how long the prompt was, or whether the engine was still alive.
+//
+// A GPU-level failure is not retryable: the device is gone and every later
+// turn fails the same way. So classify it, say so, and offer the one thing
+// that plausibly helps — the same model at a smaller context.
+const GPU_DEAD = /map async|device is lost|device lost|destroyed|out of memory|oom|createBuffer|Failed to create|GPUOutOfMemory/i;
+
+function nextCtxDown(ctx) {
+  const i = CTX_LADDER.indexOf(ctx);
+  return i >= 0 && i < CTX_LADDER.length - 1 ? CTX_LADDER[i + 1]
+       : (CTX_LADDER.find(c => c < ctx) ?? null);
+}
+
+function diagnoseGeneration(err, { mode, promptTokens, maxTokens, fallbackHead }) {
+  const msg = String(err && err.message || err);
+  const gpu = GPU_DEAD.test(msg);
+  const ctxHit = /ContextWindowSizeExceeded|context window/i.test(msg);
+  if (gpu) engineDead = true;
+
+  let head, why = "";
+  if (gpu) {
+    const down = nextCtxDown(CTX);
+    head = "The GPU dropped the model.";
+    why = "This is the browser refusing a graphics-memory operation, not the " +
+      "model getting the answer wrong — almost always because it ran out of " +
+      "GPU memory. The loaded model is gone; reload the page before trying again." +
+      (down ? ` A smaller context window is the thing most likely to help: this ` +
+              `device is set to ${CTX}.` : "");
+    if (down) {
+      const url = new URL(location.href);
+      url.searchParams.set("ctx", String(down));
+      why += `\u0000RELOAD\u0000${url.href}\u0000Reload at a ${down}-token context\u0000`;
+    }
+  } else if (ctxHit) {
+    head = "That was too long for the context window.";
+    why = `The prompt alone passed this model's ${CTX}-token window. Shorten the ` +
+      "text, or ask a question so the page sends passages instead of the whole thing.";
+  } else {
+    // A mode with real advice of its own says it here. A GPU or context
+    // failure above outranks it: "try a simpler request" is wrong and
+    // misleading when the device has actually gone.
+    head = fallbackHead || "Generation failed.";
+  }
+
+  // Everything needed to reproduce it, in one block to copy. Deliberately the
+  // same instinct as "Show what the model returned" on a failed sketch.
+  const facts = [
+    ["model", $("model").value],
+    ["mode", mode],
+    ["context", CTX + (CTX_PARAM ? " (overridden)" : "")],
+    ["prompt", promptTokens != null ? promptTokens + " tokens (estimated)" : "?"],
+    ["max_tokens", maxTokens != null ? maxTokens : "not set"],
+    ["gpu", DEV.gpu],
+    ["shader-f16", DEV.f16],
+    ["maxBufferSize", DEV.maxBufMB + " MB"],
+    ["budget", DEV.mobile ? Math.round(DEV.budgetMB) + " MB (mobile)" : "desktop"],
+    ["store", APP && APP.cacheBackend],
+    ["agent", navigator.userAgent],
+    ["error", msg]
+  ];
+  return { head, why, facts };
+}
+
+function showGenerationFailure(el, err, ctx) {
+  const { head, why, facts } = diagnoseGeneration(err, ctx);
+  el.textContent = "";
+  const h = document.createElement("p");
+  h.className = "note";
+  h.style.color = "#b3261e";
+  h.textContent = head;
+  el.appendChild(h);
+
+  if (why) {
+    // The reload offer is encoded in `why` rather than built there, so the
+    // diagnosis stays a pure function and testable.
+    const [text, , href, label] = why.split("\u0000");
+    const p = document.createElement("p");
+    p.className = "note";
+    p.textContent = text;
+    el.appendChild(p);
+    if (href) {
+      const a = document.createElement("a");
+      a.href = href;
+      a.textContent = label;
+      a.className = "go";
+      a.style.cssText = "display:inline-block;margin:4px 0 8px;padding:7px 14px;" +
+        "background:var(--accent);color:#fff;border-radius:8px;text-decoration:none";
+      el.appendChild(a);
+    }
+  }
+
+  const d = document.createElement("details");
+  d.className = "source";
+  const s = document.createElement("summary");
+  s.textContent = "Details to copy into a bug report";
+  const pre = document.createElement("pre");
+  pre.textContent = facts.map(([k, v]) => `${k}: ${v}`).join("\n");
+  d.append(s, pre);
+  el.appendChild(d);
+}
+
 // Put the top of a message at the top of the log, rather than its bottom at
 // the bottom. `msg` is the element the body lives in.
 function scrollToAnswer(body) {
@@ -1318,6 +1459,14 @@ $("form").addEventListener("submit", async e => {
   e.preventDefault();
   const text = $("input").value.trim();
   if (!engine || generating) return;
+
+  // A lost GPU device does not come back. Without this the page happily
+  // accepts message after message and fails each one identically, which reads
+  // as "this app is broken" rather than "reload the page".
+  if (engineDead) {
+    setStatus("reload needed", "err");
+    return;
+  }
 
   const outMode = $("output").value;
   const sketching = outMode === "sketch";
@@ -1370,6 +1519,10 @@ $("form").addEventListener("submit", async e => {
   setStatus("generating…", "busy");
 
   let raw = "";
+  // Captured for the failure report: what actually went into the engine. A
+  // GPU failure is usually about size, and without these the report cannot say
+  // how big the thing was.
+  let sentTokens = null, sentMax = null;
   if (sketching) out.body.textContent = "Drawing…";
   try {
     const preset = PRESETS[$("preset").value];
@@ -1422,6 +1575,9 @@ $("form").addEventListener("submit", async e => {
       req.max_tokens = plan.maxTokens;
       req.temperature = currentTask().temp;
     } else if (cap) req.max_tokens = cap;
+
+    sentTokens = base.reduce((n, m) => n + estimateTokens(m.content) + 4, 0);
+    sentMax = req.max_tokens ?? null;
 
     let stream;
     try {
@@ -1499,14 +1655,28 @@ $("form").addEventListener("submit", async e => {
     if (!working || currentTask().multiTurn) conversation.push({ role: "assistant", content: done });
     setStatus("ready — running locally", "on");
   } catch (err) {
-    out.body.textContent = sketching
-      ? (stopFlag ? "Drawing stopped." : "Could not finish a valid sketch. Try a simpler request or a larger model. " + err.message)
-      : "Generation failed: " + err.message;
+    if (stopFlag) {
+      out.body.textContent = sketching ? "Drawing stopped." : "Stopped.";
+    } else {
+      // Every mode gets the diagnosis now, not just a forwarded string. A
+      // sketch keeps its own line first, because "try a simpler request" is
+      // real advice there and nowhere else.
+      showGenerationFailure(out.body, err, {
+        mode: outMode,
+        promptTokens: sentTokens,
+        maxTokens: sentMax,
+        fallbackHead: sketching
+          ? "Could not finish a valid sketch. Try a simpler request or a larger model."
+          : null
+      });
+    }
     // Keep the evidence. A sketch that fails on a device nobody here can reach
     // is undiagnosable without the text the model actually produced.
     if (sketching && !stopFlag && raw.trim()) {
       const details = document.createElement("details");
-      details.className = "source";
+      // `raw` distinguishes it from the diagnostics pane above: two <details>
+      // in one failed message, and only this one holds the model's own words.
+      details.className = "source raw";
       const summary = document.createElement("summary");
       summary.textContent = "Show what the model returned";
       const pre = document.createElement("pre");
@@ -1518,11 +1688,16 @@ $("form").addEventListener("submit", async e => {
     // one-shot and pushed nothing, and popping then eats the last line of a
     // role-play that happened earlier in the same mode.
     if (!working || currentTask().multiTurn) conversation.pop();
-    setStatus(stopFlag ? "ready — running locally" : "error", stopFlag ? "on" : "err");
+    setStatus(stopFlag ? "ready — running locally"
+            : engineDead ? "GPU lost — reload the page" : "error",
+              stopFlag ? "on" : "err");
   } finally {
     generating = false;
-    $("send").disabled = false; $("stop").style.display = "none";
-    $("input").focus();
+    // Leave Send disabled when the device is gone: an enabled button that
+    // cannot work is the page lying about its own state.
+    $("send").disabled = engineDead;
+    $("stop").style.display = "none";
+    if (!engineDead) $("input").focus();
   }
 });
 
