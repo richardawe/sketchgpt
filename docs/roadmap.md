@@ -39,8 +39,8 @@ Reviewed against what is built, not against what was planned.
 | Phase | Status | The honest version |
 |---|---|---|
 | 1 Foundation | **shipped** | Template, Pages deploy, device-aware model picking. Plus offline that now genuinely works — `web/sw.js`, checked by `tests/offline.mjs` with the network cut. |
-| 2 Device benchmark | **half built, not started** | The page already detects the adapter, filters models it cannot run, picks a context rung and budgets from the measured formula. What does not exist is the part that makes it Phase 2: **no visitor leaves a datapoint, and there is no public matrix.** That is the whole asset, and none of it is written. |
-| 3 Browser RAG | **not started** | Unchanged. Still the first genuinely useful thing, still needs no GPU. |
+| 2 Sketch mode | **shipped** | Reassigned: sketch mode *is* Phase 2. It is the thing people open, and it demonstrates on the visitor's own hardware what their device can do. The device-matrix half — **no visitor leaves a datapoint, there is no public matrix** — is still unwritten and is what remains of the original Phase 2. |
+| 3 Work mode | **planned, researched, gated** | RAG with a purpose: read a document on your own device. The naive version does not survive measurement — see [`work-mode.md`](work-mode.md). Blocked on one untested question: can two WebLLM engines share a tab? |
 | 4 Capability table | **advanced by accident** | Sketch mode produced eight new measured rows (see `CLAUDE.md` and `customising.md`) and, more usefully, **`scripts/sketch-bench.mjs` is a working practitioner eval harness**: real prompt, real models, judged by the real parser, on any Ollama tag. That is the Phase 4 machinery, built as a side effect. |
 | 5 One vertical | **not started** | One input though: "field work without signal" is the row where offline is the requirement, and offline is now real rather than claimed. |
 | 6 Body of work | **accumulating** | Four measurement tools now exist — `vram-probe/`, `token-budget.mjs`, `sketch-bench.mjs`, `record-demo.mjs`. Nobody has packaged them, but they are the shape Phase 6 describes. |
@@ -54,20 +54,17 @@ second on four CPUs and `qwen3:1.7b` in two to seven. Iterating on a prompt no
 longer takes a day and a borrowed handset. Phase 4 just got much cheaper than
 its week 9–14 slot assumes, and could plausibly run alongside Phase 2 or 3.
 
-**Sketch mode is not in this roadmap.** It is now the most developed part of
-the product and it was never planned. It has paid for itself in Phase 4
-evidence, and it is the most shareable thing the lab has made — but it is not a
-page that answers a question about the visitor's own situation, which is the
-thesis. Two honest options, and it is a decision rather than a detail:
+**Sketch mode was not in this roadmap, and now it is Phase 2.** It was never
+planned, it is the most developed part of the product, and it is the only thing
+here anyone has actually wanted to open. "Here is what *your* phone drew" is a
+datapoint and a share in one action, which is precisely the loop the original
+Phase 2 needed and never had. The benchmark framing was the means; the sketch
+is the thing people will do.
 
-1. **Claim it.** Make sketch mode the Phase 2 engagement hook — "here is what
-   *your* phone drew" is a datapoint and a share in one action, which is
-   exactly the loop Phase 2 needs and currently lacks.
-2. **Call it a detour** that bought a capability harness and a demo reel, and
-   go back to Phase 2 as written.
-
-Doing neither — carrying on adding to it because it is enjoyable — is the
-failure mode worth naming out loud.
+What that does *not* dissolve: nothing is collected. A visitor draws and
+leaves, and the lab learns nothing. The device-compatibility matrix is still
+the asset, and it is still unwritten — it is now a piece of Phase 2 rather than
+the whole of it.
 
 ---
 
@@ -75,13 +72,23 @@ failure mode worth naming out loud.
 
 The template. Clone → your own browser-LLM page on GitHub Pages.
 
-## Phase 2 — "What can my device run?" *(weeks 1–3, not started)*
+## Phase 2 — Sketch mode, and what your device can run *(shipped, half done)*
 
-A page that benchmarks the visitor's actual hardware: which models load,
-tokens/sec, memory ceiling, where it falls over.
+**Shipped.** Describe something, the page draws it, entirely on your device.
+The measurement work lives underneath: the page reads the GPU adapter, filters
+out models it cannot run, picks a context rung, and budgets from a measured
+allocation formula rather than a published estimate that is out by 43%.
 
-Every blog post reports one author's machine. Nobody answers *"what about
-mine?"* This does, in thirty seconds, and each visitor leaves a datapoint.
+Why a drawing rather than a benchmark: a benchmark is a number you read once. A
+sketch is a thing you make, and the difference between a phone's model and a
+desktop's is visible in the picture rather than in a table. Same evidence,
+survives contact with a timeline.
+
+**Still missing, and it is the half that compounds:** nobody leaves a
+datapoint. A visitor draws, sees what their hardware managed, and the lab
+learns nothing. Every blog post reports one author's machine; nobody answers
+*"what about mine?"* — and this page could, because it already computes the
+answer for each visitor and then throws it away.
 
 The model ladder this benchmarks is researched and costed in
 [`mobile-models.md`](mobile-models.md) — which models WebLLM ships at phone
@@ -95,20 +102,37 @@ Air — that grows without further work.
 **Content angle:** "tell me your phone, I'll tell you what it runs." The
 engagement loop is built into the product.
 
-## Phase 3 — Browser RAG *(weeks 4–8, not started)*
+## Phase 3 — Work mode *(weeks 4–8, planned)*
 
-Chat with your own documents, entirely on-device. Embeddings are cheap and need
-**no GPU**, which matters because the lab's machine is CPU-only.
+A third mode beside Chat and Sketch: open a document, find your way around it,
+nothing uploaded. Full plan and the measurements behind it:
+**[`work-mode.md`](work-mode.md)**.
 
 The first genuinely *useful* thing rather than an impressive one. Privacy is
-the whole product: notes, records, journals — anything you would not paste into
-a cloud API. Phase 2's data says which devices can hold an index and a model at
-once, which nobody else knows.
+the whole product: tenancy agreements, clinic letters, contracts — the
+documents nobody pastes into a cloud API, which are exactly the documents where
+finding the right paragraph is worth something.
 
-On arithmetic the answer is promising: `snowflake-arctic-embed-s-b4` reserves
-239 MB and downloads 67 MB, so an embedder plus SmolLM2-360M is ~615 MB against
-a 900 MB phone budget. Whether two WebLLM engines can be resident in one tab is
-untested — see `mobile-models.md`, Stage 5.
+**The obvious version of this does not work, and that is the finding.**
+`scripts/grounding-bench.mjs` measures it: Qwen3-0.6B invented answers to 3 of
+5 questions its document did not address, and forcing it to quote the source
+made it worse, not better — it cannot copy verbatim at all, so a quote check
+throws away every correct answer too. Qwen3-1.7B quotes perfectly and *still*
+attached "Yes, residents may claim compensation" to a real passage that says no
+such thing. Quote verification catches invented sources; it does not catch
+unsupported conclusions drawn from real ones.
+
+So the design inverts: **the passage is the answer.** The model locates, the
+page shows you the text, you read it. Being shown the wrong paragraph is
+visible; being told the wrong thing is not. Layer 1 needs no chat model at all
+— an embedder cannot hallucinate — and is the whole product if the rest never
+ships.
+
+Blocked on one untested question: whether two WebLLM engines can be resident in
+one tab. On arithmetic it fits — `arctic-embed-s-b4` (239 MB reserve, 67 MB
+download) plus SmolLM2-360M is ~615 MB against a 900 MB phone budget — and
+WebLLM 0.2.85 does expose `embeddings` with no singleton guard. Nobody has run
+it. See `mobile-models.md`, Stage 5.
 
 ## Phase 4 — The practitioner's capability table *(weeks 9–14, partly built early)*
 

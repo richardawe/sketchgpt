@@ -30,11 +30,14 @@ scripts/build-stamps.mjs  regenerate web/stamps.mjs from Lucide
 scripts/token-budget.mjs  measure sketch cost against Qwen3's real tokenizer
 scripts/sketch-bench.mjs  run the real prompt through real models, judged by the real parser
 scripts/record-demo.mjs   record clips of sketch mode, one per claim (Playwright + ffmpeg)
+scripts/grounding-bench.mjs  does a small model invent answers about a document? (it does)
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
                           (classification AND structured output — two task families)
 docs/mobile-models.md     the phone-suitable models WebLLM ships, and the plan to add them
+docs/work-mode.md         Phase 3 — reading a document on-device, and why the obvious
+                          design fails; read before touching RAG
 docs/roadmap.md           the six-month plan
 ```
 
@@ -70,6 +73,8 @@ serves **4-bit**, and that gap explains most surprises.
 | **Bigger models compose better; no model places better** | Same prompt, same parser, Ollama on CPU (`scripts/sketch-bench.mjs`), six requests: **Qwen3-0.6B 14 commands / 13 distinct nouns / 8 of 10 requested things drawn; Qwen3-1.7B 62 commands / 19 nouns / 9 of 10.** The 0.6B retrieves rather than composes — "draw a birthday party" came back as `cat, sun, bird, bird, sailboat`, which is both examples regurgitated verbatim. The 1.7B invents a scene. But **both piled stamps up on exactly 2 of 6 drawings**: scale buys vocabulary and coverage, not arithmetic. `spreadStamps()` is load-bearing at every size. |
 | **Colour is one word, and both sizes can use it** | `house 25 55 40 red` — a colour name is one token where `#c0392b` is seven, and the page owns the values so the model cannot invent an unreadable one. Measured: zero invalid colour words from either model, and neither adds colour unasked. The 1.7B handles "a yellow sun over a blue sea" (`sun … yellow \| sea … blue`); the 0.6B reached for `label 40 50 blue` instead — the label trap door again, on the weaker model. Taught only at ctx ≥ 2048, so a phone pays nothing for it. |
 | **`label` is a trap door out of the drawing** | Listed plainly among the tools, the model reached for `label 35 55 cat` instead of `cat 35 55 30` — printing the word rather than drawing the thing, on the same request that had worked a minute earlier at temperature 0.2. It is now described as being for words written *on* the picture, never for naming something drawable. |
+| **Quoting the source does not stop hallucination** | `scripts/grounding-bench.mjs`: one policy document, five questions it answers, five it does not. **Qwen3-0.6B invented answers to 3 of 5 absent questions; asking it to quote the source made it 4 of 5.** It cannot copy verbatim at all — it returns the literal string `"..."` from the prompt template — so a quote check rejects 100% of its output, correct answers included. **Qwen3-1.7B copies perfectly and still misleads**: asked whether residents can claim compensation, it quoted a genuine passage about repair costs and answered "Yes, residents may claim compensation", which the document nowhere says. A verifier passes that. Quote checking catches **invented sources**; it does not catch **unsupported conclusions drawn from real ones**, and the second arrives wearing a citation. |
+| **For documents, the passage is the answer** | The consequence of the row above, and the design rule for Work mode. The model **locates**, never **concludes**; the page shows the paragraph and the reader judges. Being shown the wrong paragraph is visible; being told the wrong thing confidently is silent — the same reason sketch mode ships and the mood tagger was deleted. An embedder cannot hallucinate, so retrieval alone is the load-bearing layer and needs no chat model. **Never summarise a whole document at this size**: there is no passage to check a summary against, so the failure is silent by construction. |
 | **The page corrects the model, never the person** | The commands panel is editable — change a number, press Redraw. `spreadStamps()` is skipped on an edit: it exists to fix a model that cannot place things, and someone who types two coordinates on purpose means them. The same rule decides every one of these behaviours, and it is the line to hold if anything else ever tidies user input. |
 | **The page was throwing away the only evidence** | That one circle is indistinguishable from a misparse without the model's raw output, and nothing in the UI showed it. Anything shipped to a device nobody here can reach needs its raw output one tap away, or every report is a guess. |
 | **A chat history of drawings is unbounded and does not need to be** | Sketch history grew by a whole drawing per turn. Carrying only the previous drawing and the instruction that produced it makes the prompt **O(1) in turns** — measured flat at 391 tokens from turn 2 onward at 4096, 2048 and 1024 context. A revision needs a seed, not a transcript. |
@@ -307,7 +312,8 @@ practical fine-tuning.
   SwiftShader could not reach. Budget against floor + that workspace (42 MB
   SmolLM2, 92 MB Llama-3.2-1B, 162 MB Qwen3-0.6B, 410 MB Qwen3.5-0.8B) until a
   real device says otherwise.
-- **RAG never started.** No GPU needed, so it is the realistic next capability.
+- **RAG never started**, but it is now specified rather than a wish — see
+  `docs/work-mode.md`. No GPU needed, so it remains the realistic next build.
 - **Phase 4 got much cheaper and the roadmap has not absorbed it.** Ollama on
   CPU in this sandbox means capability-table work no longer needs a GPU or a
   round trip to a phone. `sketch-bench.mjs` is the harness and takes any Ollama
@@ -319,12 +325,21 @@ practical fine-tuning.
   `scripts/record-demo.mjs` regenerates the clips. Three unposted drafts is
   itself the finding: for a lab whose thesis is distribution, the bottleneck is
   no longer what is built.
-- **Read `docs/roadmap.md` before starting anything new.** Its status table was
-  reviewed against the build at the end of this session, and it names a
-  decision that is still open: sketch mode is not in the roadmap, it is now the
-  most developed part of the product, and it either becomes the Phase 2
-  engagement hook or gets called a detour. Adding to it without deciding is the
-  named failure mode.
+- **Sketch mode is Phase 2 now — decided.** The roadmap was restructured to say
+  so. What remains of the original Phase 2 is the half that compounds and is
+  still entirely unwritten: **a visitor draws, sees what their hardware
+  managed, and the lab learns nothing.** The page already computes the answer
+  per device and throws it away. No datapoint, no public matrix.
+- **Work mode is Phase 3, and it is gated on one untested thing.** Read
+  `docs/work-mode.md` before any RAG work — the naive "small model reads your
+  document" design is measured and fails. The gate: **can two WebLLM engines be
+  resident in one tab?** WebLLM 0.2.85 exposes `embeddings` and has no
+  singleton guard, the arithmetic fits (239 MB embedder + 376 MB chat model vs
+  a 900 MB budget), and nobody has run it. Test that before writing any UI.
+- **Retrieval quality is unmeasured.** `grounding-bench.mjs` scores whether the
+  model invents answers; it does not yet score whether retrieval finds the
+  right paragraph. Same harness, a different column, and it is the number Work
+  mode actually turns on.
 
 ---
 
