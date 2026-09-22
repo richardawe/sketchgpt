@@ -855,11 +855,13 @@ warmRough();
 // minutes. Registered late and failure-tolerant: a browser that refuses
 // service workers (private mode, an insecure origin, an old phone) should
 // lose offline use and nothing else.
+// Registered straight away, NOT on the load event: this module top-level
+// awaits the WebLLM import, so "load" fires while it is still suspended and a
+// listener added afterwards never runs. That bug shipped once, and the test
+// missed it by registering the worker itself instead of letting the page do it.
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
-  addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(e =>
-      console.warn("offline support unavailable:", e.message));
-  });
+  navigator.serviceWorker.register("./sw.js").catch(e =>
+    console.warn("offline support unavailable:", e.message));
 }
 
 // ---- Rendering model output ----------------------------------------------

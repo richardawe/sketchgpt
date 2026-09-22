@@ -55,12 +55,14 @@ try {
   // The WebLLM import is the one thing a real visitor pulls from a CDN, so
   // serve it from this origin and let the worker cache it like any asset.
   await page.goto(`${origin}/browser.html?lib=${origin}/mock.mjs&rough=${origin}/rough.mjs`);
-  const reg = await page.evaluate(async () => {
-    try { const r = await navigator.serviceWorker.register('./sw.js'); await navigator.serviceWorker.ready;
-          return { scope: r.scope, active: !!r.active, installing: !!r.installing, waiting: !!r.waiting }; }
-    catch (e) { return { error: e.message }; }
-  });
-  assert.ok(!reg.error && reg.active, `service worker did not activate: ${JSON.stringify(reg)}`);
+  // The PAGE must register the worker. Registering it from the test here hid
+  // a real bug: the registration sat inside a load listener, and this module
+  // top-level awaits its WebLLM import, so load fired while it was suspended
+  // and the listener never ran. Live, no worker was ever registered; the test
+  // passed anyway because it had registered one itself.
+  await page.waitForFunction(
+    async () => (await navigator.serviceWorker.getRegistrations()).length > 0,
+    { timeout: 15000 });
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null, { timeout: 15000 });
   await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
 

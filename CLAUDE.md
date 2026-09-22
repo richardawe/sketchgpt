@@ -74,6 +74,15 @@ serves **4-bit**, and that gap explains most surprises.
 
 ### Browser gotchas already fixed
 
+- **A `load` listener never fires in a module that top-level awaits.** The
+  service-worker registration was inside `addEventListener("load", …)`, but
+  this module awaits its WebLLM import at the top level, so `load` fires while
+  it is still suspended and the listener is added afterwards — to an event that
+  has already gone. Live, no worker was ever registered. **The offline test
+  passed anyway, because the test registered one itself**, which is the more
+  useful lesson: a test that sets up the thing it is checking is not checking
+  it. It now waits for the page's own registration, and fails if the listener
+  comes back.
 - **"Works offline" was half true, and the wrong half.** WebLLM's weights
   persist in the Cache API, so the *model* survived with no signal — but
   GitHub Pages serves the HTML with `cache-control: max-age=600`, so ten
