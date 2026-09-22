@@ -36,8 +36,13 @@ const EXAMPLE_STAMPS = "house tree sun cloud car person cat dog flower star moun
 // measured twice. The example uses nouns that are deliberately NOT the ones in
 // the usual test phrase, so copying it would be visible rather than look like
 // success.
+// Qwen3-0.6B drew two houses for "a house" and two cats for "a cat". Every
+// shape it had been shown — the template on the first line included — held at
+// least two commands, so it had never seen that one was allowed. The first
+// example is now a single command, and the rule is stated as well as shown:
+// a small model needs both, and neither alone was enough.
 const EXAMPLES = [
-  `Draw a cat -> {"t":"A cat","c":["cat 50 52 34","line 5 82 95 82"]}`,
+  `Draw a cat -> {"t":"A cat","c":["cat 50 52 34"]}`,
   `Draw a boat and two birds under the sun -> {"t":"A boat and two birds","c":["sun 82 14 16","bird 28 26 10","bird 44 20 10","boat 48 60 30","line 5 78 95 78"]}`,
 ];
 
@@ -47,11 +52,12 @@ const EXAMPLES = [
 // reaches it; the planner keeps it so that fitting the window is a guarantee
 // rather than a hope.
 export function sketchPrompt(maxCommands = 14, brief = false) {
-  return `Draw the user's request as JSON: {"t":"short title","c":["command","command"]}
+  return `Draw the user's request as JSON: {"t":"short title","c":[one command per thing you draw]}
 Each command is one line of text. The grid is 0 to 100, x right, y down.
 <object> x y size — draws that object centred on x y. Objects: ${EXAMPLE_STAMPS}.
-For anything else: line x1 y1 x2 y2 / box x y w h / circle x y r / curve x1 y1 cx cy x2 y2 / label x y words
-Draw only what was asked for. The number of commands follows the request:
+For anything else: line x1 y1 x2 y2 / box x y w h / circle x y r / curve x1 y1 cx cy x2 y2
+label x y words — only for words you want written on the picture, never to name something you could draw.
+Draw each thing once. One cat is one command. Repeat an object only if the request asks for more than one:
 ${(brief ? EXAMPLES.slice(0, 1) : EXAMPLES).join("\n")}
 Use ${maxCommands} commands or fewer. No SVG, no code, no explanation. Draw the whole picture every time, including when changing an earlier one.`;
 }
@@ -88,6 +94,13 @@ const RESERVE = 48;            // headroom for template drift and a stop token
 const COMMAND_TOKENS = 13;     // a measured primitive command; stamps cost less
 const MIN_COMMANDS = 6;
 export const MAX_COMMANDS = 40;
+
+// The smallest context this prompt can actually serve: the brief prompt, a
+// user message, the reserve, and room for a minimum drawing. It is a real
+// floor, not a target — a window below it cannot host a sketch turn at all,
+// and the honest thing is to state it and check the page never goes there.
+// The page's context ladder bottoms out at 1024, well clear.
+export const MIN_CONTEXT = 640;
 
 const messageTokens = m => estimateTokens(m.content) + MESSAGE_OVERHEAD;
 

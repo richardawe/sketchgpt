@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseSketch, toSource, resolveStamp, estimateTokens, planSketchTurn,
-  sketchPrompt, MAX_COMMANDS, GRID
+  sketchPrompt, MAX_COMMANDS, MIN_CONTEXT, GRID
 } from '../web/sketch.mjs';
 
 const draw = (...c) => JSON.stringify({ t: 'Sketch', c });
@@ -163,6 +163,12 @@ test('the prompt teaches only commands the page can actually draw', () => {
   // in length, or they teach a fixed answer rather than a rule.
   const lengths = new Set(examples.map(e => JSON.parse(e).c.length));
   assert.ok(lengths.size > 1, `examples all have the same command count: ${[...lengths]}`);
+  // Two examples were not enough on their own: asked for one cat it drew two,
+  // because every shape it had seen — the template included — held at least
+  // two commands. It has to see that one is a complete answer.
+  assert.equal(Math.min(...lengths), 1, 'no example shows a one-command drawing');
+  assert.doesNotMatch(prompt.split("\n")[0], /"command","command"/,
+    'the template on the first line shows two slots again');
   // And a title that strips the imperative, since it echoed "Draw a house" back.
   for (const example of examples) assert.doesNotMatch(JSON.parse(example).t, /^Draw /i);
 });
@@ -182,9 +188,22 @@ test('the prompt stops growing after the first revision', () => {
   assert.ok(sizes.at(-1) < sizes[0] * 2);
 });
 
+test('the page never offers a context the prompt cannot serve', () => {
+  // CTX_LADDER in browser.html bottoms out at 1024. MIN_CONTEXT is the floor
+  // below which a sketch turn does not fit at all; if the prompt ever grows
+  // past the ladder, this fails rather than the phone failing.
+  const CTX_LADDER = [4096, 2048, 1024];
+  assert.ok(Math.min(...CTX_LADDER) > MIN_CONTEXT,
+    `prompt outgrew the lowest context rung: needs > ${MIN_CONTEXT}`);
+  const MESSAGE_ALLOWANCE = 6 * 13 + 48 + 20;   // min drawing + reserve + a request
+  const brief = estimateTokens(sketchPrompt(6, true));
+  assert.ok(brief + MESSAGE_ALLOWANCE < MIN_CONTEXT,
+    `the brief prompt (${brief}) no longer fits MIN_CONTEXT ${MIN_CONTEXT}`);
+});
+
 test('a turn is planned to fit its window, at every context rung', () => {
   const drawing = toSource(parseSketch(draw('house 25 55 40', 'tree 80 45 30')));
-  for (const ctx of [4096, 2048, 1024, 512]) {
+  for (const ctx of [4096, 2048, 1024]) {
     const history = [];
     for (let turn = 0; turn < 6; turn++) {
       history.push({ role: 'user', content: 'draw a house beside a tree' });
