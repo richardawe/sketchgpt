@@ -31,6 +31,7 @@ scripts/token-budget.mjs  measure sketch cost against Qwen3's real tokenizer
 scripts/sketch-bench.mjs  run the real prompt through real models, judged by the real parser
 scripts/record-demo.mjs   record clips of sketch mode, one per claim (Playwright + ffmpeg)
 scripts/grounding-bench.mjs  does a small model invent answers about a document? (it does)
+scripts/retrieval-bench.mjs  what an embedder alone can do with a document (a lot)
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
@@ -75,6 +76,8 @@ serves **4-bit**, and that gap explains most surprises.
 | **`label` is a trap door out of the drawing** | Listed plainly among the tools, the model reached for `label 35 55 cat` instead of `cat 35 55 30` — printing the word rather than drawing the thing, on the same request that had worked a minute earlier at temperature 0.2. It is now described as being for words written *on* the picture, never for naming something drawable. |
 | **Quoting the source does not stop hallucination** | `scripts/grounding-bench.mjs`: one policy document, five questions it answers, five it does not. **Qwen3-0.6B invented answers to 3 of 5 absent questions; asking it to quote the source made it 4 of 5.** It cannot copy verbatim at all — it returns the literal string `"..."` from the prompt template — so a quote check rejects 100% of its output, correct answers included. **Qwen3-1.7B copies perfectly and still misleads**: asked whether residents can claim compensation, it quoted a genuine passage about repair costs and answered "Yes, residents may claim compensation", which the document nowhere says. A verifier passes that. Quote checking catches **invented sources**; it does not catch **unsupported conclusions drawn from real ones**, and the second arrives wearing a citation. |
 | **For documents, the passage is the answer** | The consequence of the row above, and the design rule for Work mode. The model **locates**, never **concludes**; the page shows the paragraph and the reader judges. Being shown the wrong paragraph is visible; being told the wrong thing confidently is silent — the same reason sketch mode ships and the mood tagger was deleted. An embedder cannot hallucinate, so retrieval alone is the load-bearing layer and needs no chat model. **Never summarise a whole document at this size**: there is no passage to check a summary against, so the failure is silent by construction. |
+| **An embedder cannot hallucinate because it cannot speak** | Asked to write prose, `snowflake-arctic-embed:s` answers *"does not support chat"*. No decoder, no invention. Measured (`scripts/retrieval-bench.mjs`, one policy document, six queries): **4 of 4 answerable queries put the right sentence in the top 3, three of them first.** Better still, the scores separate — answerable 0.642–0.798, not-in-the-document 0.534–0.574 — so **a threshold near 0.61 produces the refusal the chat models could not**. Qwen3-0.6B invented answers to 3 of 5 absent questions; the embedder just scores low and the page declines. Small sample; treat the threshold as a direction. |
+| **"Summarise" is two different features and only one is safe** | *Writing* a summary needs a decoder and has nothing to check it against — forbidden at this size. *Selecting* one needs no generation: extractive summarisation picks sentences the document already contains, every word verbatim. Safe, and **measured as not very good** — centrality chose the bank-holiday note and the cleaning rota while dropping every response time, because it rewards sentences that sound like the document's average and specific number-carrying ones read as outliers. Visible failure, so nobody is misled, but not worth shipping alone. **The useful version of summarise is query-anchored**: "summarise this" is the weakest possible query, which is why it is the hardest to serve. Ship the question box, not the summary button. |
 | **The page corrects the model, never the person** | The commands panel is editable — change a number, press Redraw. `spreadStamps()` is skipped on an edit: it exists to fix a model that cannot place things, and someone who types two coordinates on purpose means them. The same rule decides every one of these behaviours, and it is the line to hold if anything else ever tidies user input. |
 | **The page was throwing away the only evidence** | That one circle is indistinguishable from a misparse without the model's raw output, and nothing in the UI showed it. Anything shipped to a device nobody here can reach needs its raw output one tap away, or every report is a guess. |
 | **A chat history of drawings is unbounded and does not need to be** | Sketch history grew by a whole drawing per turn. Carrying only the previous drawing and the instruction that produced it makes the prompt **O(1) in turns** — measured flat at 391 tokens from turn 2 onward at 4096, 2048 and 1024 context. A revision needs a seed, not a transcript. |
@@ -336,10 +339,12 @@ practical fine-tuning.
   resident in one tab?** WebLLM 0.2.85 exposes `embeddings` and has no
   singleton guard, the arithmetic fits (239 MB embedder + 376 MB chat model vs
   a 900 MB budget), and nobody has run it. Test that before writing any UI.
-- **Retrieval quality is unmeasured.** `grounding-bench.mjs` scores whether the
-  model invents answers; it does not yet score whether retrieval finds the
-  right paragraph. Same harness, a different column, and it is the number Work
-  mode actually turns on.
+- **Retrieval has first numbers and they are good** — 4/4 top-3, with a usable
+  confidence gap for declining (`scripts/retrieval-bench.mjs`). But that is one
+  short synthetic policy and six queries. **Length, headings, tables and a
+  document whose wording does not match the question are all untested**, and
+  they are what will break it. Run it over something real before trusting the
+  0.61 threshold.
 
 ---
 

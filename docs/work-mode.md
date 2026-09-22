@@ -85,10 +85,23 @@ should not be asked to be.
 
 **Layer 1 — Find (no LLM at all).** Embed the document's paragraphs, embed the
 question, show the closest passages. `snowflake-arctic-embed-s-b4` is 67 MB to
-download and 239 MB of GPU reserve. An embedder cannot hallucinate: it returns
-existing text or nothing. This layer alone delivers "find me the bit about
-notice periods" on a device that could never run a usable chat model, and it is
-**the whole product if the other two never ship**.
+download and 239 MB of GPU reserve. An embedder cannot hallucinate **because it
+cannot speak** — asked to write prose it answers `"snowflake-arctic-embed:s"
+does not support chat`. It has no decoder. It returns existing text or nothing.
+
+Measured (`scripts/retrieval-bench.mjs`, one policy document, six queries):
+**4 of 4 answerable queries put the right sentence in the top 3, three of them
+first.** And the scores separate cleanly — answerable queries landed at
+0.642–0.798, queries the document does not cover topped out at 0.574. A
+threshold near 0.61 lets the page say *"this document does not cover that"*.
+
+That last part matters more than the hit rate. **It is the refusal the chat
+models could not produce**, and it comes from a number rather than a model's
+judgement. Qwen3-0.6B invented an answer to 3 of 5 absent questions; the
+embedder simply scores low and the page declines. Small sample — treat the
+threshold as a direction, not a constant.
+
+This layer is **the whole product if the other two never ship**.
 
 **Layer 2 — Ask (LLM, off by default below 1.7B).** Same retrieval, but a model
 writes a sentence over the retrieved passage, always displayed *under* the
@@ -108,10 +121,43 @@ prompt, parser and renderer already exist.
 
 - Show a generated answer without the passage beside it.
 - Offer Layer 2 on a model that cannot quote. The bench is the gate.
-- Summarise a whole document. There is no passage to check a summary against,
-  so the failure is silent by construction — the one shape to refuse outright.
+- **Write** a summary of a whole document. There is no passage to check an
+  invented summary against, so the failure is silent by construction. This is
+  the one shape to refuse outright — see the note below, because "summarise"
+  splits in two and only one half is forbidden.
 
 ---
+
+### Can it summarise? Two different questions
+
+Worth separating, because the obvious answer is wrong in an interesting way.
+
+**Writing a summary** needs a decoder. The embedder has none, and a small chat
+model writing one is the forbidden shape above: nothing to check it against.
+
+**Selecting a summary** needs no generation at all. Extractive summarisation
+picks sentences the document already contains — centrality scoring over the
+same embeddings, with MMR for diversity. Every word is verbatim and clickable
+back to its place. It is safe by construction.
+
+It is also, measured, **not very good**. On the test document it chose the bank
+holiday note, the quarterly performance figures and the communal cleaning rota
+— and dropped every single response time, which is the only reason anyone
+opens a repairs policy. Centrality rewards sentences that sound like the
+average of the document, so the specific, number-carrying ones read as outliers
+and get cut.
+
+The failure is at least the visible kind: you read it and think *that is not
+the important bit*. Nobody is misled. But it is not worth shipping on its own,
+and it points at the real conclusion — **the useful version of "summarise" is
+query-anchored**. "Summarise this document" is the weakest possible query,
+which is why it is the hardest to serve. "What does this say about notice
+periods" retrieves the right sentence first every time. Ship the question box,
+not the summary button.
+
+If a summary is wanted anyway, the honest form is a **contents list**: the
+top passage per section heading, labelled as *where things are* rather than
+*what it says*.
 
 ## Open questions, in the order they block things
 
@@ -120,9 +166,11 @@ prompt, parser and renderer already exist.
    `embeddings` on the engine and has no singleton guard, so it is plausible;
    nobody has run it. On arithmetic 239 MB + 376 MB = 615 MB against a 900 MB
    phone budget. **Test this before writing any UI.**
-2. **Does retrieval alone actually find the right paragraph?** Unmeasured.
-   Extend `grounding-bench.mjs` to score retrieval hit-rate rather than answer
-   correctness — the same harness, a different column.
+2. **Does retrieval hold up on a real document?** First numbers are in
+   (`retrieval-bench.mjs`, 4/4 top-3), but on one short synthetic policy with
+   six queries. The things that will break it are length, headings, tables and
+   a document whose vocabulary does not match the question's. Run it over
+   something real before trusting the 0.61 threshold.
 3. **Where does the text come from?** A `.txt` and paste box is an afternoon.
    PDF means pdf.js and a much larger surface. Start with paste.
 4. **How long a document?** Retrieval keeps the *prompt* small, but the
