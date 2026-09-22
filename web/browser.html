@@ -887,11 +887,23 @@ $("load").addEventListener("click", async () => {
   };
 
   try {
-    // Constructed rather than CreateMLCEngine()'d so the Cancel button has
-    // something to call before the load finishes.
-    const eng = new webllm.MLCEngine(engineOpts);
-    LOAD.engine = eng;
-    await eng.reload(id, chatOptsFor(id));
+    // MLCEngine is what makes Cancel possible: CreateMLCEngine hides the engine
+    // until it resolves, so there is nothing to abort while the load runs.
+    //
+    // But it is not required. The page takes a ?lib= override, and a substitute
+    // library — the repo's browser test passes one — may export only
+    // CreateMLCEngine. Requiring the constructor broke that: `MLCEngine is not
+    // a constructor` surfaced as a plain failed load. So prefer it, fall back,
+    // and drop the Cancel button rather than the whole load.
+    let eng;
+    if (typeof webllm.MLCEngine === "function") {
+      eng = new webllm.MLCEngine(engineOpts);
+      LOAD.engine = eng;
+      await eng.reload(id, chatOptsFor(id));
+    } else {
+      $("cancel").style.display = "none";
+      eng = await webllm.CreateMLCEngine(id, engineOpts, chatOptsFor(id));
+    }
     // reload() recognises its own AbortError and returns quietly, but an abort
     // that lands inside cache.add() comes back as a TypeError instead and is
     // rethrown — measured, it is what Cancel actually produces. So the flag,

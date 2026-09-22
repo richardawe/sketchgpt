@@ -146,6 +146,18 @@ serves **4-bit**, and that gap explains most surprises.
   directly and calls `unload()`, which aborts the reload. Cancel arrives as a
   `TypeError` out of `cache.add()`, not the `AbortError` WebLLM handles, so a
   flag and not the error decides whether it was deliberate.
+- **`?lib=` is a contract: new WebLLM API surface must be optional.** The page
+  takes a `?lib=` override and `tests/sketch-browser.mjs` uses it to inject a
+  stub that exports only `prebuiltAppConfig`, `hasModelInCache` and
+  `CreateMLCEngine`. Requiring `new webllm.MLCEngine()` for the Cancel button
+  broke that test — `MLCEngine is not a constructor` surfaces as a plain failed
+  load with no clue attached. The load now prefers `MLCEngine` and falls back to
+  `CreateMLCEngine`, dropping the button rather than the load. **Run
+  `node tests/sketch-browser.mjs` before pushing anything that touches the load
+  path**; in this sandbox the npm playwright wants a newer browser than
+  `/opt/pw-browsers` has, so point `PLAYWRIGHT_BROWSERS_PATH` at a shim
+  directory of symlinks to the 1194 build rather than running
+  `playwright install`.
 - **WebLLM counts 0→100% three separate times** — fetch, upload to GPU, compile
   shaders — so a bar wired straight to `progress` rewinds twice. They are mapped
   onto one monotone scale, with different spans for a warm load, which skips the
