@@ -850,6 +850,18 @@ const warmRough = () => { if ($("output").value === "sketch") loadRough(ROUGH); 
 $("output").addEventListener("change", () => { save(); fitPlaceholder(); warmRough(); syncBadge(); });
 warmRough();
 
+// Keep the page itself available with no signal. The weights already
+// persisted; the HTML did not, because GitHub Pages expires it after ten
+// minutes. Registered late and failure-tolerant: a browser that refuses
+// service workers (private mode, an insecure origin, an old phone) should
+// lose offline use and nothing else.
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(e =>
+      console.warn("offline support unavailable:", e.message));
+  });
+}
+
 // ---- Rendering model output ----------------------------------------------
 // Small models emit Markdown and LaTeX whether or not you ask for it, so a
 // plain-text pane shows people raw `**bold**` and \frac{}{} and reads as

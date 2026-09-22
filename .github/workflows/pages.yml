@@ -39,6 +39,7 @@ jobs:
           cp web/sketch.mjs _site/sketch.mjs
           cp web/stamps.mjs _site/stamps.mjs
           cp web/rough.mjs  _site/rough.mjs
+          cp web/sw.js      _site/sw.js
           cp web/browser.html _site/index.html   # the page that works for visitors
           cp web/index.html   _site/ollama.html  # needs a local Ollama
           cp web/browser.html _site/browser.html # stable direct link

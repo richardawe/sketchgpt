@@ -2,7 +2,8 @@
 
 A chat page that runs a language model **in the browser** — no server, no API
 key, no install for whoever opens it. Weights download once from a CDN into
-browser storage; every visit after that loads from cache and works offline.
+browser storage; every visit after that loads from cache, and a service worker
+keeps the page itself available with no connection at all.
 
 Also includes a local [Ollama](https://ollama.com) setup for development.
 
@@ -295,6 +296,7 @@ download for ~2 GB, which is a product decision rather than a silent one.
 ```bash
 node --test tests/sketch.test.mjs     # format, stamps, clamping, budget
 node tests/sketch-browser.mjs         # needs Playwright + Chromium
+node tests/offline.mjs                # loads the page with the network cut
 node scripts/token-budget.mjs         # real tokenizer; needs @lenml/tokenizers
 node scripts/sketch-bench.mjs qwen3:1.7b   # real models; needs Ollama
 node scripts/build-stamps.mjs         # regenerates web/stamps.mjs from Lucide
@@ -405,6 +407,7 @@ web/browser.html          runs the model in-browser via WebGPU (Pages-ready)
 web/sketch.mjs            sketch format, context budget, SVG rendering
 web/stamps.mjs            generated icon geometry (do not edit by hand)
 web/rough.mjs             vendored rough.js 4.6.6 (MIT), the hand-drawn line
+web/sw.js                 service worker — keeps the page itself usable offline
 docs/customising.md       how to change what the model does
 ```
 

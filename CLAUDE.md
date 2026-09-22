@@ -22,6 +22,7 @@ web/index.html            local chat against Ollama — development only
 web/sketch.mjs            sketch format, context budget, SVG rendering
 web/stamps.mjs            generated Lucide path data — never edit by hand
 web/rough.mjs             vendored rough.js 4.6.6 (MIT) — verbatim, keep it so
+web/sw.js                 service worker — the page's own offline cache
 scripts/setup-pages.sh    push, enable Pages, deploy, print URL (needs the user's gh)
 scripts/setup-ollama.sh   install Ollama, pull the pinned model, verify, smoke-test
 scripts/serve-web.sh      serve web/ on localhost
@@ -73,6 +74,17 @@ serves **4-bit**, and that gap explains most surprises.
 
 ### Browser gotchas already fixed
 
+- **"Works offline" was half true, and the wrong half.** WebLLM's weights
+  persist in the Cache API, so the *model* survived with no signal — but
+  GitHub Pages serves the HTML with `cache-control: max-age=600`, so ten
+  minutes after a visit the browser has to reach the network and an offline
+  visitor gets an error page instead of the app. The README claimed full
+  offline use on the strength of the weights alone, for months. `web/sw.js`
+  fixes it: network-first for same-origin (so a deploy is live the moment you
+  are online, rather than a stale worker pinning an old page forever),
+  cache-first for the version-pinned WebLLM bundle, and hands off entirely on
+  the weight hosts. `tests/offline.mjs` shuts the server down *and* sets the
+  browser offline, so the claim is checked rather than assumed.
 - `navigator.gpu` can exist while `requestAdapter()` returns **null** (headless,
   GPU-less VMs, blocklisted drivers). Check for an adapter, not the API.
 - **Running into the context window fails two different ways, and one is
