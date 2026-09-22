@@ -51,13 +51,13 @@ const EXAMPLES = [
 // it is a last resort, not a tier. No rung on the page's context ladder
 // reaches it; the planner keeps it so that fitting the window is a guarantee
 // rather than a hope.
-export function sketchPrompt(maxCommands = 14, brief = false) {
+export function sketchPrompt(maxCommands = 14, brief = false, colour = false) {
   return `Draw the user's request as JSON: {"t":"short title","c":[one command per thing you draw]}
 Each command is one line of text. The grid is 0 to 100, x right, y down.
 <object> x y size — draws that object centred on x y. Objects: ${EXAMPLE_STAMPS}.
 For anything else: line x1 y1 x2 y2 / box x y w h / circle x y r / curve x1 y1 cx cy x2 y2
 label x y words — only for words you want written on the picture, never to name something you could draw.
-Draw each thing once. One cat is one command. Repeat an object only if the request asks for more than one:
+${colour ? `Add one colour word at the end of a command: house 25 55 40 red. Colours: ${Object.keys(PALETTE).filter(c => c !== "gray").join(" ")}.\n` : ""}Draw each thing once. One cat is one command. Repeat an object only if the request asks for more than one:
 ${(brief ? EXAMPLES.slice(0, 1) : EXAMPLES).join("\n")}
 Use ${maxCommands} commands or fewer. No SVG, no code, no explanation. Draw the whole picture every time, including when changing an earlier one.`;
 }
@@ -102,6 +102,10 @@ export const MAX_COMMANDS = 40;
 // The page's context ladder bottoms out at 1024, well clear.
 export const MIN_CONTEXT = 640;
 
+// Below this the prompt cannot afford to teach colour. 2048 is the middle rung
+// of the page's context ladder, so phones stay monochrome and desktops do not.
+export const COLOUR_CONTEXT = 2048;
+
 const messageTokens = m => estimateTokens(m.content) + MESSAGE_OVERHEAD;
 
 // Builds the request for one sketch turn. The prompt is O(1) in the number of
@@ -119,8 +123,14 @@ export function planSketchTurn(history, ctx, style = "") {
   const seed = history.slice(-3, -1).filter(m => m.content).map(m => ({ ...m }));
   const suffix = style ? "\nStyle preference: " + style : "";
 
+  // Colour costs about 30 prompt tokens, which a 1024-token phone cannot
+  // spare and a desktop rung never notices. Measured on CPU: Qwen3-1.7B has
+  // the headroom to use extra instructions, Qwen3-0.6B is already copying the
+  // examples back verbatim. The parser accepts colour from any model — it is
+  // only the teaching that is rationed.
+  const colour = ctx >= COLOUR_CONTEXT;
   const fit = (commands, brief) => {
-    const system = { role: "system", content: sketchPrompt(commands, brief) + suffix };
+    const system = { role: "system", content: sketchPrompt(commands, brief, colour) + suffix };
     const withSeed = [system, ...seed, ...tail];
     const cost = list => list.reduce((n, m) => n + messageTokens(m), 0);
     const messages = cost(withSeed) + RESERVE + MIN_COMMANDS * COMMAND_TOKENS < ctx
@@ -141,6 +151,7 @@ export function planSketchTurn(history, ctx, style = "") {
   return {
     messages: plan.messages,
     maxCommands: commands,
+    colour,
     // Cap output at the room left, never past it: generation that runs into
     // the context edge is truncated silently.
     maxTokens: Math.max(64, Math.min(1200, plan.room)),
@@ -180,6 +191,17 @@ const ALIAS_TOOL = { rect: "box", rectangle: "box", square: "box", path: "curve"
   text: "label", write: "label", dot: "circle", ellipse: "circle" };
 const ARITY = { line: 4, box: 4, circle: 3 };
 
+// Colour is one word at the end of a command, because a word is one token and
+// "#c0392b" is seven. The page owns the actual values, so the model never has
+// to know a hex code and cannot invent an unreadable one. Only offered to
+// models with the context to spare — see COLOUR_CONTEXT.
+export const PALETTE = {
+  red: "#c0392b", orange: "#d35400", yellow: "#c9a227", green: "#2e7d4f",
+  blue: "#2c5aa0", purple: "#6b4c9a", pink: "#c2557a", brown: "#7a5230",
+  grey: "#6b6b6b", gray: "#6b6b6b", black: "#202020",
+};
+const INK = "#202020";
+
 // Stamp names are matched loosely: a model asked for a tree may say "tree",
 // "trees", "Tree" or "pine". Anything unresolved becomes a label, which is
 // mediocre and visible rather than silently missing.
@@ -208,18 +230,23 @@ function parseCommand(line) {
   const tool = ALIAS_TOOL[head] || head;
 
   if (tool === "label") {
+    // No colour here: every trailing word belongs to the text, and a label
+    // reading "the red door" must not lose its last word to the palette.
     const [x, y] = [parts[1], parts[2]].map(Number);
     const text = parts.slice(3).join(" ").slice(0, 60);
     if (!Number.isFinite(x) || !Number.isFinite(y) || !text) return null;
     return { tool: "label", args: [clamp(x), clamp(y)], text };
   }
 
+  const last = parts[parts.length - 1].toLowerCase();
+  const colour = parts.length > 2 && Object.hasOwn(PALETTE, last) ? (parts.pop(), last) : null;
+
   const args = parts.slice(1).map(Number);
   if (!args.length || !args.every(Number.isFinite)) return null;
 
   if (tool === "curve") {
     if (args.length < 6 || (args.length - 2) % 4) return null;
-    return { tool, args: args.map(clamp), text: "" };
+    return { tool, args: args.map(clamp), text: "", colour };
   }
   if (ARITY[tool]) {
     if (args.length !== ARITY[tool]) return null;
@@ -231,7 +258,7 @@ function parseCommand(line) {
     if (tool === "circle") a[2] = Math.min(a[2], a[0], a[1], GRID - a[0], GRID - a[1]);
     if (tool === "box") { a[2] = Math.min(a[2], GRID - a[0]); a[3] = Math.min(a[3], GRID - a[1]); }
     if (a[2] <= 0 || (tool === "box" && a[3] <= 0)) return null;
-    return { tool, args: a, text: "" };
+    return { tool, args: a, text: "", colour };
   }
 
   const stamp = resolveStamp(head);
@@ -239,7 +266,10 @@ function parseCommand(line) {
   const size = Math.min(args[2] > 0 ? args[2] : 12, GRID);
   const a = [clamp(args[0]), clamp(args[1]), size];
   // An unknown noun still knows where it belongs, so say the word there.
-  return stamp ? { tool: "stamp", args: a, text: stamp }
+  // `said` keeps the model's own word: "Show commands" is the only window
+  // onto a device nobody here can reach, and "tree" is what it typed even
+  // though the page drew tree-deciduous.
+  return stamp ? { tool: "stamp", args: a, text: stamp, colour, said: head }
                : { tool: "label", args: [a[0], a[1]], text: head.replace(/-/g, " ") };
 }
 
@@ -347,17 +377,19 @@ export function parseSketch(raw) {
   // Keep what the model said before the page tidies it. "Show commands" is
   // the only window onto a device nobody here can reach, and it would be
   // worth much less showing coordinates the page had written itself.
-  const source = commandLines({ commands });
+  const source = commandLines({ commands }, { said: true });
   const moved = spreadStamps(commands);
   return { title: data.t.slice(0, 80), commands, dropped, moved, source,
            truncated: !!data.truncated };
 }
 
-export function commandLines(drawing) {
-  return drawing.commands.map(c =>
-    c.tool === "stamp" ? `${c.text} ${c.args.join(" ")}`
-    : c.tool === "label" ? `label ${c.args.join(" ")} ${c.text}`
-    : `${c.tool} ${c.args.join(" ")}`);
+export function commandLines(drawing, { said = false } = {}) {
+  return drawing.commands.map(c => {
+    const colour = c.colour ? " " + c.colour : "";
+    if (c.tool === "label") return `label ${c.args.join(" ")} ${c.text}`;
+    if (c.tool === "stamp") return `${said && c.said ? c.said : c.text} ${c.args.join(" ")}${colour}`;
+    return `${c.tool} ${c.args.join(" ")}${colour}`;
+  });
 }
 
 // The canonical form a drawing is stored and re-sent in: no reasoning, no
@@ -394,9 +426,10 @@ const svgNode = (doc, name, attrs = {}) => {
 // download and a screenshot all agree.
 const seedOf = title => [...title].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) || 7;
 
-function drawStamp(doc, parent, rough, { args: [x, y, size], text }) {
+function drawStamp(doc, parent, rough, { args: [x, y, size], text, colour }) {
   const px = size * SCALE, k = px / STAMP_BOX;
   const group = svgNode(doc, "g", {
+    stroke: (colour && PALETTE[colour]) || INK,
     transform: `translate(${(x * SCALE - px / 2).toFixed(1)} ${(y * SCALE - px / 2).toFixed(1)}) scale(${k.toFixed(4)})`,
     // The transform scales the pen too, so undo it here and the stamp is
     // drawn with the same nib as everything else.
@@ -417,24 +450,25 @@ export function renderSketch(container, raw, { rough = null } = {}) {
     "aria-label": drawing.title || "Generated sketch" });
   const title = svgNode(doc, "title"); title.textContent = drawing.title; svg.append(title);
   svg.append(svgNode(doc, "rect", { width: CANVAS, height: CANVAS, fill: "white" }));
-  const group = svgNode(doc, "g", { fill: "none", stroke: "#202020", "stroke-width": STROKE,
+  const group = svgNode(doc, "g", { fill: "none", stroke: INK, "stroke-width": STROKE,
     "stroke-linecap": "round", "stroke-linejoin": "round" });
   svg.append(group);
 
   const rc = rough ? rough.svg(svg) : null;
   const seed = seedOf(drawing.title);
-  const pen = { seed, roughness: 0.9, bowing: 1, strokeWidth: STROKE, stroke: "#202020" };
+  const ink = c => (c.colour && PALETTE[c.colour]) || INK;
   const s = n => n * SCALE;
 
   for (const command of drawing.commands) {
     const { tool, args: a, text } = command;
+    const pen = { seed, roughness: 0.9, bowing: 1, strokeWidth: STROKE, stroke: ink(command) };
     let node;
     if (tool === "stamp") {
       drawStamp(doc, group, rc && { path: (d, o) => rc.path(d, { ...pen, ...o }), seed }, command);
       continue;
     }
     if (tool === "label") {
-      node = svgNode(doc, "text", { x: s(a[0]), y: s(a[1]), fill: "#202020", stroke: "none",
+      node = svgNode(doc, "text", { x: s(a[0]), y: s(a[1]), fill: INK, stroke: "none",
         "font-size": 16, "font-family": "sans-serif" });
       node.textContent = text;
     } else if (rc) {
@@ -448,7 +482,10 @@ export function renderSketch(container, raw, { rough = null } = {}) {
       if (tool === "circle") node = svgNode(doc, "circle", { cx: s(a[0]), cy: s(a[1]), r: s(a[2]) });
       if (tool === "curve") node = svgNode(doc, "path", { d: `M ${s(a[0])} ${s(a[1])} Q ${a.slice(2).map(s).join(" ")}` });
     }
-    if (node) group.append(node);
+    if (node) {
+      if (command.colour && tool !== "label") node.setAttribute("stroke", ink(command));
+      group.append(node);
+    }
   }
 
   const caption = doc.createElement("p");

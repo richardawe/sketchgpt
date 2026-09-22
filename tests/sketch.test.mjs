@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseSketch, toSource, resolveStamp, estimateTokens, planSketchTurn,
-  sketchPrompt, MAX_COMMANDS, MIN_CONTEXT, GRID
+  sketchPrompt, commandLines, MAX_COMMANDS, MIN_CONTEXT, COLOUR_CONTEXT, GRID
 } from '../web/sketch.mjs';
 
 const draw = (...c) => JSON.stringify({ t: 'Sketch', c });
@@ -131,6 +131,47 @@ test('the commands shown are the model\'s own, and the ones re-sent are the tidi
   assert.equal(parseSketch(toSource(d)).moved, 0, 'the tidied drawing must be stable');
 });
 
+// ---- colour ---------------------------------------------------------------
+
+test('a colour word at the end of a command is the pen, not an argument', () => {
+  const d = parseSketch(draw('house 25 55 40 red', 'tree 78 50 34 green',
+    'circle 50 20 8 yellow', 'line 5 85 95 85 blue', 'sun 15 15 14'));
+  assert.deepEqual(d.commands.map(c => c.colour || null),
+    ['red', 'green', 'yellow', 'blue', null]);
+  assert.deepEqual(d.commands[0].args, [25, 55, 40]);   // the colour is not a coordinate
+  assert.deepEqual(commandLines(d)[0], 'house 25 55 40 red');
+});
+
+test('a label keeps every word, including one that names a colour', () => {
+  // "the red door" must not lose "door", and a label ending in a colour word
+  // must not lose that either.
+  for (const [line, text] of [['label 30 92 the red door', 'the red door'],
+                              ['label 30 92 paint it red', 'paint it red']]) {
+    const [c] = parseSketch(draw(line)).commands;
+    assert.equal(c.text, text);
+    assert.equal(c.colour, undefined);
+  }
+});
+
+test('an unknown colour word is not a colour', () => {
+  // It falls through to the number check and the command is dropped, rather
+  // than being drawn in some invented shade.
+  assert.throws(() => parseSketch(draw('house 25 55 40 taupe')));
+});
+
+test('colour is taught only where the context can afford it', () => {
+  // Measured on CPU: Qwen3-1.7B uses colour correctly when asked and leaves it
+  // alone when not; Qwen3-0.6B manages the simple case. It costs prompt
+  // tokens, which a 1024-token phone does not have.
+  assert.equal(planSketchTurn([{ role: 'user', content: 'a red house' }], 4096).colour, true);
+  assert.equal(planSketchTurn([{ role: 'user', content: 'a red house' }], COLOUR_CONTEXT).colour, true);
+  assert.equal(planSketchTurn([{ role: 'user', content: 'a red house' }], 1024).colour, false);
+  assert.match(sketchPrompt(40, false, true), /Colours: /);
+  assert.doesNotMatch(sketchPrompt(40, false, false), /Colours: /);
+  // The parser always accepts colour, whoever sent it — only teaching is rationed.
+  assert.equal(parseSketch(draw('house 25 55 40 red')).commands[0].colour, 'red');
+});
+
 // ---- failure, and the difference between sloppy and broken ----------------
 
 test('a few bad commands are dropped, and counted', () => {
@@ -195,7 +236,10 @@ test('the stored source is canonical, cheap, and free of bad commands', () => {
     draw('RECT 10 10 20 20', 'line 0 0', 'home 25 55 40', 'text 5 90 a note') + '\n```';
   const source = toSource(parseSketch(messy));
   assert.equal(source, '{"t":"Sketch","c":["box 10 10 20 20","house 25 55 40","label 5 90 a note"]}');
-  assert.deepEqual(parseSketch(source).commands, parseSketch(messy).commands);
+  // The canonical form is what must round-trip; `said` deliberately differs,
+  // because it remembers that the model typed "home" and the page drew a house.
+  assert.deepEqual(commandLines(parseSketch(source)), commandLines(parseSketch(messy)));
+  assert.deepEqual(parseSketch(messy).source, ['box 10 10 20 20', 'home 25 55 40', 'label 5 90 a note']);
 });
 
 // ---- the context budget ---------------------------------------------------

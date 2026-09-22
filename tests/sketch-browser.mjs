@@ -86,7 +86,9 @@ export async function CreateMLCEngine() { return {
   // reach, a nearly-empty drawing is indistinguishable from a misparsed one
   // without them.
   assert.match(await page.locator('.sketch details summary').textContent(), /Show commands \(8\)/);
-  assert.match(await page.locator('.sketch details pre').textContent(), /^house 25 55 40\ntree-deciduous 78 50 34/);
+  // The model's own noun, not the resolved stamp name: it typed "tree", the
+  // page drew tree-deciduous, and the panel has to report the former.
+  assert.match(await page.locator('.sketch details pre').textContent(), /^house 25 55 40\ntree 78 50 34\n/);
 
   const downloadEvent = page.waitForEvent('download');
   await page.getByText('Download SVG', { exact: true }).click();
@@ -128,6 +130,18 @@ export async function CreateMLCEngine() { return {
     nodes.map(n => n.getAttribute('transform').match(/translate\(([\d.-]+) ([\d.-]+)\)/).slice(1).map(Number)));
   assert.equal(centres.length, 3);
   assert.equal(new Set(centres.map(c => c.join(','))).size, 3, 'stamps still drawn on top of each other');
+
+  // Colour reaches the SVG as a stroke, and only where it was asked for.
+  await page.evaluate(() => { window.result = JSON.stringify({ t: 'A red house', c: [
+    'house 25 55 40 red', 'tree 78 50 34 green', 'circle 50 18 8 yellow', 'sun 12 12 10'] }); });
+  await send('Draw a red house with a green tree');
+  const painted = page.locator('.msg.assistant').last();
+  const strokes = await painted.locator('svg g[stroke]').evaluateAll(n => n.map(e => e.getAttribute('stroke')));
+  assert.ok(strokes.includes('#c0392b'), `no red stroke: ${strokes}`);
+  assert.ok(strokes.includes('#2e7d4f'), `no green stroke: ${strokes}`);
+  assert.ok(strokes.includes('#202020'), `the uncoloured sun lost its ink: ${strokes}`);
+  assert.match(await painted.locator('details pre').textContent(), /house 25 55 40 red/);
+  await page.screenshot({ path: '/tmp/sketch-colour.png', fullPage: true });
 
   // Output cut off mid-JSON still renders what arrived.
   await page.evaluate(() => { window.result = '{"t":"Cut off","c":["house 25 55 40","tree 78 5'; });

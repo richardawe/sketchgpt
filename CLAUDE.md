@@ -27,6 +27,7 @@ scripts/setup-ollama.sh   install Ollama, pull the pinned model, verify, smoke-t
 scripts/serve-web.sh      serve web/ on localhost
 scripts/build-stamps.mjs  regenerate web/stamps.mjs from Lucide
 scripts/token-budget.mjs  measure sketch cost against Qwen3's real tokenizer
+scripts/sketch-bench.mjs  run the real prompt through real models, judged by the real parser
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
@@ -63,6 +64,8 @@ serves **4-bit**, and that gap explains most surprises.
 | **State the rule and show it — neither alone worked** | "The number of commands follows the request" plus two examples still duplicated. What the prompt now carries is both an explicit rule ("Draw each thing once. One cat is one command.") and a one-command example. Each iteration cost a round trip to a real phone; nothing here was visible from a mock. |
 | **Naming is the easy half; placing is the hard half** | With the duplication fixed, Qwen3-0.6B returned three *correct* nouns for "a house with a tree and a car" — and put them all at x=50, y=50/52/54. It had anchored on an example's coordinates and added 2 each time. **Arithmetic is what a 0.6B is worst at, and it is the one thing the page can simply do instead.** `spreadStamps()` separates stamps that have collapsed, keeping the order the model listed them in, and leaves a deliberate overlap (a sun behind a cloud) alone. Fixed in code, verified against the exact output the phone produced — no round trip needed. |
 | **Four prompt rounds, then the page** | Duplication took three prompt iterations and a phone trip each; layout took one code change tested in seconds. The rule that keeps paying: **if the page can compute it, the prompt should not ask for it.** Prompt tokens also cost the phone its output budget — 197 → 391 across those rounds took a 1024-context phone from 437 output tokens to 299. |
+| **Bigger models compose better; no model places better** | Same prompt, same parser, Ollama on CPU (`scripts/sketch-bench.mjs`), six requests: **Qwen3-0.6B 14 commands / 13 distinct nouns / 8 of 10 requested things drawn; Qwen3-1.7B 62 commands / 19 nouns / 9 of 10.** The 0.6B retrieves rather than composes — "draw a birthday party" came back as `cat, sun, bird, bird, sailboat`, which is both examples regurgitated verbatim. The 1.7B invents a scene. But **both piled stamps up on exactly 2 of 6 drawings**: scale buys vocabulary and coverage, not arithmetic. `spreadStamps()` is load-bearing at every size. |
+| **Colour is one word, and both sizes can use it** | `house 25 55 40 red` — a colour name is one token where `#c0392b` is seven, and the page owns the values so the model cannot invent an unreadable one. Measured: zero invalid colour words from either model, and neither adds colour unasked. The 1.7B handles "a yellow sun over a blue sea" (`sun … yellow \| sea … blue`); the 0.6B reached for `label 40 50 blue` instead — the label trap door again, on the weaker model. Taught only at ctx ≥ 2048, so a phone pays nothing for it. |
 | **`label` is a trap door out of the drawing** | Listed plainly among the tools, the model reached for `label 35 55 cat` instead of `cat 35 55 30` — printing the word rather than drawing the thing, on the same request that had worked a minute earlier at temperature 0.2. It is now described as being for words written *on* the picture, never for naming something drawable. |
 | **The page was throwing away the only evidence** | That one circle is indistinguishable from a misparse without the model's raw output, and nothing in the UI showed it. Anything shipped to a device nobody here can reach needs its raw output one tap away, or every report is a guess. |
 | **A chat history of drawings is unbounded and does not need to be** | Sketch history grew by a whole drawing per turn. Carrying only the previous drawing and the instruction that produced it makes the prompt **O(1) in turns** — measured flat at 391 tokens from turn 2 onward at 4096, 2048 and 1024 context. A revision needs a seed, not a transcript. |
@@ -185,6 +188,16 @@ human click:
    *"Repository settings writes are not permitted through this proxy."*
 4. Deleting a remote ref → blocked over git **and** over the API.
 
+**Ollama on CPU works in this sandbox** — so quality claims no longer have to
+wait for the user's device. Two gotchas: the installer needs **zstd** and does
+not pull it in (`apt-get install -y zstd` first, exactly as `setup-ollama.sh`
+does), and `OLLAMA_MODELS` must point somewhere with room. On 4 CPUs,
+`qwen3:0.6b` answers a sketch prompt in about 1 s and `qwen3:1.7b` in 2–7 s,
+which is fast enough to iterate on a prompt without a phone in the loop. The
+quantisation differs from the browser's (GGUF Q4_K_M vs MLC q4f16), so this
+measures composition, not the exact bytes a visitor gets — say so in any claim.
+`scripts/sketch-bench.mjs` is the harness.
+
 **Machine:** no GPU here — but that is not the same as no WebGPU. Chromium with
 `--enable-unsafe-webgpu` serves a real adapter through SwiftShader, and models
 **load** under it, which is enough to measure allocation and to catch a model
@@ -225,6 +238,12 @@ practical fine-tuning.
   still unknown is everything past the simplest request — nothing harder than
   "a house with a tree and a car" has been tried, and no other model has been
   tried at all.
+- **Bigger desktop models are worth offering, and the page does not.** The
+  desktop default is still Qwen3-0.6B (~500 MB) while Qwen3-1.7B draws 4x the
+  commands and covers more of the request. Changing the default trades a
+  500 MB download for ~2 GB, which is the user's call, not a silent one.
+- **Nothing above 1.7B has been tried**, and no non-Qwen model at all. The
+  bench takes any Ollama tag, so this is an afternoon's work, not a mystery.
 - **The stamp vocabulary is a guess.** 133 Lucide icons and 84 aliases chosen
   by imagining what a model would say. The right way to size it is to log the
   nouns real models emit and see what misses; until then unknown nouns fall

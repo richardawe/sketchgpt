@@ -181,6 +181,23 @@ because this page claims to work offline once the weights are cached and a CDN
 import would quietly cost every offline sketch its line. The page renders clean
 SVG if the module fails to load; `?rough=0` turns it off.
 
+#### Colour, on models that can afford it
+
+A colour is one word at the end of a command:
+
+```
+house 25 55 40 red
+```
+
+One token, where `#c0392b` is seven — and the page owns the actual values, so
+the model never has to know a hex code and cannot invent an unreadable one.
+The palette is `red orange yellow green blue purple pink brown grey black`.
+
+Colour costs about 30 prompt tokens to teach, which a 1024-token phone cannot
+spare, so it is offered only at a context of 2048 or more — desktop models get
+it, phones stay monochrome and pay nothing for it. The parser accepts colour
+from any model regardless; only the teaching is rationed.
+
 The page also **places** what the model could only name. A small model will
 happily return three correct nouns at the same coordinates; when stamps have
 collapsed into each other the page separates them, keeping the order they were
@@ -240,8 +257,38 @@ layout took one code change tested in seconds. The rule that keeps paying:
 tokens are not free either — 197 to 391 across those rounds took a
 1024-context phone from 437 output tokens to 299.
 
-Nothing harder than "a house with a tree and a car" has been tried, and no
-model other than Qwen3-0.6B has been tried at all.
+#### Does a bigger model draw better?
+
+Yes for composition, no for placement. Same prompt, same parser, six requests,
+run on CPU through Ollama (`node scripts/sketch-bench.mjs qwen3:0.6b qwen3:1.7b`):
+
+| Model | Parsed | Commands | Distinct nouns | Requested things drawn | Drawings piled up |
+|---|---|---|---|---|---|
+| Qwen3-0.6B | 6/6 | 14 | 13 | 8/10 | 2 of 6 |
+| Qwen3-1.7B | 6/6 | **62** | **19** | **9/10** | 2 of 6 |
+
+The 0.6B is mostly *retrieving*. Asked to "draw a birthday party" it returned
+`cat, sun, bird, bird, sailboat` — both of the prompt's worked examples
+regurgitated verbatim. Asked for "a boat on the sea with two birds" it drew one
+boat. The 1.7B invents a scene for the same requests and actually uses the
+40-command desktop budget.
+
+**Neither places any better.** Both piled stamps on top of each other in exactly
+two of six drawings, which is why `spreadStamps()` runs at every size. Scale
+buys vocabulary and coverage; it does not buy arithmetic.
+
+Colour follows the same split: the 1.7B handles "a yellow sun over a blue sea"
+correctly, while the 0.6B wrote `label 40 50 blue` — printing the word instead
+of colouring anything. Neither model ever emitted an invalid colour, and
+neither added colour that was not asked for.
+
+The caveat on all of the above: Ollama serves GGUF Q4_K_M and the browser
+serves MLC q4f16, so these are composition numbers, not the exact bytes a
+visitor's device produces.
+
+Nothing above 1.7B has been tried, and no model outside the Qwen3 family. The
+desktop default is still Qwen3-0.6B — moving it to 1.7B would trade a ~500 MB
+download for ~2 GB, which is a product decision rather than a silent one.
 
 #### Checks
 
@@ -249,6 +296,7 @@ model other than Qwen3-0.6B has been tried at all.
 node --test tests/sketch.test.mjs     # format, stamps, clamping, budget
 node tests/sketch-browser.mjs         # needs Playwright + Chromium
 node scripts/token-budget.mjs         # real tokenizer; needs @lenml/tokenizers
+node scripts/sketch-bench.mjs qwen3:1.7b   # real models; needs Ollama
 node scripts/build-stamps.mjs         # regenerates web/stamps.mjs from Lucide
 ```
 
@@ -350,6 +398,7 @@ scripts/setup-ollama.sh   install, serve, pull, verify, smoke-test
 scripts/serve-web.sh      serve the chat UI on localhost
 scripts/build-stamps.mjs  regenerates web/stamps.mjs from Lucide
 scripts/token-budget.mjs  measures sketch cost against Qwen3's tokenizer
+scripts/sketch-bench.mjs  runs the real prompt through real models on CPU
 web/index.html            streaming chat UI, talks to local Ollama
 web/browser.html          runs the model in-browser via WebGPU (Pages-ready)
 web/sketch.mjs            sketch format, context budget, SVG rendering
