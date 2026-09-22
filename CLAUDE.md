@@ -19,9 +19,13 @@ public on X. The lab's thesis is at the bottom.
 ```
 web/browser.html          in-browser inference (WebGPU via WebLLM) — the public page
 web/index.html            local chat against Ollama — development only
+web/sketch.mjs            sketch format, context budget, SVG rendering
+web/stamps.mjs            generated Lucide path data — never edit by hand
 scripts/setup-pages.sh    push, enable Pages, deploy, print URL (needs the user's gh)
 scripts/setup-ollama.sh   install Ollama, pull the pinned model, verify, smoke-test
 scripts/serve-web.sh      serve web/ on localhost
+scripts/build-stamps.mjs  regenerate web/stamps.mjs from Lucide
+scripts/token-budget.mjs  measure sketch cost against Qwen3's real tokenizer
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
@@ -49,11 +53,33 @@ serves **4-bit**, and that gap explains most surprises.
 | **Attention shape beats parameter count** | KV per token at f16: Qwen2.5-0.5B 12 KiB, Qwen3-0.6B 112 KiB, SmolLM2-1.7B 192 KiB. Gemma 3's sliding window pins its cache at 512 tokens whatever the context. Qwen3.5 is **hybrid** — `kv_state_kind: "hybrid"`, only 6 of its 24 layers hold a KV cache, the other 18 are linear-attention. Full table in `docs/mobile-models.md`. |
 | **fp32 builds are a free fallback** | `SmolLM2-360M-q4f32_1` and `-q4f16_1` download **byte-identical** shards. The suffix changes activation precision, not weight storage — fp32 costs GPU memory (376 published f16 vs 574 measured f32), not bandwidth. It also doubles KV dtype. |
 | **Desktop changes everything** | Qwen3-1.7B (2037 MB) produced a genuine multi-chapter book outline. The ceiling above belongs to 360M-class models on phones, not to the page. |
+| **A digit is a token, and so is the space before it** | Qwen3 tokenizes `" 160"` as four tokens — `" "`,`"1"`,`"6"`,`"0"`. In any structured output, **the numbers are the cost and the syntax is a rounding error**. Shortening `rectangle` to `r` across ten sketch commands saved 0 tokens; moving the grid from 0–400 to 0–100 saved 19%. Measured with Qwen3-0.6B's real tokenizer via `scripts/token-budget.mjs`. |
+| **Move the shape into the page, not the model** | A stamp — `house 25 55 40`, a noun plus three numbers — costs 13 tokens and draws a recognisable house from bundled Lucide path data. Drawing the same house from primitives costs 5 commands and looks worse. One scene: 235 tokens as JSON objects → 66 as stamps, **3.6× cheaper and better**. Naming a noun is the easiest thing a small model does; composing a recognisable object from line segments is among the hardest. |
+| **Enrichment is free if it needs no tokens** | rough.js redraws geometry the model already sent, so the hand-drawn look costs nothing at inference. Anything that makes output *prettier* belongs on the page; only what makes it *different* belongs in the prompt. |
+| **A chat history of drawings is unbounded and does not need to be** | Sketch history grew by a whole drawing per turn. Carrying only the previous drawing and the instruction that produced it makes the prompt **O(1) in turns** — measured flat at 294 tokens from turn 2 onward at 4096, 2048 and 1024 context. A revision needs a seed, not a transcript. |
 
 ### Browser gotchas already fixed
 
 - `navigator.gpu` can exist while `requestAdapter()` returns **null** (headless,
   GPU-less VMs, blocklisted drivers). Check for an adapter, not the API.
+- **Running into the context window fails two different ways, and one is
+  silent.** If the prompt alone passes the window WebLLM throws
+  `ContextWindowSizeExceededError`. If the prompt fits but generation reaches
+  the edge, it just stops: `filledKVCacheLength == contextWindowSize` sets
+  `finishReason: "length"` with no error, which for structured output means
+  truncated JSON that reads as "the model failed". Never ask for more
+  `max_tokens` than the room actually left.
+- **WebLLM 0.2.85 accepts a full EBNF grammar, not only a JSON schema.**
+  `response_format: { type: "grammar", grammar: "…" }` reaches XGrammar's
+  `compileGrammar`; `json_object` reaches `compileJSONSchema`. A terse
+  line-based DSL was measured at only ~5% cheaper than the same lines inside a
+  JSON envelope, so sketch mode keeps `json_object` — the proven path — and
+  validates the line format itself. The grammar route is there if a format ever
+  justifies it.
+- **Truncated structured output is worth salvaging, not discarding.** Running
+  out of tokens strands valid commands inside unterminated JSON. `salvage()`
+  pulls the complete strings out and the sketch renders as far as it got,
+  captioned as unfinished — the same instinct as `balanceBraces()`.
 - Exceeding device memory **kills the tab** — no catchable error. Prevention is
   the only defence: budget with headroom, never ship a default near the limit.
 - `q4f16` builds need the `shader-f16` adapter feature. Without it they are
@@ -183,6 +209,16 @@ practical fine-tuning.
 
 ## Open threads
 
+- **No real model has ever drawn a sketch.** The format, the budget and the
+  rendering are all measured or tested; the *drawing* is not. Unknown until a
+  device runs it: whether a 360M model picks sensible coordinates, how often it
+  names a stamp that resolves, and whether the 0–100 grid reads better to it
+  than 0–400 did. This is the first thing to try on the user's phone, and the
+  one claim the README refuses to make.
+- **The stamp vocabulary is a guess.** 133 Lucide icons and 84 aliases chosen
+  by imagining what a model would say. The right way to size it is to log the
+  nouns real models emit and see what misses; until then unknown nouns fall
+  back to a label, which is visible rather than silent.
 - **`setup-pages.sh` has never run end to end.** Guards, branch rewrite and the
   missing-`gh` path are verified; a real `gh repo create` is not. First real run
   is the test.

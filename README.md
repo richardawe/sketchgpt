@@ -133,23 +133,83 @@ also starts Ollama if it is not already running.
 
 In the browser page, choose **Sketch** in the header, load a model, and describe
 what to draw, for example “a house beside a tree”. The same text model produces
-validated drawing commands for lines, circles, rectangles, curves, and labels.
-The page renders these locally as an SVG; **Download SVG** saves an editable file.
-No image model or extra model download is needed.
+drawing commands; the page validates them and renders an SVG locally.
+**Download SVG** saves an editable file. No image model, no extra download.
 
-Sketch mode uses constrained JSON output, a 400×400 canvas, and at most 40
-commands. Invalid or unfinished output shows a retry message. Chat and sketch
-histories are separate; follow-up sketch prompts request a complete revised drawing.
-The mode is saved across reloads, but drawings and conversation history are not.
-This feature is in `web/browser.html`; the Ollama page is unchanged.
+The model writes lines of text inside a JSON envelope:
 
-Start with simple requests. Qwen3-0.6B and Qwen3-1.7B are candidates to evaluate;
-drawing quality has not yet been benchmarked with real models or on phones.
+```json
+{"t":"A house beside a tree","c":["house 25 55 40","tree 78 50 34","sun 15 15 14","line 2 88 98 88"]}
+```
 
-Checks: `node --test tests/sketch.test.mjs`. With Playwright and Chromium
-available, run `node tests/sketch-browser.mjs` (or set `PLAYWRIGHT_MODULE` to
-Playwright's `index.mjs`). The browser checks use a mock model, covering rendering,
-SVG export, mobile layout, validation errors, cancellation, and mode/history handling.
+`house 25 55 40` is a **stamp** — a noun, a position and a size on a 0–100
+grid. The page owns the shape; the model only has to name the thing and say
+where it goes. There are 133 stamps with 84 aliases, and any noun outside that
+vocabulary falls back to a text label rather than disappearing. `line`, `box`,
+`circle`, `curve` and `label` are there for everything a noun cannot cover.
+
+#### Why it is shaped that way
+
+Qwen's tokenizer gives every digit its own token, and the space before it
+another, so `" 160"` costs four tokens. **Coordinates are what a drawing
+costs — not syntax.** Measured on one scene with Qwen3-0.6B's own tokenizer
+(`node scripts/token-budget.mjs`):
+
+| Encoding | Tokens | Commands | Per command |
+|---|---|---|---|
+| JSON objects on a 0–400 grid | 235 | 10 | 23.5 |
+| Command lines on a 0–100 grid | 134 | 10 | 13.4 |
+| The same scene as stamps | **66** | 5 | 13.2 |
+
+A stamped drawing costs **3.6× less** than the JSON it replaced, and looks
+better: a real tree instead of two line segments. Shortening `rectangle` to
+`r` was measured too, and saved nothing — the tool name is a rounding error
+next to the numbers.
+
+The prompt is **planned, not accumulated**. Only the previous drawing and the
+instruction that produced it are carried, so the prompt is the same size on
+turn ten as on turn two — measured flat at 294 tokens at every context rung.
+`max_tokens` is set from the room actually left, never past it, because
+generation that reaches the context edge stops silently mid-drawing. The
+command budget is derived from that room.
+
+Two rendering touches cost no model tokens at all, because they are applied to
+geometry the model already sent: [rough.js](https://roughjs.com) draws every
+shape with a hand-drawn line, and the stamps are [Lucide](https://lucide.dev)
+icons. Rough.js is fetched from a CDN on first use and the page renders clean
+SVG if it cannot be reached; `?rough=0` turns it off.
+
+Output cut off mid-JSON still renders the commands that arrived, captioned as
+unfinished. A few unreadable commands are dropped and counted; mostly-bad
+output says so instead of rendering a confident fragment.
+
+Chat and sketch histories are separate. The mode is saved across reloads;
+drawings and history are not. This is in `web/browser.html`, `web/sketch.mjs`
+and `web/stamps.mjs`; the Ollama page is unchanged.
+
+#### Not yet measured
+
+**No real model has drawn anything through this.** There is no GPU in the
+environment it was built in, and SwiftShader loads models but cannot generate.
+Every number above is a token count or a render from a mock; whether a 360M
+model picks sensible coordinates, and how often it names a stamp that exists,
+is unknown until it runs on a real device. Qwen3-0.6B and Qwen3-1.7B are the
+candidates to try first.
+
+#### Checks
+
+```bash
+node --test tests/sketch.test.mjs     # format, stamps, clamping, budget
+node tests/sketch-browser.mjs         # needs Playwright + Chromium
+node scripts/token-budget.mjs         # real tokenizer; needs @lenml/tokenizers
+node scripts/build-stamps.mjs         # regenerates web/stamps.mjs from Lucide
+```
+
+Set `PLAYWRIGHT_MODULE` to Playwright's `index.mjs` if it is not installed
+locally. The browser checks drive a mock model and cover stamp rendering, SVG
+export, mobile width, the flat prompt over seven turns, truncated output,
+invalid output, cancellation and the saved mode. `SKETCH_ROUGH=0` runs them
+against the clean-SVG fallback instead.
 
 ### Why the Ollama page can't go on GitHub Pages
 
@@ -241,10 +301,25 @@ models/modelfiles/        custom models built on the base (committed)
 models/ollama/            Ollama model store — weights live here (ignored)
 scripts/setup-ollama.sh   install, serve, pull, verify, smoke-test
 scripts/serve-web.sh      serve the chat UI on localhost
+scripts/build-stamps.mjs  regenerates web/stamps.mjs from Lucide
+scripts/token-budget.mjs  measures sketch cost against Qwen3's tokenizer
 web/index.html            streaming chat UI, talks to local Ollama
 web/browser.html          runs the model in-browser via WebGPU (Pages-ready)
+web/sketch.mjs            sketch format, context budget, SVG rendering
+web/stamps.mjs            generated icon geometry (do not edit by hand)
 docs/customising.md       how to change what the model does
 ```
+
+## Built on
+
+- **[WebLLM](https://github.com/mlc-ai/web-llm)** (Apache 2.0) — the in-browser
+  inference this page is a front end for.
+- **[Lucide](https://lucide.dev)** (ISC) — the icon geometry behind sketch
+  stamps, vendored as path data in `web/stamps.mjs`.
+- **[rough.js](https://roughjs.com)** (MIT) — the hand-drawn line, loaded from
+  a CDN on demand.
+- **[KaTeX](https://katex.org)** (MIT) — maths in chat answers, loaded from a
+  CDN on demand.
 
 ## Notes
 
