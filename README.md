@@ -130,6 +130,16 @@ also starts Ollama if it is not already running.
 | Model storage | `models/ollama/` on disk | Browser cache, persisted |
 | Speed | Faster | Slower, but no setup |
 
+### Three modes
+
+The browser page has a mode picker in the header:
+
+| | |
+|---|---|
+| **Chat** | open conversation, Markdown and LaTeX rendered |
+| **Sketch** | describe a scene, get an SVG drawn locally |
+| **Work** | paste or load your own text and work on it — draft, rewrite, summarise, translate, plan. Nothing is uploaded. |
+
 ### Simple sketches
 
 In the browser page, choose **Sketch** in the header, load a model, and describe
@@ -304,18 +314,91 @@ download for ~2 GB, which is a product decision rather than a silent one.
 
 ```bash
 node --test tests/sketch.test.mjs     # format, stamps, clamping, budget
+node --test tests/work.test.mjs       # the file cap, passages, retrieval, refusals
 node tests/sketch-browser.mjs         # needs Playwright + Chromium
+node tests/work-browser.mjs           # Work mode in a real page
+node tests/stop.mjs                   # Stop stops, and chat survives it
 node tests/offline.mjs                # loads the page with the network cut
+node scripts/retrieval-bench.mjs      # BM25 vs an embedder; Ollama optional
 node scripts/token-budget.mjs         # real tokenizer; needs @lenml/tokenizers
 node scripts/sketch-bench.mjs qwen3:1.7b   # real models; needs Ollama
 node scripts/build-stamps.mjs         # regenerates web/stamps.mjs from Lucide
 ```
 
 Set `PLAYWRIGHT_MODULE` to Playwright's `index.mjs` if it is not installed
-locally. The browser checks drive a mock model and cover stamp rendering, SVG
+locally, and `SKETCH_CHROME` to a Chromium binary if the one Playwright wants
+is not the one on disk. The browser checks drive a mock model and cover stamp rendering, SVG
 export, mobile width, the flat prompt over seven turns, truncated output,
 invalid output, cancellation and the saved mode. `SKETCH_ROUGH=0` runs them
 against the clean-SVG fallback instead.
+
+### Work mode — your own text, and nothing else
+
+Choose **Work** in the header. Paste a message, a note or a document, or load a
+`.txt`/`.md` file up to **512 KB**, then pick what to do with it:
+
+| | |
+|---|---|
+| **Write** | draft a text, WhatsApp message, email or letter · suggest a reply · turn rough notes into writing · organise messy notes · creative writing |
+| **Improve** | rewrite it clearer, friendlier, shorter, more professional · shorten · expand |
+| **Understand** | summarise · explain what it means · translate |
+| **Think** | brainstorm · generate questions · critique · role-play a conversation · plan with your constraints · think a decision through |
+
+Nothing is uploaded. The file is read in the tab, held in a variable, and never
+written to storage — that is the whole reason a model this small is an
+acceptable thing to open a tenancy agreement or a clinic letter with.
+
+Every task carries the same instruction: work only from the supplied text, add
+no fact that is not in it, and say so rather than guess. And every answer is
+shown **with the text it was allowed to see**, because a small model's wrong
+answer is confident and well-formed, and the source is the only thing that
+makes it checkable.
+
+#### When your text does not fit
+
+The page decides what the model may see before the model runs:
+
+- **It fits the context window** → the whole text goes in, and all of it is
+  shown with the answer.
+- **It does not fit, and you asked a question** → BM25 retrieval picks the
+  passages that answer it, up to six. Only those are sent, and exactly those
+  are shown, in document order.
+- **It does not fit, and you asked nothing** → **nothing is generated.** You
+  get a contents list: where things are, verbatim, in the document's own words.
+- **No passage shares a single word with your question** → nothing is sent to
+  the model at all, and the page says which words it could not find.
+
+The third case is the point rather than a limitation. `docs/work-mode.md`
+measures what happens otherwise: asked about a document it could not see all
+of, Qwen3-0.6B invented answers to 3 of 5 questions its document did not
+address, and **asking it to quote the source made that 4 of 5**. Qwen3-1.7B
+quoted perfectly and still concluded things the quote did not support. There is
+no passage to check an invented summary against, so that failure is silent by
+construction — and this project ships the visible kind.
+
+#### How good is the retrieval?
+
+`node scripts/retrieval-bench.mjs` runs the shipped BM25 and, if Ollama is
+around, `snowflake-arctic-embed:s` over the same document and the same six
+queries. On that document:
+
+| | Right sentence in top 3 | First | Can it decline? |
+|---|---|---|---|
+| BM25 (shipped) | 4/4 | 3 | only on zero overlap |
+| Embedder (67 MB) | 4/4 | 3 | yes, from a score gap |
+
+Retrieval quality is a tie for no download and no second model in the tab. The
+difference is the refusal: the embedder's scores separate answerable queries
+(0.642–0.798) from unanswerable ones (max 0.574), so a threshold works. BM25's
+do not — *"Who owns the building?"* scores 0.413 against a document full of the
+word "building" that never says who owns it, level with a query the document
+*does* answer. Lexical overlap cannot tell "topic absent" from "topic present,
+question unanswered", so the page declines only where overlap is zero and
+otherwise shows you the passages and lets you judge.
+
+One short document, six queries. Length, headings, tables and a document whose
+wording does not match your question are all untested, and they are what will
+break it.
 
 ### Why the Ollama page can't go on GitHub Pages
 

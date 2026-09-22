@@ -1,7 +1,13 @@
-# Work mode — reading a document on your own device
+# Work mode — your own text, on your own device
 
-A third mode beside Chat and Sketch: you open a document, and the page helps
-you find your way around it. Nothing is uploaded. Roadmap Phase 3.
+A third mode beside Chat and Sketch: you paste or load your own text, and the
+page works on it. Nothing is uploaded. Roadmap Phase 3.
+
+**Status: shipped.** `web/work.mjs` and the Work tab in `web/browser.html`
+implement what is specified below — Layer 1 in full, Layer 2 scoped to text
+small enough to check, Layer 3 not yet. What changed between spec and build is
+recorded in "What shipped, and what the build changed" at the end; read that
+too, because one of the spec's numbers did not survive being implemented.
 
 This document exists because the obvious version of the idea — "a small model
 reads your document and answers questions about it, without hallucinating" —
@@ -188,3 +194,105 @@ tool; for that material it is the only version that can be used at all.
 It also feeds Phase 5 directly: legal review, clinical notes and field work all
 appear in the roadmap's vertical table, and all three are document-reading with
 a confidentiality constraint.
+
+---
+
+## What shipped, and what the build changed
+
+Three things came out differently from the spec above. Two were decisions; one
+was the spec being wrong.
+
+### 1. Retrieval is BM25, not an embedder — and it ties on hit rate
+
+Layer 1 specifies `snowflake-arctic-embed-s-b4`. The build uses BM25 in
+`web/work.mjs`, because the embedder costs 67 MB of download, 239 MB of GPU
+reserve and a dependency on open question 1 below, and BM25 costs nothing. It
+keeps the property the whole layer rests on: it returns existing text or
+nothing, because it has nothing to generate *with*.
+
+`scripts/retrieval-bench.mjs` now runs both over the same document and the same
+six queries, and the embedder part is skipped when there is no Ollama:
+
+| | Right sentence in top 3 | First | Can it decline? |
+|---|---|---|---|
+| BM25 (shipped) | 4/4 | 3 | only on zero overlap |
+| `snowflake-arctic-embed:s` | 4/4 | 3 | yes, from a score gap |
+
+One thing made the difference on hit rate. *"How do I complain?"* was a MISS
+against a document that answers it twice, because the document says "complaint"
+and "complaints" — different words, not inflections, which no stemmer merges
+and Porter does not either. A 5-character prefix bucket fixed it and changed no
+other result.
+
+### 2. The threshold does not exist. This is the spec's one wrong number
+
+Above, this document says a threshold near 0.61 over embedder scores "produces
+the refusal the chat models could not". That holds for the embedder. The build
+assumed the same shape would hold for BM25, wrote `COVERAGE_FLOOR = 0.45`, and
+measured it before shipping:
+
+```
+answerable    0.277  0.553  0.413  1.000
+unanswerable  0.413  0.000
+```
+
+**No gap.** *"Who owns the building?"* scores 0.413 against a document stuffed
+with the word "building" that never says who owns it — above one query the
+document answers and exactly level with another. Lexical overlap cannot tell
+*topic absent* from *topic present, question unanswered*, and that is not a
+tuning problem.
+
+So the shipped page declines on the one signal that is true by construction:
+**no passage shares a single content word with the question**, so there is
+nothing to show. *"Is there parking?"* is refused; *"Who owns the building?"* is
+answered with the paragraph about the building, and the reader sees at once
+that it does not say. That is the visible failure this project ships, and it is
+what Layer 1 degrades to without an embedder. The graded refusal is the single
+thing the embedder buys, and it is now costed rather than assumed.
+
+### 3. "Too long to check" is a refusal the page makes, not advice it gives
+
+The spec forbids *writing* a summary of a whole document. The build enforces
+it: when the text does not fit the context window and no question was asked,
+`planWorkTurn` returns `mode: "contents"` and **no model runs at all**. You get
+the contents list this document proposes — top passage per heading, verbatim,
+labelled as where things are. `tests/work.test.mjs` and
+`tests/work-browser.mjs` both assert the model is not called, and both were
+mutation-checked by removing the guard and watching them fail.
+
+Summarising *is* offered, for text that fits the window whole. That is a
+different shape and a safe one: the source is short, entirely on screen beside
+the answer, and every sentence is checkable. The rule the build settled on:
+
+> The source fits → the model may work on it, and all of it is shown.
+> The source does not fit → the passages are the answer.
+> Nothing fits and nothing was asked → generate nothing.
+
+### What the build added that the spec did not cover
+
+The seventeen tasks. The spec is about reading a document; most of what people
+actually want is transforming text they already have — draft, rewrite, shorten,
+translate, plan, role-play. Those are the *safe* shape at this size (no single
+correct answer, so failure is mediocrity and mediocrity is visible), and they
+need no retrieval at all when the text is short. Every one of them carries the
+same grounding line — work only from the supplied text, add no fact that is not
+in it — and every answer is rendered with the text it was allowed to see.
+
+A 512 KB file cap, checked against `file.size` before a byte is read. Nothing
+is uploaded, so the cap is not about bandwidth: it is memory, index time, and
+not implying that a 40 MB log would be read when a few hundred tokens of it
+reach the model.
+
+### Still open
+
+- Open question 1 (**two engines in one tab**) is no longer blocking, because
+  there is no second engine. It now governs the embedder upgrade only.
+- Open question 2 (**does retrieval hold up on a real document?**) is unchanged
+  and is the one that matters. Length, headings, tables and vocabulary mismatch
+  are untested.
+- Open question 3 (**where does the text come from?**) is answered for paste
+  and `.txt`/`.md`. PDF is named as unsupported rather than mangled.
+- Layer 3 (**picture it** — sketch a selected passage) is not built. Everything
+  it needs already exists.
+- **No phone has opened Work mode.** Every measurement here is node, a stubbed
+  browser, or Ollama on CPU.

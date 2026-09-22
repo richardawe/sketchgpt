@@ -64,6 +64,29 @@
   #settings { padding: 12px 16px; border-bottom: 1px solid var(--line);
               background: var(--panel); display: none; }
   #settings.open { display: block; }
+  /* Work mode's document tray. Hidden entirely in the other modes rather than
+     greyed out: a control that does nothing here is worse than no control. */
+  #work { padding: 10px 16px; border-bottom: 1px solid var(--line);
+          background: var(--panel); display: none; }
+  #work.open { display: block; }
+  #work .wrap { display: flex; flex-direction: column; gap: 8px; }
+  #work .line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+  #work label { font-size: 13px; color: var(--muted); }
+  #paste { width: 100%; min-height: 64px; max-height: 40vh; resize: vertical; }
+  #doc { font-size: 13px; color: var(--muted); }
+  #doc b { color: var(--ink); font-weight: 600; }
+  #doc.bad { color: #b3261e; }
+  #task, #opt { max-width: 100%; min-width: 0; }
+  /* The passages an answer was allowed to see. Not a disclosure nicety: an
+     answer without its source is the failure this mode exists to prevent, so
+     it is open by default and the text is never re-rendered. */
+  .used { margin-top: 10px; font-size: 13px; }
+  .used > summary { cursor: pointer; color: var(--muted); }
+  .used blockquote { margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--accent);
+    background: var(--user-bg); border-radius: 0 8px 8px 0; white-space: pre-wrap; }
+  .used .where { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px;
+    text-transform: uppercase; letter-spacing: 0.06em; }
+  .note { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
   #settings label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
   #system { width: 100%; min-height: 76px; resize: vertical; }
   #preset { width: 100%; max-width: 100%; }
@@ -172,7 +195,7 @@
   <span class="dot" id="dot"></span>
   <h1>sketchgpt</h1>
   <select id="model" title="Model"></select>
-  <select id="output" aria-label="Output mode"><option value="chat">Chat</option><option value="sketch">Sketch</option></select>
+  <select id="output" aria-label="Output mode"><option value="chat">Chat</option><option value="sketch">Sketch</option><option value="work">Work</option></select>
   <span id="status">checking…</span>
   <span id="mode" hidden></span>
   <span class="spacer"></span>
@@ -205,6 +228,23 @@
   </div>
 </div>
 
+<div id="work"><div class="wrap">
+  <div class="line">
+    <label for="file">Your text</label>
+    <input type="file" id="file">
+    <button type="button" id="clear-doc" hidden>Remove</button>
+    <span id="doc">Nothing loaded — paste below or choose a file.</span>
+  </div>
+  <textarea id="paste" placeholder="…or paste the message, note or document here."></textarea>
+  <div class="line">
+    <label for="task">Do what?</label>
+    <select id="task"></select>
+    <select id="opt" hidden></select>
+    <span class="spacer"></span>
+    <span id="docnote" style="color:var(--muted);font-size:12px">Nothing is uploaded, and nothing is saved.</span>
+  </div>
+</div></div>
+
 <div id="log"><div class="wrap" id="wrap">
   <div class="card" id="card">
     <h2>Run the model in this tab</h2>
@@ -228,6 +268,8 @@
 
 <script type="module">
 import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough } from "./sketch.mjs";
+import { TASKS, taskById, planWorkTurn, splitPassages, buildIndex, wordCount,
+         rejectFile, rejectText, fmtBytes, article, MAX_FILE_BYTES, FILE_ACCEPT } from "./work.mjs";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
 
@@ -388,6 +430,14 @@ let CTX = 4096;
 
 let sketchHistory = [];
 let engine = null, history = [], generating = false, stopFlag = false;
+
+// ---- Work mode state -----------------------------------------------------
+// The document lives here and nowhere else. It is never written to
+// localStorage, never sent anywhere, and dropped when the tab closes — which
+// is the entire reason a 0.6B model is an acceptable thing to read a tenancy
+// agreement with. `save()` below must never learn about it.
+let workHistory = [];
+let doc = { name: "", text: "", passages: [], index: null };
 
 // ---- Where the weights get stored ---------------------------------------
 // WebLLM defaults to the Cache API. On some phones that fails in a way that is
@@ -790,7 +840,7 @@ function syncBadge() {
   // Sketch mode does not send the chat prompt, so a badge that just says
   // "custom prompt" would claim an effect it no longer has.
   $("mode").textContent = (MODE_LABEL[name] || "") +
-    ($("output").value === "sketch" ? " — not used for sketches" : "");
+    ($("output").value === "chat" ? "" : " — not used in this mode");
 }
 
 function applyPreset(name) {
@@ -824,7 +874,7 @@ function restore() {
     $("temp").value = c.temp != null ? c.temp : 0.7;
     $("single").checked = !!c.single;
     $("think").checked = !!c.think;
-    $("output").value = c.output === "sketch" ? "sketch" : "chat";
+    $("output").value = ["sketch", "work"].includes(c.output) ? c.output : "chat";
     $("hint").textContent = HINTS[$("preset").value] || "";
     syncBadge();
   } else {
@@ -855,7 +905,124 @@ restore();
 // Fetch the sketch renderer as soon as the mode is chosen, so the first
 // drawing is not waiting on a CDN after the model has already answered.
 const warmRough = () => { if ($("output").value === "sketch") loadRough(ROUGH); };
-$("output").addEventListener("change", () => { save(); fitPlaceholder(); warmRough(); syncBadge(); });
+$("output").addEventListener("change", () => {
+  save(); fitPlaceholder(); warmRough(); syncBadge(); syncWork();
+});
+
+// ---- Work mode -----------------------------------------------------------
+// The tray that holds your text, and the task picker. The rules this UI has to
+// keep are in web/work.mjs; the only one it owns is that the file never leaves
+// the tab.
+$("file").accept = FILE_ACCEPT;
+
+for (const t of TASKS) {
+  let group = $("task").querySelector(`optgroup[label="${t.group}"]`);
+  if (!group) {
+    group = document.createElement("optgroup");
+    group.label = t.group;
+    $("task").appendChild(group);
+  }
+  const o = document.createElement("option");
+  o.value = t.id; o.textContent = t.label;
+  group.appendChild(o);
+}
+$("task").value = "rewrite";
+
+function currentTask() { return taskById($("task").value); }
+
+function syncTask() {
+  const t = currentTask();
+  const sel = $("opt");
+  sel.hidden = !t || !t.options;
+  if (t && t.options) {
+    sel.innerHTML = "";
+    sel.setAttribute("aria-label", t.options.label);
+    for (const v of t.options.values) {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = t.options.label === "As a" ? `As ${article(v)} ${v}` : `${t.options.label} ${v}`;
+      sel.appendChild(o);
+    }
+  }
+  fitPlaceholder();
+}
+
+function syncWork() {
+  $("work").classList.toggle("open", $("output").value === "work");
+  syncTask();
+}
+
+// Indexing is linear in words and runs on whatever device is here, so it
+// happens once per document rather than once per question.
+function setDoc(name, text) {
+  const bad = rejectText(text);
+  if (bad) { showDoc(bad, true); return false; }
+  doc.name = name;
+  doc.text = text;
+  doc.passages = splitPassages(text);
+  doc.index = buildIndex(doc.passages);
+  workHistory = [];
+  showDoc();
+  return true;
+}
+
+function dropDoc() {
+  doc = { name: "", text: "", passages: [], index: null };
+  workHistory = [];
+  $("file").value = "";
+  showDoc();
+}
+
+function showDoc(msg, bad) {
+  const el = $("doc");
+  el.classList.toggle("bad", !!bad);
+  $("clear-doc").hidden = !doc.text;
+  if (msg) { el.textContent = msg; return; }
+  if (!doc.text) { el.textContent = "Nothing loaded — paste below or choose a file."; return; }
+  const words = wordCount(doc.text);
+  const fits = doc.passages.length <= 1 || words < CTX / 2;
+  el.innerHTML = `<b>${esc(doc.name || "pasted text")}</b> — ${words.toLocaleString()} words, ` +
+    `${doc.passages.length} passage${doc.passages.length === 1 ? "" : "s"}` +
+    (fits ? "" : ` · too long to read whole at ${CTX} tokens, so questions are answered from passages`);
+}
+
+$("file").addEventListener("change", async () => {
+  const file = $("file").files[0];
+  if (!file) return;
+  // Checked before a byte is read: an oversized file costs nothing to refuse.
+  const bad = rejectFile(file);
+  if (bad) { $("file").value = ""; showDoc(bad, true); return; }
+  try {
+    const text = await file.text();
+    if (setDoc(file.name, text)) $("paste").value = "";
+  } catch (e) {
+    $("file").value = "";
+    showDoc("Could not read that file: " + (e && e.message || e), true);
+  }
+});
+
+$("clear-doc").addEventListener("click", () => { $("paste").value = ""; dropDoc(); });
+
+// Pasted text is the same thing as a file, and gets the same cap. Debounced:
+// indexing on every keystroke of a long paste is the one way this can feel slow.
+let pasteTimer = null;
+$("paste").addEventListener("input", () => {
+  clearTimeout(pasteTimer);
+  pasteTimer = setTimeout(() => {
+    const text = $("paste").value;
+    if (!text.trim()) { if (!$("file").files[0]) dropDoc(); return; }
+    const bytes = new Blob([text]).size;
+    if (bytes > MAX_FILE_BYTES) {
+      showDoc(`That is ${fmtBytes(bytes)} of text. The limit is ${fmtBytes(MAX_FILE_BYTES)}.`, true);
+      return;
+    }
+    $("file").value = "";
+    setDoc("", text);
+  }, 250);
+});
+
+$("task").addEventListener("change", syncTask);
+syncWork();
 warmRough();
 
 // Keep the page itself available with no signal. The weights already
@@ -1100,16 +1267,102 @@ function splitThink(raw) {
     : { think: raw.slice(open + 7, close), answer: raw.slice(close + 8) };
 }
 
+// ---- Work mode rendering -------------------------------------------------
+// The passages an answer was allowed to see, shown with it and never instead
+// of it. docs/work-mode.md is the argument for this being non-optional: a
+// small model's wrong answer is confident and well-formed, so the only thing
+// that makes it checkable is the text it came from, in the person's own words,
+// on the same screen. Inserted as textContent — a document the page did not
+// write is never parsed as markup.
+function showUsed(el, passages, label, open = true) {
+  if (!passages || !passages.length) return;
+  const d = document.createElement("details");
+  d.className = "used";
+  d.open = open;
+  const s = document.createElement("summary");
+  s.textContent = label || `The ${passages.length} passage${passages.length === 1 ? "" : "s"} this came from`;
+  d.appendChild(s);
+  for (const p of passages) {
+    const q = document.createElement("blockquote");
+    if (p.heading) {
+      const w = document.createElement("span");
+      w.className = "where";
+      w.textContent = p.heading;
+      q.appendChild(w);
+    }
+    q.appendChild(document.createTextNode(p.text));
+    d.appendChild(q);
+  }
+  el.appendChild(d);
+}
+
+// Put the top of a message at the top of the log, rather than its bottom at
+// the bottom. `msg` is the element the body lives in.
+function scrollToAnswer(body) {
+  const msg = body.closest(".msg") || body;
+  const log = $("log");
+  // Measured from live rects rather than offsetTop: nothing between .msg and
+  // #log is positioned, so offsetTop is relative to the body and carries the
+  // header's height with it.
+  log.scrollTop += msg.getBoundingClientRect().top - log.getBoundingClientRect().top - 12;
+}
+
+function showNote(el, text) {
+  const p = document.createElement("p");
+  p.className = "note";
+  p.textContent = text;
+  el.appendChild(p);
+}
+
 $("form").addEventListener("submit", async e => {
   e.preventDefault();
   const text = $("input").value.trim();
-  if (!text || !engine || generating) return;
+  if (!engine || generating) return;
+
+  const outMode = $("output").value;
+  const sketching = outMode === "sketch";
+  const working = outMode === "work";
+  // Work mode can run on a document alone — "Rewrite it" needs no sentence
+  // typed into the composer. Every other mode needs something to answer.
+  if (!text && !working) return;
   $("input").value = ""; $("input").style.height = "auto";
 
-  const sketching = $("output").value === "sketch";
-  const conversation = sketching ? sketchHistory : history;
-  addMsg("user", text);
-  conversation.push({ role: "user", content: text });
+  const conversation = sketching ? sketchHistory : working ? workHistory : history;
+
+  // Work mode decides BEFORE the model exists whether the model may run at
+  // all, and on what. Three of the five answers it can give involve no
+  // generation: see planWorkTurn.
+  let plan = null;
+  if (working) {
+    const task = currentTask();
+    plan = planWorkTurn({
+      task, source: doc.text, query: text,
+      option: $("opt").hidden ? "" : $("opt").value,
+      index: doc.index, passages: doc.passages, ctx: CTX, history: workHistory
+    });
+    addMsg("user", (task ? task.label : "Work") + (text ? " — " + text : ""));
+    if (plan.mode !== "whole" && plan.mode !== "passages") {
+      // Nothing is generated. A contents list is passages, verbatim; a refusal
+      // is a sentence about what is missing. Neither is a model's opinion.
+      const stop = addMsg("assistant", "");
+      showNote(stop.body, plan.note);
+      showUsed(stop.body, plan.used, plan.mode === "contents"
+        ? `Where things are — ${plan.used.length} passage${plan.used.length === 1 ? "" : "s"}, unedited`
+        : "The closest passages");
+      if (plan.used && plan.used.length > 1) scrollToAnswer(stop.body);
+      else $("log").scrollTop = $("log").scrollHeight;
+      setStatus("ready — running locally", "on");
+      $("input").focus();
+      return;
+    }
+    // Role-play is the only task with a conversation, and what it stores is
+    // the raw line typed — not the built prompt, which carries the whole
+    // source with it and would put another copy in the window every turn.
+    if (task.multiTurn) conversation.push({ role: "user", content: text });
+  } else {
+    addMsg("user", text);
+    conversation.push({ role: "user", content: text });
+  }
   const out = addMsg("assistant", "");
 
   generating = true; stopFlag = false;
@@ -1129,15 +1382,16 @@ $("form").addEventListener("submit", async e => {
     // leftover "answer concisely in plain English" silently fought the drawing
     // instructions on every sketch, and the only visible sign was a badge in
     // the header. Say the style in the request instead.
-    const plan = sketching ? planSketchTurn(conversation, CTX) : null;
+    const sketchPlan = sketching ? planSketchTurn(conversation, CTX) : null;
     // One-at-a-time sends just this turn: for classification, earlier turns
     // bias the answer rather than help it. Clone so wrapping cannot corrupt
     // the stored history.
-    let base = plan ? plan.messages
+    let base = sketchPlan ? sketchPlan.messages
+      : working ? plan.messages
       : ($("single").checked ? [conversation[conversation.length - 1]] : conversation)
           .map(m => ({ ...m }));
 
-    if (!sketching) {
+    if (!sketching && !working) {
       if (preset && preset.wrap && base.length && base[base.length - 1].role === "user") {
         base[base.length - 1].content = preset.wrap(base[base.length - 1].content);
       }
@@ -1159,25 +1413,47 @@ $("form").addEventListener("submit", async e => {
     if (sketching) {
       // Never ask for more room than is left: generation that reaches the
       // context edge stops silently, mid-drawing.
-      req.max_tokens = plan.maxTokens;
+      req.max_tokens = sketchPlan.maxTokens;
       req.temperature = 0.2;
       req.response_format = { type: "json_object", schema: SKETCH_SCHEMA };
+    } else if (working) {
+      // Same rule, same reason: the plan already costed the prompt, and the
+      // document in it is the part that makes the window tight.
+      req.max_tokens = plan.maxTokens;
+      req.temperature = currentTask().temp;
     } else if (cap) req.max_tokens = cap;
 
     let stream;
     try {
       stream = await engine.chat.completions.create(
-        preset && preset.grammar
+        !working && preset && preset.grammar
           ? { ...req, response_format: { type: "grammar", grammar: preset.grammar } }
           : req);
     } catch (e) {
       // Grammar support varies by model build; fall back rather than break chat.
-      if (!(preset && preset.grammar)) throw e;
+      if (working || !(preset && preset.grammar)) throw e;
       console.warn("grammar constraint rejected, retrying without:", e.message);
       stream = await engine.chat.completions.create(req);
     }
     for await (const chunk of stream) {
-      if (stopFlag) { await engine.interruptGenerate(); break; }
+      // NEVER `break` out of this loop. WebLLM acquires a per-model lock in
+      // chat.completions.create() and releases it inside the async generator,
+      // at the end of the generator body — there is no try/finally around it
+      // (web-llm 0.2.85, asyncGenerate). Breaking calls the generator's
+      // .return(), which terminates it at the suspended yield, so that release
+      // never runs and CustomLock.acquired stays true for the life of the page.
+      // The NEXT create() then awaits a lock nobody will ever release: the
+      // message hangs on "generating…" for ever, with no error, and Stop does
+      // nothing because the generator that reads interruptSignal has not
+      // started. One Stop press bricked chat.
+      //
+      // So signal and keep draining. interruptGenerate() sets the flag the
+      // generator's own loop checks; it calls pipeline.triggerStop(), leaves
+      // the loop normally and releases the lock, which ends this for-await
+      // within a token or two. Re-asserting it on every chunk also covers the
+      // race where the generator body starts AFTER the click and resets the
+      // signal to false on its way in.
+      if (stopFlag) { await engine.interruptGenerate(); continue; }
       raw += chunk.choices?.[0]?.delta?.content || "";
       const { think, answer } = splitThink(raw);
       if (think && !sketching) { out.think.style.display = ""; out.think.textContent = think.trim(); }
@@ -1200,8 +1476,27 @@ $("form").addEventListener("submit", async e => {
       onEdit: edited => { const last = conversation[conversation.length - 1];
         if (last && last.role === "assistant") last.content = edited; } });
     else await paint(out.body, done);
-    $("log").scrollTop = $("log").scrollHeight;
-    conversation.push({ role: "assistant", content: done });
+    if (working) {
+      if (plan.note) showNote(out.body, plan.note);
+      // Retrieved passages open, because the person did not choose them and
+      // cannot check the answer without reading them. A whole short document
+      // is collapsed: it is already sitting in the tray above — unless it came
+      // from a file, in which case this is the only place it is visible.
+      showUsed(out.body, plan.used,
+        plan.mode === "passages"
+          ? `The ${plan.used.length} passage${plan.used.length === 1 ? "" : "s"} this answer could see`
+          : `The text this answer was given`,
+        plan.mode === "passages");
+    }
+    // Scrolling to the bottom is right for a chat turn and wrong here: several
+    // open passages below an answer push the answer itself off the top, so the
+    // last thing written is the last thing anybody reads. Put the answer at the
+    // top of the view and let the passages follow it.
+    if (working && plan.used && plan.used.length > 1) scrollToAnswer(out.body);
+    else $("log").scrollTop = $("log").scrollHeight;
+    // Only role-play keeps a conversation; every other task is one-shot, and a
+    // history nobody reads is a context window nobody gets back.
+    if (!working || currentTask().multiTurn) conversation.push({ role: "assistant", content: done });
     setStatus("ready — running locally", "on");
   } catch (err) {
     out.body.textContent = sketching
@@ -1219,7 +1514,10 @@ $("form").addEventListener("submit", async e => {
       details.append(summary, pre);
       out.body.append(details);
     }
-    conversation.pop();
+    // Undo the turn — but only if this turn pushed one. Most work tasks are
+    // one-shot and pushed nothing, and popping then eats the last line of a
+    // role-play that happened earlier in the same mode.
+    if (!working || currentTask().multiTurn) conversation.pop();
     setStatus(stopFlag ? "ready — running locally" : "error", stopFlag ? "on" : "err");
   } finally {
     generating = false;
@@ -1250,6 +1548,11 @@ const PLACEHOLDER_SHORT = "Send a message…";
 function fitPlaceholder() {
   const el = $("input");
   if ($("output").value === "sketch") { el.placeholder = "Describe a sketch…"; return; }
+  if ($("output").value === "work") {
+    const t = currentTask();
+    el.placeholder = t ? t.ask : "What would you like done?";
+    return;
+  }
   if (!matchMedia("(pointer: fine)").matches) { el.placeholder = PLACEHOLDER_SHORT; return; }
   if (el.value || !$("foot").classList.contains("on")) return;  // nothing to measure
   el.placeholder = PLACEHOLDER_FULL;

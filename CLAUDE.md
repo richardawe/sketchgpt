@@ -20,6 +20,8 @@ public on X. The lab's thesis is at the bottom.
 web/browser.html          in-browser inference (WebGPU via WebLLM) — the public page
 web/index.html            local chat against Ollama — development only
 web/sketch.mjs            sketch format, context budget, SVG rendering
+web/work.mjs              Work mode — file cap, passages, BM25 retrieval, 17 tasks,
+                          and the rule deciding whether the model runs at all
 web/stamps.mjs            generated Lucide path data — never edit by hand
 web/rough.mjs             vendored rough.js 4.6.6 (MIT) — verbatim, keep it so
 web/sw.js                 service worker — the page's own offline cache
@@ -31,7 +33,7 @@ scripts/token-budget.mjs  measure sketch cost against Qwen3's real tokenizer
 scripts/sketch-bench.mjs  run the real prompt through real models, judged by the real parser
 scripts/record-demo.mjs   record clips of sketch mode, one per claim (Playwright + ffmpeg)
 scripts/grounding-bench.mjs  does a small model invent answers about a document? (it does)
-scripts/retrieval-bench.mjs  what an embedder alone can do with a document (a lot)
+scripts/retrieval-bench.mjs  BM25 (shipped) vs an embedder, same document, same queries
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
@@ -78,12 +80,34 @@ serves **4-bit**, and that gap explains most surprises.
 | **For documents, the passage is the answer** | The consequence of the row above, and the design rule for Work mode. The model **locates**, never **concludes**; the page shows the paragraph and the reader judges. Being shown the wrong paragraph is visible; being told the wrong thing confidently is silent — the same reason sketch mode ships and the mood tagger was deleted. An embedder cannot hallucinate, so retrieval alone is the load-bearing layer and needs no chat model. **Never summarise a whole document at this size**: there is no passage to check a summary against, so the failure is silent by construction. |
 | **An embedder cannot hallucinate because it cannot speak** | Asked to write prose, `snowflake-arctic-embed:s` answers *"does not support chat"*. No decoder, no invention. Measured (`scripts/retrieval-bench.mjs`, one policy document, six queries): **4 of 4 answerable queries put the right sentence in the top 3, three of them first.** Better still, the scores separate — answerable 0.642–0.798, not-in-the-document 0.534–0.574 — so **a threshold near 0.61 produces the refusal the chat models could not**. Qwen3-0.6B invented answers to 3 of 5 absent questions; the embedder just scores low and the page declines. Small sample; treat the threshold as a direction. |
 | **"Summarise" is two different features and only one is safe** | *Writing* a summary needs a decoder and has nothing to check it against — forbidden at this size. *Selecting* one needs no generation: extractive summarisation picks sentences the document already contains, every word verbatim. Safe, and **measured as not very good** — centrality chose the bank-holiday note and the cleaning rota while dropping every response time, because it rewards sentences that sound like the document's average and specific number-carrying ones read as outliers. Visible failure, so nobody is misled, but not worth shipping alone. **The useful version of summarise is query-anchored**: "summarise this" is the weakest possible query, which is why it is the hardest to serve. Ship the question box, not the summary button. |
+| **BM25 retrieves as well as the embedder here, and cannot produce its refusal** | Same document, same six queries as `retrieval-bench.mjs`: **BM25 4/4 in the top 3, 3 of them first — identical to `snowflake-arctic-embed:s`**, for no download, no second engine in the tab and no co-residency gate. The difference is entirely the decline. The embedder's scores separate (answerable 0.642–0.798, unanswerable max 0.574); BM25's coverage does not separate **at all** — "Who owns the building?" scores 0.413 against a document full of the word "building" that never says who owns it, level with a query the document answers. **Lexical overlap cannot tell "topic absent" from "topic present, question unanswered."** So the shipped page declines only on zero overlap, which is true by construction, and otherwise shows the passages. A guessed `COVERAGE_FLOOR = 0.45` was written first and the measurement killed it before it shipped. |
+| **No stemmer merges "complain" and "complaint"** | "How do I complain?" found nothing in a document that answers it twice, because the document says "complaint" and "complaints". Those are different words, not inflections — Porter does not merge them either. A 5-character prefix bucket turned that MISS into a hit and changed no other result. Reach for a prefix index before a deeper stemmer. |
+| **Stemming leaks into the UI** | "something" stems to "someth", and the page was about to tell people `no match for "someth"`. Anything shown back to a person has to be their own spelling; `terms()` carries a stem→word map for exactly this. |
+| **A cap is not about bandwidth** | Nothing is uploaded, so the 512 KB file cap is about memory, index time, and honesty: only a few hundred tokens of it ever reach the model, and a page that swallows a 40 MB log implies otherwise. Checked against `file.size` **before** a byte is read. |
+| **Six passages, not as many as fit** | The window held twelve and they pushed the answer off the top of a phone — at which point nobody reads the passages, which is the entire design. The bench says the right sentence is in the top 3. Also: scroll the *top* of a work answer into view, not the bottom of the message; the default chat scroll puts the last passage on screen and hides the answer. |
 | **The page corrects the model, never the person** | The commands panel is editable — change a number, press Redraw. `spreadStamps()` is skipped on an edit: it exists to fix a model that cannot place things, and someone who types two coordinates on purpose means them. The same rule decides every one of these behaviours, and it is the line to hold if anything else ever tidies user input. |
 | **The page was throwing away the only evidence** | That one circle is indistinguishable from a misparse without the model's raw output, and nothing in the UI showed it. Anything shipped to a device nobody here can reach needs its raw output one tap away, or every report is a guess. |
 | **A chat history of drawings is unbounded and does not need to be** | Sketch history grew by a whole drawing per turn. Carrying only the previous drawing and the instruction that produced it makes the prompt **O(1) in turns** — measured flat at 391 tokens from turn 2 onward at 4096, 2048 and 1024 context. A revision needs a seed, not a transcript. |
 
 ### Browser gotchas already fixed
 
+- **Breaking out of a WebLLM stream leaks its lock and bricks chat.**
+  `chat.completions.create()` acquires a per-model `CustomLock` *before*
+  returning the async generator, and the generator releases it at the end of
+  its own body — with **no try/finally around it** (0.2.85, `asyncGenerate`).
+  `break` inside a `for await` calls the generator's `.return()`, terminating
+  it at the suspended yield, so the release never runs and `acquired` stays
+  true for the life of the page. The next `create()` awaits a lock nobody will
+  release. The symptom is not "Stop does nothing": Stop looks like it works —
+  the text halts, the button hides, Send comes back — and then **the next
+  message hangs on "generating…" for ever with no error**, and Stop then really
+  does nothing, because the generator that reads `interruptSignal` never
+  started. One press bricked chat. Signal and keep draining instead
+  (`interruptGenerate()` then `continue`); the generator's own loop sees the
+  flag, calls `triggerStop()`, exits normally and releases. Re-assert on every
+  chunk, because `asyncGenerate` sets `interruptSignal = false` on its way in
+  and a click that lands before the body starts is otherwise lost.
+  `tests/stop.mjs` reproduces the lock discipline and fails against the `break`.
 - **A `load` listener never fires in a module that top-level awaits.** The
   service-worker registration was inside `addEventListener("load", …)`, but
   this module awaits its WebLLM import at the top level, so `load` fires while
@@ -255,9 +279,18 @@ practical fine-tuning.
   "this already exists" reply as a gotcha.
 - **Prefer deleting a feature to shipping a confidently wrong one.** The mood
   tagger deletion is more credible than the app.
-- Playwright: use `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` with
-  `--no-sandbox`; never run `playwright install`. The proxy CA blocks loading
-  live HTTPS pages in Chromium — fetch with curl and serve locally instead.
+- Playwright: `npm i --no-save --prefix <scratch> playwright` with
+  `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, then run the checks with
+  `PLAYWRIGHT_MODULE=<scratch>/node_modules/playwright/index.mjs` and
+  `SKETCH_CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
+  `tests/browser.mjs` is the single launcher that reads those. The installed
+  Playwright wants a chromium revision the image does not have, which is why
+  `SKETCH_CHROME` exists; never run `playwright install`. The proxy CA blocks
+  loading live HTTPS pages in Chromium — fetch with curl and serve locally.
+- **A test that passes before the fix is not a test.** Every refusal in Work
+  mode was mutation-checked (flip the guard, watch it fail) and `tests/stop.mjs`
+  was run against the old `break` before being trusted. This project has
+  already shipped one test that set up the thing it was verifying.
 
 ---
 
@@ -315,8 +348,14 @@ practical fine-tuning.
   SwiftShader could not reach. Budget against floor + that workspace (42 MB
   SmolLM2, 92 MB Llama-3.2-1B, 162 MB Qwen3-0.6B, 410 MB Qwen3.5-0.8B) until a
   real device says otherwise.
-- **RAG never started**, but it is now specified rather than a wish — see
-  `docs/work-mode.md`. No GPU needed, so it remains the realistic next build.
+- **Work mode is built and shipped — Phase 3's Layer 1 and a scoped Layer 2.**
+  `web/work.mjs` + the Work tab: a 512 KB file cap, passage splitting, BM25
+  retrieval, 17 tasks, and a planner that decides *before the model runs*
+  whether it runs at all. Four browser/node test files cover it, including
+  mutation-checked refusals. **What is untested is everything a real device and
+  a real document would say**: no phone has opened it, and the only documents
+  it has seen are the bench's synthetic policy and the tests' fixtures. The
+  measured retrieval numbers are one short document and six queries.
 - **Phase 4 got much cheaper and the roadmap has not absorbed it.** Ollama on
   CPU in this sandbox means capability-table work no longer needs a GPU or a
   round trip to a phone. `sketch-bench.mjs` is the harness and takes any Ollama
@@ -333,18 +372,28 @@ practical fine-tuning.
   still entirely unwritten: **a visitor draws, sees what their hardware
   managed, and the lab learns nothing.** The page already computes the answer
   per device and throws it away. No datapoint, no public matrix.
-- **Work mode is Phase 3, and it is gated on one untested thing.** Read
-  `docs/work-mode.md` before any RAG work — the naive "small model reads your
-  document" design is measured and fails. The gate: **can two WebLLM engines be
-  resident in one tab?** WebLLM 0.2.85 exposes `embeddings` and has no
-  singleton guard, the arithmetic fits (239 MB embedder + 376 MB chat model vs
-  a 900 MB budget), and nobody has run it. Test that before writing any UI.
-- **Retrieval has first numbers and they are good** — 4/4 top-3, with a usable
-  confidence gap for declining (`scripts/retrieval-bench.mjs`). But that is one
-  short synthetic policy and six queries. **Length, headings, tables and a
-  document whose wording does not match the question are all untested**, and
-  they are what will break it. Run it over something real before trusting the
-  0.61 threshold.
+- **The two-engine gate is still untested — and no longer blocking.** "Can two
+  WebLLM engines be resident in one tab?" was the reason not to write Work mode
+  UI. Retrieving lexically removed the dependency: there is no second engine, so
+  the gate now only governs the embedder *upgrade*. WebLLM 0.2.85 exposes
+  `embeddings` and has no singleton guard, the arithmetic fits (239 + 376 MB
+  against a 900 MB budget), and nobody has run it. `scripts/vram-probe/` can
+  answer the allocation half without a GPU.
+- **Retrieval has first numbers for both layers, and the shipped one cannot
+  decline.** BM25 ties the embedder on hit rate (4/4 top-3, 3 first) and loses
+  the graded refusal entirely — see the findings table. One short synthetic
+  policy, six queries. **Length, headings, tables and a document whose wording
+  does not match the question are all untested**, and they are what will break
+  it. Run it over something real before trusting any of it.
+- **The embedder is now an upgrade with a known price, not a prerequisite.**
+  Adding `snowflake-arctic-embed-s-b4` buys back the "this document does not
+  cover that" refusal for 67 MB of download, 239 MB of GPU reserve, and the
+  still-untested co-residency gate below. `findPassages` in `web/work.mjs` is
+  the seam it plugs into — swap the scorer, keep the planner.
+- **Work mode's own untested list**, in rough order of what will bite first:
+  PDF (named as unsupported rather than mangled), a document whose headings the
+  splitter does not recognise, role-play over many turns at a 1024 context, and
+  whether the "contents list" reads as useful or as a shrug on a real document.
 
 ---
 

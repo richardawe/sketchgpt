@@ -62,6 +62,55 @@ async function embed(input) {
 const dot = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0);
 const cos = (a, b) => dot(a, b) / (Math.sqrt(dot(a, a)) * Math.sqrt(dot(b, b)));
 
+// ---- 0. the layer that actually ships --------------------------------------
+// web/work.mjs retrieves with BM25, not with an embedder: no download, no
+// second engine in the tab, no untested co-residency gate. It shares the
+// property that matters — it returns existing text or nothing — so the fair
+// question is what the embedder buys over it. Same document, same queries.
+// This part needs no Ollama, so it always runs.
+const { buildIndex, findPassages } = await import("../web/work.mjs");
+
+const lexIndex = buildIndex(SENTENCES.map((s, i) => ({ i, text: s, start: 0, end: 0, heading: "" })));
+let lexHits = 0, lexScored = 0, lexFirst = 0;
+const lexHitCov = [], lexMissCov = [], lexEmpty = [];
+console.log("BM25 (web/work.mjs) — what the page does today:");
+for (const [q, want] of QUERIES) {
+  const { hits, coverage, missing } = findPassages(lexIndex, q, { limit: 3 });
+  const top = hits.map(h => h.passage.i);
+  if (want === -1) {
+    lexMissCov.push(coverage);
+    if (!hits.length) lexEmpty.push(q);
+    console.log(`  ${coverage.toFixed(3)}  ${hits.length ? "(nothing to find)" : "DECLINED        "}  ${q}`);
+  } else {
+    lexScored++;
+    if (top.includes(want)) lexHits++;
+    if (top[0] === want) lexFirst++;
+    lexHitCov.push(coverage);
+    console.log(`  ${coverage.toFixed(3)}  ${top[0] === want ? "HIT@1" : top.includes(want) ? "hit@3" : "MISS "}` +
+      `             ${q}${missing.length ? `   (no match for ${missing.map(m => `"${m}"`).join(", ")})` : ""}`);
+  }
+}
+const lexLowHit = Math.min(...lexHitCov), lexHighMiss = Math.max(...lexMissCov);
+console.log(`\n  ${lexHits}/${lexScored} found the right sentence in the top 3, ${lexFirst} of them first.`);
+console.log(`  Coverage on answerable queries ${lexLowHit.toFixed(3)}–${Math.max(...lexHitCov).toFixed(3)};` +
+  ` unanswerable ${Math.min(...lexMissCov).toFixed(3)}–${lexHighMiss.toFixed(3)}.`);
+console.log(lexLowHit > lexHighMiss
+  ? `  The gap is real, so coverage could be thresholded.`
+  : `  NO GAP — coverage cannot be thresholded. An unanswerable query scores
+  ${lexHighMiss.toFixed(3)} while a query the document answers scores ${lexLowHit.toFixed(3)}, because
+  lexical overlap cannot tell "topic absent" from "topic present, question
+  unanswered". So the page declines only where overlap is zero (${lexEmpty.length}/${lexMissCov.length} here)
+  and otherwise shows the passages and lets the reader judge. This is the
+  one thing the embedder below buys that BM25 cannot.\n`);
+
+// ---- the embedder, for comparison ------------------------------------------
+const up = await fetch(`${HOST}/api/tags`).then(r => r.ok).catch(() => false);
+if (!up) {
+  console.log(`No Ollama at ${HOST} — skipping the embedder comparison.`);
+  console.log(`  ollama pull ${MODEL} && node scripts/retrieval-bench.mjs`);
+  process.exit(0);
+}
+
 // ---- 1. it cannot write ----------------------------------------------------
 const chat = await fetch(`${HOST}/api/chat`, { method: "POST",
   headers: { "content-type": "application/json" },

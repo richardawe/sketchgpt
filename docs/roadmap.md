@@ -40,7 +40,7 @@ Reviewed against what is built, not against what was planned.
 |---|---|---|
 | 1 Foundation | **shipped** | Template, Pages deploy, device-aware model picking. Plus offline that now genuinely works — `web/sw.js`, checked by `tests/offline.mjs` with the network cut. |
 | 2 Sketch mode | **shipped** | Reassigned: sketch mode *is* Phase 2. It is the thing people open, and it demonstrates on the visitor's own hardware what their device can do. The device-matrix half — **no visitor leaves a datapoint, there is no public matrix** — is still unwritten and is what remains of the original Phase 2. |
-| 3 Work mode | **planned, researched, gated** | RAG with a purpose: read a document on your own device. The naive version does not survive measurement — see [`work-mode.md`](work-mode.md). Blocked on one untested question: can two WebLLM engines share a tab? |
+| 3 Work mode | **shipped, unproven on a device** | Built: `web/work.mjs` and the Work tab — 512 KB file cap, passage splitting, BM25 retrieval, 17 tasks, and a planner that decides *before the model runs* whether it runs at all. The gate ("can two WebLLM engines share a tab?") was sidestepped rather than answered: retrieving lexically means there is no second engine, and it now governs only the embedder upgrade. **No phone has opened it and no real document has been through it** — every number is node, a stubbed browser, or Ollama on CPU. |
 | 4 Capability table | **advanced by accident** | Sketch mode produced eight new measured rows (see `CLAUDE.md` and `customising.md`) and, more usefully, **`scripts/sketch-bench.mjs` is a working practitioner eval harness**: real prompt, real models, judged by the real parser, on any Ollama tag. That is the Phase 4 machinery, built as a side effect. |
 | 5 One vertical | **not started** | One input though: "field work without signal" is the row where offline is the requirement, and offline is now real rather than claimed. |
 | 6 Body of work | **accumulating** | Four measurement tools now exist — `vram-probe/`, `token-budget.mjs`, `sketch-bench.mjs`, `record-demo.mjs`. Nobody has packaged them, but they are the shape Phase 6 describes. |
@@ -102,7 +102,7 @@ Air — that grows without further work.
 **Content angle:** "tell me your phone, I'll tell you what it runs." The
 engagement loop is built into the product.
 
-## Phase 3 — Work mode *(weeks 4–8, planned)*
+## Phase 3 — Work mode *(shipped; unproven on a real device)*
 
 A third mode beside Chat and Sketch: open a document, find your way around it,
 nothing uploaded. Full plan and the measurements behind it:
@@ -128,11 +128,43 @@ visible; being told the wrong thing is not. Layer 1 needs no chat model at all
 — an embedder cannot hallucinate — and is the whole product if the rest never
 ships.
 
-Blocked on one untested question: whether two WebLLM engines can be resident in
-one tab. On arithmetic it fits — `arctic-embed-s-b4` (239 MB reserve, 67 MB
-download) plus SmolLM2-360M is ~615 MB against a 900 MB phone budget — and
-WebLLM 0.2.85 does expose `embeddings` with no singleton guard. Nobody has run
-it. See `mobile-models.md`, Stage 5.
+### What shipped
+
+The blocker was the wrong shape. "Can two WebLLM engines be resident in one
+tab?" gated the *embedder*, not the mode — so the build retrieves with BM25
+instead, and the question moved from blocking to optional. Measured on the same
+document and queries as the embedder, **BM25 matches it on hit rate (4/4 in the
+top 3, 3 first) for no download and no second engine.**
+
+What it does not match is the refusal. The embedder's scores separate
+answerable queries from unanswerable ones; BM25's do not separate at all
+(*"Who owns the building?"* scores level with a query the document answers,
+because the document is full of the word "building"). So the page declines only
+where a question shares no word with the document, and otherwise shows the
+passages and lets the reader judge — the visible failure, which is the one this
+project ships. A guessed threshold was written, measured, and deleted before it
+shipped.
+
+The other thing the build added is the part people will actually use: seventeen
+tasks over text you supply — draft, rewrite, shorten, expand, summarise,
+explain, reply, brainstorm, structure, organise, creative writing, questions,
+critique, role-play, plan, translate, decide. All of them closed-world (work
+only from the supplied text, add no fact that is not in it), all of them shown
+with the text they were allowed to see.
+
+### What is still open
+
+- **Nobody has opened it on a phone.** Same gap sketch mode had, and sketch
+  mode took four rounds on a real device to become usable. Expect the same.
+- **Retrieval is measured on one short synthetic policy.** Length, headings,
+  tables and a document whose wording does not match the question are what will
+  break it.
+- **The embedder upgrade** buys back the graded refusal for 67 MB of download,
+  239 MB of GPU reserve, and answering the co-residency question at last —
+  `arctic-embed-s-b4` plus SmolLM2-360M is ~615 MB against a 900 MB phone
+  budget, and WebLLM 0.2.85 exposes `embeddings` with no singleton guard.
+  `findPassages` is the seam. See `mobile-models.md`, Stage 5.
+- **Layer 3 (sketch a passage)** is unbuilt and needs nothing new.
 
 ## Phase 4 — The practitioner's capability table *(weeks 9–14, partly built early)*
 

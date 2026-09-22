@@ -1,7 +1,7 @@
 // Run with Playwright installed, or set PLAYWRIGHT_MODULE to its index.mjs.
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+import { launch } from './browser.mjs';
 
 // rough.js is vendored in web/, so these checks exercise the file that ships
 // rather than a copy from node_modules. SKETCH_ROUGH=0 forces the clean-SVG
@@ -9,7 +9,7 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const withRough = process.env.SKETCH_ROUGH !== '0';
 if (!withRough) console.log('note: rough.js disabled — checking the clean-SVG fallback');
 
-const browser = await chromium.launch({ headless: true });
+const browser = await launch();
 try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors = [];
@@ -42,7 +42,7 @@ export async function CreateMLCEngine() { return {
     const url = new URL(route.request().url());
     if (url.pathname === '/mock.mjs') return route.fulfill({ contentType: 'text/javascript', body: stub });
     const name = url.pathname.replace(/^.*\//, '');
-    const file = /^(sketch|stamps|rough)\.mjs$/.test(name) ? name : 'browser.html';
+    const file = /^(sketch|stamps|rough|work)\.mjs$/.test(name) ? name : 'browser.html';
     await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
@@ -185,7 +185,7 @@ export async function CreateMLCEngine() { return {
   await send('Draw a boat');
   assert.equal(await page.evaluate(() =>
     requests.at(-1).messages.some(m => m.content.includes('plain English'))), false);
-  assert.match(await page.locator('#mode').textContent(), /not used for sketches/);
+  assert.match(await page.locator('#mode').textContent(), /not used in this mode/);
 
   // Chat mode is untouched: no schema, no sketch prompt, its own history, and
   // the system prompt it was written for still applies there.

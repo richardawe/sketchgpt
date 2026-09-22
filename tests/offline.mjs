@@ -11,7 +11,7 @@
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import assert from 'node:assert/strict';
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+import { launch } from './browser.mjs';
 
 const TYPES = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript' };
 // The engine stub lives here rather than in web/, so nothing that only exists
@@ -41,7 +41,7 @@ const server = createServer(async (req, res) => {
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
-const browser = await chromium.launch({ headless: true });
+const browser = await launch();
 const context = await browser.newContext();
 try {
   const page = await context.newPage();
@@ -81,7 +81,17 @@ try {
     return m.parseSketch('{"t":"A cat","c":["cat 50 52 34"]}').commands[0].text;
   });
   assert.equal(drew, 'cat', 'sketch.mjs was not available offline');
-  console.log('Offline check passed: page, composer and sketch module all load with the network down.');
+  // Work mode is the one people will most want offline — the whole argument
+  // for reading a contract on a 0.6B model is that nothing leaves the device —
+  // so its module has to be in the shell cache, not fetched on demand.
+  const found = await page.evaluate(async () => {
+    const m = await import('./work.mjs');
+    const ps = m.splitPassages('Routine repairs take 28 days.\n\nEmergencies take 24 hours.');
+    return m.findPassages(m.buildIndex(ps), 'how long for routine repairs').hits[0].passage.text;
+  });
+  assert.match(found, /28 days/, 'work.mjs was not available offline');
+  console.log('Offline check passed: page, composer, sketch and work modules all load ' +
+    'with the network down.');
 } finally {
   await context.close(); await browser.close();
   server.listening && await new Promise(r => server.close(r));
