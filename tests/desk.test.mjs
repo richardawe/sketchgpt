@@ -9,7 +9,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { TOOLS, TONES, toolById, planDeskTurn, maxWords, wordCount,
-         parseChecklist, stripPreamble, checkRewrite, leftOut } from "../web/desk.mjs";
+         parseChecklist, listFromProse, collapseRepeats,
+         stripPreamble, checkRewrite, leftOut } from "../web/desk.mjs";
 import { estimateTokens } from "../web/sketch.mjs";
 
 const dump = toolById("dump");
@@ -83,6 +84,42 @@ test("list items are found however a small model bullets them", () => {
 test("a bullet inside a bullet is one item, as Qwen3-0.6B wrote it", () => {
   assert.deepEqual(parseChecklist("- - Email Sam about the budget  \n- - Buy milk  "),
     ["Email Sam about the budget", "Buy milk"]);
+});
+
+test("quoted and repeated items are cleaned (Qwen2.5-0.5B and SmolLM2-360M, verbatim)", () => {
+  assert.deepEqual(parseChecklist('- "book flights for June"\n- "pay the gas bill"\n- "reply to Priya"'),
+    ["book flights for June", "pay the gas bill", "reply to Priya"]);
+  assert.deepEqual(parseChecklist("- buy milk\n- call mum back\n- renew passport\n- call mum back"),
+    ["buy milk", "call mum back", "renew passport"]);
+});
+
+test("prose instead of a list is split by the page (SmolLM2-360M, verbatim)", () => {
+  // The phone bug: "after a few chats" the list came back as prose. SmolLM2
+  // did this in 4 of 12 runs. These are two of them.
+  assert.deepEqual(listFromProse('"Buy milk. Worried about Monday. Renew passport. Call mum back. The car is making a noise.'),
+    ["Buy milk", "Worried about Monday", "Renew passport", "Call mum back", "The car is making a noise"]);
+  assert.deepEqual(listFromProse("book flights for June\npay the gas bill\nfinish the slides for Thursday"),
+    ["book flights for June", "pay the gas bill", "finish the slides for Thursday"]);
+});
+
+test("a refusal or a single sentence is not dressed up as a list", () => {
+  assert.equal(listFromProse("I'm sorry, but I can't assist with that."), null);
+  assert.equal(listFromProse("Here is your list:"), null);
+});
+
+test("a repetition loop is cut and reported (SmolLM2-360M, verbatim shape)", () => {
+  const loop = "\"I'm not doing overtime again this weekend.\n[No. I'm not doing overtime again this weekend.\n" +
+    "I'm not doing overtime again this weekend.\n".repeat(40) + "I'm not";
+  const r = collapseRepeats(loop);
+  assert.equal(r.looped, true);
+  assert.ok(r.text.split("\n").length <= 3, r.text);
+  assert.ok(!/I'm not$/.test(r.text), "the half-line where the budget ran out was kept");
+  assert.deepEqual(collapseRepeats("one\ntwo\none"), { text: "one\ntwo\none", looped: false });
+});
+
+test("brain dump asks for no more room than a list needs", () => {
+  const p = planDeskTurn({ tool: dump, text: "buy milk, call mum", ctx: 4096 });
+  assert.ok(p.maxTokens <= 320, `a to-do list was given ${p.maxTokens} tokens to loop in`);
 });
 
 test("one line is not a checklist, so a non-answer is not dressed up as one", () => {

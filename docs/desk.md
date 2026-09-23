@@ -59,6 +59,43 @@ lists feelings the prompt told the model to leave out ("worried about
 Monday") — deliberately: the page cannot tell a dropped task from a dropped
 worry, and the person can, instantly.
 
+## Which model a phone gets — and the bug that decided it
+
+A phone user reported that "after a few chats" Brain dump came back as prose.
+Desk had been benched on Qwen3 only, and a phone was loading **SmolLM2-360M**.
+Same prompts, 4-bit builds, 3 dumps × 4 runs each:
+
+| Model | Brain dump came back as a list | Say it better |
+|---|---|---|
+| SmolLM2-360M (old phone default) | **8 / 12** — prose, input echoed back, one loop of "dont forget to buy milk" | invented content ("a full-month payment on the 15th", "a revised report by [date]"); one rewrite looped 60+ times |
+| **Qwen2.5-0.5B** (new phone default) | 12 / 12 | 3 of 4 kept meaning; the fourth refused ("I can't assist with that") — visible |
+| Qwen3-0.6B | 12 / 12 | see above |
+| **Qwen3-1.7B** (new desktop default where it fits at ≥2048) | 12 / 12, fewest items dropped | see above |
+
+Forcing JSON output (`{"items": [...]}`) was tried and rejected: every model
+returned valid JSON, but the Qwen models dropped two to three times as many
+items, and SmolLM2 once returned the prompt's own example, `["first task",
+"second task"]`.
+
+What shipped instead, in the page: a list the model writes as prose is split
+into items (`listFromProse`) and captioned as such; duplicate items are merged;
+a repetition loop is cut (`collapseRepeats`) and captioned; and Brain dump's
+output is capped at 320 tokens, which a dozen short lines never need.
+
+Qwen2.5-0.5B also draws best of the phone-sized models in `sketch-bench.mjs`:
+10 of 10 requested things, against 8 for Qwen3-0.6B and 7 for SmolLM2-360M.
+
+## The model downloads by itself
+
+At the owner's request, the page now picks the model for the device and starts
+the download without a button press. The card names the model and its size
+while it downloads, "Choose a different model" (`?manual=1`) is one tap away,
+and a browser that has asked to save data (`navigator.connection.saveData`)
+still gets asked first. This reverses an earlier rule — "silently pulling
+hundreds of MB on someone's mobile data is not ours to do" — and the Save-Data
+exception is what is left of it. iOS Safari does not expose `saveData`, so on
+an iPhone the download always starts.
+
 ## The privacy meter
 
 The header's shield counts every request the page makes after the model has
@@ -74,5 +111,6 @@ or the browser itself.
   is not. The startup crash this replaced was touch-only, and was invisible to
   every mouse-driven test.
 - The final-run numbers are 6 cases per model. Treat them as a direction.
-- The desktop default is still Qwen3-0.6B. On these numbers Desk is clearly
-  better on Qwen3-1.7B (~2 GB download instead of ~500 MB) — the user's call.
+- A desktop now gets Qwen3-1.7B (~1 GB download, ~1.6 GB of GPU memory at
+  4096) wherever it fits at a 2048 context or more. Untested on a real
+  low-memory laptop; the budget comes from the measured allocation formula.

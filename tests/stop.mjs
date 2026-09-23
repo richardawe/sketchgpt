@@ -74,7 +74,7 @@ try {
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
 
-  await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs');
+  await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs&manual=1');
   await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
   await page.click('#load');
   await page.waitForFunction(() => !document.querySelector('#send').disabled);

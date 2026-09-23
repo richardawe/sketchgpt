@@ -47,7 +47,7 @@ export async function CreateMLCEngine() { return {
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
   const open = async (query = '') => {
-    await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs' + query);
+    await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs&manual=1' + query);
     await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
     await page.click('#load');
   };

@@ -53,7 +53,7 @@ try {
   });
 
   const open = async (query = '') => {
-    await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs' + query);
+    await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs&manual=1' + query);
     await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
     await page.click('#load');
     await page.waitForFunction(() => !document.querySelector('#send').disabled);

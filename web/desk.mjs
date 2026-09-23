@@ -51,7 +51,10 @@ export const TOOLS = [
     blurb: "Empty your head. Get back a to-do list you can tick off.",
     ask: "Type everything on your mind, in any order…",
     example: "dentist, email Sam about the budget, buy milk, worried about Monday, renew passport",
-    temp: 0.3, list: true,
+    // A to-do list of a dozen short lines is ~200 tokens. The cap is the cheap
+    // half of the defence against a model that loops ("dont forget to buy
+    // milk" x40, SmolLM2-360M, measured); collapseRepeats is the other half.
+    temp: 0.3, list: true, maxOutput: 320,
     build: ({ text }) => ({
       system: `${GROUND} Turn their brain dump into a to-do list. Keep only things ` +
         `they can act on, one per line, each starting with "- " and a verb. Keep ` +
@@ -121,7 +124,7 @@ export function planDeskTurn({ tool, text = "", option = "", ctx = 4096 }) {
         `${maxWords(tool, ctx)} at once — trim it to the part that matters.`
     };
   }
-  return { run: true, messages, maxTokens: Math.min(MAX_OUTPUT, room) };
+  return { run: true, messages, maxTokens: Math.min(tool.maxOutput || MAX_OUTPUT, room) };
 }
 
 /**
@@ -153,9 +156,76 @@ export function parseChecklist(text) {
   for (const line of String(text).split("\n")) {
     const m = line.match(/^\s*(?:[-*•+]|\d+[.)]|\[[ xX]?\])\s+(?:\[[ xX]?\]\s+)?(.+?)\s*$/);
     // "- - Buy milk" is a real Qwen3-0.6B output: a bullet inside a bullet.
-    if (m) items.push(m[1].replace(/^(?:[-*•]\s+)+/, "").replace(/\*\*(.+?)\*\*/g, "$1"));
+    if (m) items.push(m[1].replace(/^(?:[-*•]\s+)+/, ""));
   }
-  return items.length >= 2 ? items : null;
+  const out = tidyItems(items);
+  return out.length >= 2 ? out : null;
+}
+
+// Clean and de-duplicate list items. Measured shapes: Qwen2.5-0.5B and
+// SmolLM2-360M wrap every item in quotes; SmolLM2 repeats items ("call mum
+// back" twice in one list) and loops. A to-do list never needs the same line
+// twice, so the page keeps the first and drops the rest.
+function tidyItems(items) {
+  const seen = new Set();
+  const out = [];
+  for (let it of items) {
+    it = it.replace(/\*\*(.+?)\*\*/g, "$1").trim()
+      .replace(/^["“'‘]+|["”'’]+$/g, "").replace(/[.;,]+$/, "").trim();
+    const key = it.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+    if (out.length >= 15) break;
+  }
+  return out;
+}
+
+/**
+ * When a model ignores the list format and writes prose — SmolLM2-360M did in
+ * 4 of 12 runs, the bug a phone user hit "after a few chats" — the page splits
+ * the prose itself, on lines and then on sentences. The words are still the
+ * model's; only the shape is the page's. Returns null when there is not enough
+ * to call a list, so a refusal or a single sentence is shown as what it is.
+ */
+export function listFromProse(text) {
+  const parts = [];
+  for (const line of String(text).split("\n")) {
+    const l = line.trim();
+    if (!l) continue;
+    for (const piece of l.split(/(?<=[.!?])\s+(?=[A-Z"“])/)) parts.push(piece);
+  }
+  // A greeting or sign-off is not a task.
+  const out = tidyItems(parts.filter(p => !/^(here|sure|certainly|of course|okay|ok)\b.*:$/i.test(p)))
+    .filter(p => p.split(/\s+/).length <= 16);
+  return out.length >= 2 ? out : null;
+}
+
+/**
+ * Cut a repetition loop. Small models at 4-bit fall into them: SmolLM2-360M
+ * repeated "I'm not doing overtime again this weekend." 60+ times until it ran
+ * out of tokens. Any line that has already appeared twice is dropped from then
+ * on. Returns the cleaned text and whether a loop was cut, so the page can say
+ * so rather than quietly hide it.
+ */
+export function collapseRepeats(text) {
+  const lines = String(text).split("\n");
+  const count = new Map();
+  const out = [];
+  let looped = false;
+  for (const line of lines) {
+    const key = line.trim().toLowerCase().replace(/^[-*•\d.)\s"“]+|["”\s.]+$/g, "");
+    if (key) {
+      const n = (count.get(key) || 0) + 1;
+      count.set(key, n);
+      if (n > 2) { looped = true; continue; }
+    }
+    out.push(line);
+  }
+  // A loop usually stops mid-line when the token budget runs out.
+  let t = out.join("\n").trim();
+  if (looped) t = t.replace(/\n[^\n]{0,40}$/, "").trim();
+  return { text: t, looped };
 }
 
 // ---- Checks the page makes on the model's work ------------------------------

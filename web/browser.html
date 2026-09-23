@@ -264,6 +264,8 @@
   #bar { height: 4px; background: var(--sunk); border-radius: 99px; overflow: hidden; margin-top: 12px; display: none; }
   #bar.on { display: block; }
   #barfill { height: 100%; width: 0; background: var(--ink); transition: width .25s; }
+  .autonote { margin: 12px 0 0; font-size: 13.5px; color: var(--ink-2); text-align: center; }
+  .autonote a { color: var(--ink); font-weight: 550; }
   .credit { margin: 16px 0 0; font-size: 12.5px; color: var(--faint); text-align: center; }
   /* The page-level error panel. NOT `.err`: the status dot takes "err" as a
      modifier, and a bare `.err` panel rule once inflated the 8px dot into a
@@ -407,6 +409,7 @@
     <div id="meta"></div>
     <button type="button" class="primary" id="load">Download &amp; load model</button>
     <div id="bar"><div id="barfill"></div></div>
+    <p class="autonote" id="autonote" hidden></p>
     <p class="credit">Inference by <a href="https://webllm.mlc.ai/" target="_blank" rel="noopener">WebLLM</a> · weights from Hugging Face</p>
   </section>
 </div></div>
@@ -433,7 +436,8 @@
 <script type="module">
 import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, estimateTokens } from "./sketch.mjs";
 import { TOOLS, TONES, toolById, planDeskTurn, maxWords, wordCount,
-         parseChecklist, stripPreamble, checkRewrite, leftOut } from "./desk.mjs";
+         parseChecklist, listFromProse, collapseRepeats,
+         stripPreamble, checkRewrite, leftOut } from "./desk.mjs";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
 
@@ -510,11 +514,11 @@ const MODELS = [
     downloadMB: 273, paramsMB: 538, kvPerTok: 46080,  wsMB: 25,
     note: "Also <b>not 4-bit</b> — full fp32 weights. Same download as the f16 build; the extra " +
           "cost is entirely GPU memory." },
-  { id: "SmolLM2-360M-Instruct-q4f16_1-MLC", label: "SmolLM2 360M — smallest 4-bit, best for phones", tier: 0,
+  { id: "SmolLM2-360M-Instruct-q4f16_1-MLC", label: "SmolLM2 360M — smallest 4-bit", tier: 0,
     downloadMB: 207, paramsMB: 204, kvPerTok: 40960,  wsMB: 21 },
   { id: "SmolLM2-360M-Instruct-q4f32_1-MLC", label: "SmolLM2 360M (fp32)", tier: 0,
     downloadMB: 207, paramsMB: 226, kvPerTok: 81920,  wsMB: 42 },
-  { id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC", label: "Qwen2.5 0.5B", tier: 0,
+  { id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC", label: "Qwen2.5 0.5B — best for phones", tier: 0,
     downloadMB: 290, paramsMB: 278, kvPerTok: 12288,  wsMB: 118,
     note: "The cheapest context in this list — 12 KiB per token, so a long window costs almost nothing." },
   { id: "Qwen2.5-0.5B-Instruct-q4f32_1-MLC", label: "Qwen2.5 0.5B (fp32)", tier: 0,
@@ -546,7 +550,7 @@ const MODELS = [
   // ---- 1.5B and up ----
   { id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", label: "Qwen2.5 1.5B", tier: 2,
     downloadMB: 880, paramsMB: 869, kvPerTok: 28672,  wsMB: 173 },
-  { id: "Qwen3-1.7B-q4f16_1-MLC",            label: "Qwen3 1.7B", tier: 2,
+  { id: "Qwen3-1.7B-q4f16_1-MLC",            label: "Qwen3 1.7B — best on desktop", tier: 2,
     downloadMB: 984, paramsMB: 968, kvPerTok: 114688, wsMB: 153,
     note: "Produced a genuine multi-chapter book outline on a desktop. This is where output stops " +
           "being a novelty." },
@@ -593,6 +597,10 @@ let DEV = { mobile: false, f16: true, budgetMB: Infinity, maxBufMB: 0, gpu: "unr
 // page chose has somewhere to go. ?ctx=1024 is what the failure message links
 // to; the ladder still caps it, so this can only ever ask for less.
 const CTX_PARAM = parseInt(new URLSearchParams(location.search).get("ctx"), 10);
+
+// ?manual=1 shows the model picker instead of downloading the chosen model
+// straight away. The "Choose a different model" link sets it.
+const MANUAL = new URLSearchParams(location.search).has("manual");
 
 // Set when the GPU device itself fails. Everything after that fails the same
 // way, so the page stops offering to try again and says what to do instead.
@@ -768,12 +776,26 @@ async function init() {
 
   // Phones get the smallest capable model; desktops get the one this repo is
   // built around. Both are validated against the budget with headroom to spare.
+  // Chosen by measurement on Desk's own prompts (docs/desk.md), each entry
+  // with the smallest context it is worth running at:
+  //
+  //   phone    Qwen2.5-0.5B. SmolLM2-360M, the old default, returned prose
+  //            instead of a list in 4 of 12 brain dumps, looped, and invented
+  //            content in rewrites. Qwen2.5-0.5B listed 12 of 12, fits a phone
+  //            at the full 4096 context, and downloads 296 MB.
+  //   desktop  Qwen3-1.7B where it fits at 2048 or more — clearly the best
+  //            of the four benched — otherwise Qwen3-0.6B. A 1.7B squeezed to
+  //            a 1024 context is a worse trade than a 0.6B with room.
   const preferred = DEV.mobile
-    ? ["SmolLM2-360M-Instruct-q4f16_1-MLC", "SmolLM2-360M-Instruct-q4f32_1-MLC"]
-    : ["Qwen3-0.6B-q4f16_1-MLC", "SmolLM2-360M-Instruct-q4f16_1-MLC", "SmolLM2-360M-Instruct-q4f32_1-MLC"];
+    ? [["Qwen2.5-0.5B-Instruct-q4f16_1-MLC", 2048], ["Qwen2.5-0.5B-Instruct-q4f32_1-MLC", 2048],
+       ["Qwen3-0.6B-q4f16_1-MLC", 1024], ["SmolLM2-360M-Instruct-q4f16_1-MLC", 1024],
+       ["SmolLM2-360M-Instruct-q4f32_1-MLC", 1024]]
+    : [["Qwen3-1.7B-q4f16_1-MLC", 2048], ["Qwen3-0.6B-q4f16_1-MLC", 1024],
+       ["Qwen2.5-0.5B-Instruct-q4f16_1-MLC", 1024], ["Qwen3-0.6B-q4f32_1-MLC", 1024],
+       ["Qwen2.5-0.5B-Instruct-q4f32_1-MLC", 1024], ["SmolLM2-360M-Instruct-q4f32_1-MLC", 1024]];
 
   const has = id => usable.some(m => m.id === id);
-  let chosen = preferred.find(id => has(id) && bestCtxFor(id) !== null);
+  let chosen = (preferred.find(([id, min]) => has(id) && (bestCtxFor(id) ?? 0) >= min) || [])[0];
   if (!chosen) {
     // Nothing preferred fits — fall back to the largest that clears the
     // headroom at some rung, and failing that the smallest option we have.
@@ -786,15 +808,27 @@ async function init() {
   await refreshMeta();
   setStatus("ready to load");
 
-  // Returning visitors already have the weights, so there is nothing to
-  // consent to — open straight into chat. A first visit still asks, because
-  // silently pulling hundreds of MB on someone's mobile data is not ours to do.
-  try {
-    if (await webllm.hasModelInCache($("model").value, APP)) {
-      setStatus("loading from cache…", "busy");
-      $("load").click();
-    }
-  } catch {}
+  // The page picks the model for this device and starts straight away — the
+  // owner's call, made after "press a button to download" read as a page that
+  // did nothing. Three things keep that honest: the card names the model and
+  // its size while it downloads, "Choose a different model" is one tap away,
+  // and a browser that has asked to save data (Save-Data / Lite mode) still
+  // gets asked first. ?manual=1 always shows the picker.
+  let cached = false;
+  try { cached = await webllm.hasModelInCache($("model").value, APP); } catch {}
+  const saveData = !!(navigator.connection && navigator.connection.saveData);
+  if (cached || (!MANUAL && !saveData)) {
+    const m = modelOf($("model").value);
+    if (!cached) $("autonote").innerHTML =
+      `<b>${esc(m ? m.label.split(" — ")[0] : $("model").value)}</b> was picked for this ` +
+      `${DEV.mobile ? "phone" : "computer"}. <a href="?manual=1">Choose a different one</a>`;
+    $("autonote").hidden = cached;
+    setStatus(cached ? "loading from cache…" : "downloading…", "busy");
+    $("load").click();
+  } else if (saveData) {
+    $("autonote").hidden = false;
+    $("autonote").textContent = "Your browser asked to save data, so nothing downloads until you press the button.";
+  }
 }
 
 // ---- Cache + storage reporting ------------------------------------------
@@ -909,6 +943,7 @@ $("load").addEventListener("click", async () => {
       appConfig: APP,
       initProgressCallback: r => {
         $("barfill").style.width = Math.round((r.progress || 0) * 100) + "%";
+        $("load").textContent = `Loading… ${Math.round((r.progress || 0) * 100)}%`;
         setStatus(r.text ? r.text.slice(0, 60) : "loading…", "busy");
       }
     }, chatOptsFor(id));
@@ -932,6 +967,8 @@ $("load").addEventListener("click", async () => {
     $("load").disabled = false;
     $("model").disabled = false;
     failSoft(await explainLoadFailure(e, id));
+    $("autonote").hidden = true;
+    refreshMeta();                     // puts the button's label back
     const alt = $("swapstore");
     if (alt) alt.addEventListener("click", () => {
       // The probe only proves a tiny entry round-trips; a real model can still
@@ -1583,7 +1620,8 @@ function checkItem(text) {
 
 /** Returns the text the conversation should remember for this turn. */
 function renderDesk(body, tool, source, raw) {
-  const text = stripPreamble(raw);
+  const cut = collapseRepeats(stripPreamble(raw));
+  const text = cut.text;
   body.textContent = "";
   if (!text) {
     // Measured: the only thing Qwen3-0.6B returned for two rewrites was
@@ -1595,11 +1633,18 @@ function renderDesk(body, tool, source, raw) {
   card.className = "result";
   body.appendChild(card);
 
+  // Said, not hidden: a cut loop means the model misbehaved, and the person
+  // should weigh the rest of the answer knowing that.
+  const loopNote = () => { if (cut.looped) showNote(body, "The model started repeating itself; the repeats were removed."); };
+
   if (tool.list) {
-    const items = parseChecklist(text);
+    let items = parseChecklist(text);
+    let reshaped = false;
+    if (!items) { items = listFromProse(text); reshaped = !!items; }
     if (!items) {
       card.textContent = text;
-      showNote(body, "This came back as prose rather than a list.");
+      showNote(body, "This did not come back as a list. Try again — or rephrase it as items separated by commas.");
+      loopNote();
       body.appendChild(actionRow(() => text));
       return text;
     }
@@ -1607,6 +1652,8 @@ function renderDesk(body, tool, source, raw) {
     ul.className = "checklist";
     for (const it of items) ul.appendChild(checkItem(it));
     card.appendChild(ul);
+    if (reshaped) showNote(body, "The model wrote this as prose; the page split it into a list.");
+    loopNote();
 
     // What the person said that is nowhere on the list. Shown as one-tap
     // chips, because the page cannot tell a dropped task from a worry the
@@ -1638,6 +1685,7 @@ function renderDesk(body, tool, source, raw) {
   }
 
   card.textContent = text;
+  loopNote();
   const warn = tool.checked ? checkRewrite(source, text) : [];
   if (warn.length) {
     const c = document.createElement("div");

@@ -97,6 +97,8 @@ serves **4-bit**, and that gap explains most surprises.
 | **A worked example leaks its content, not just its shape** | Say-it-better with one example: Qwen3-0.6B kept negations, and then added the example's *"I can't make the meeting — my car broke down"* to an unrelated message. Without it, "won't be ready Friday" became "will be ready Friday". Shipped with no example and a page-side check. In sketch mode an echoed example costs a second cat; in a message someone sends, it costs a false statement. |
 | **The page can check meaning where meaning is mechanical** | `checkRewrite` flags a lost negation or number; `leftOut` lists brain-dump items that appear on no line (both Qwen3 sizes dropped "dentist"). Neither makes a rewrite *right*; each turns one silent failure into a visible one. What they miss is written down: the 0.6B rewrote "You never reply to my emails" from the recipient's side, negation intact. |
 | **Two tools, chosen from five by measurement** | Draft-a-reply inverted the person's intent on the 0.6B ("no, I have a family thing" → "I don't have a family thing"); Rehearse was weak on both sizes and spoke the prompt's own phrases aloud. Break-it-down worked and was cut for focus at the user's call. `docs/desk.md`. |
+| **The phone ran a model nobody had benched** | "After a few chats it shows prose, not a list" — Desk was benched on Qwen3, and phones loaded SmolLM2-360M, which returned prose in **4 of 12** brain dumps, looped, and invented content in rewrites. Qwen2.5-0.5B: 12/12 lists, fits a phone at 4096, 296 MB, and the best phone-sized sketcher too (10/10 things drawn vs 8 and 7). Now the phone default. **Bench the model the device will actually get.** |
+| **JSON-constrained output fixes shape and costs content** | `{"items":[…]}` gave 12/12 valid lists on every model — and the Qwen models dropped 2–3× more items, while SmolLM2 returned the schema's example (`"first task","second task"`). Rejected; the page splits prose into a list instead (`listFromProse`), merges duplicates, and cuts loops (`collapseRepeats`), saying so each time. |
 
 ### Browser gotchas already fixed
 
@@ -349,10 +351,6 @@ practical fine-tuning.
   unknown on a real device is everything past the simplest request** — nothing
   harder than "a house with a tree and a car" has been tried in a browser, and
   the editable commands panel has never been used on a phone.
-- **Bigger desktop models are worth offering, and the page does not.** The
-  desktop default is still Qwen3-0.6B (~500 MB) while Qwen3-1.7B draws 4x the
-  commands and covers more of the request. Changing the default trades a
-  500 MB download for ~2 GB, which is the user's call, not a silent one.
 - **Nothing above 1.7B has been tried**, and no non-Qwen model at all. The
   bench takes any Ollama tag, so this is an afternoon's work, not a mystery.
 - **The stamp vocabulary is a guess.** 133 Lucide icons and 84 aliases chosen
@@ -414,8 +412,13 @@ practical fine-tuning.
   still unexplained — it happened on SmolLM2-360M at the 4096 rung, and Desk
   runs the same model at the same rung on phones. The next phone run should
   try Desk and Chat on that device and note which, if either, fails.
-- **Desk wants Qwen3-1.7B on desktop.** The bench is clear, the default is
-  still 0.6B, and changing it is a 500 MB → 2 GB download decision for the user.
+- **The model now downloads without a button press** — the owner's decision,
+  reversing "silently pulling hundreds of MB is not ours to do". What is left
+  of that rule: the card names model and size while it downloads, `?manual=1`
+  is one tap away, and `navigator.connection.saveData` still means ask first
+  (iOS Safari does not expose it). Desktop gets Qwen3-1.7B where it fits at
+  ≥2048 context, phones Qwen2.5-0.5B. Neither choice has run on a real device
+  yet; both come from the Ollama bench and the allocation formula.
 - **The token estimator still charges prose double.** Measured 2.0× on the
   repo's docs; a trial rule measured 1.31–1.35× and never read low on any
   paragraph. Not shipped: sketch budgets depend on it and would need

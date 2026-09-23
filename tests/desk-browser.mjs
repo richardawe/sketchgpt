@@ -58,7 +58,7 @@ try {
         body: await readFile(new URL(dir + file, import.meta.url), 'utf8') });
     });
 
-    await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs');
+    await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs&manual=1');
     await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
     assert.deepEqual(errors, [], `${who}: the page threw while starting: ${errors.join('; ')}`);
     await page.click('#load');
@@ -146,6 +146,26 @@ try {
     assert.match(await page.locator('#count').textContent(), /about [\d,]+ at once/);
     await page.fill('#input', '');
 
+    // ---- Prose instead of a list: the page makes the list ---------------------
+    // The phone bug. SmolLM2-360M answered 4 of 12 brain dumps in prose; this
+    // is one of them, verbatim.
+    await page.click('#tools [data-tool="dump"]');
+    await page.evaluate(() => { window.result = '"Buy milk. Worried about Monday. Renew passport. Call mum back.'; });
+    await send('buy milk, worried about Monday, renew passport, call mum back');
+    const prose = page.locator('.msg.assistant').last();
+    assert.deepEqual(await prose.locator('.checklist li').allTextContents(),
+      ['Buy milk', 'Worried about Monday', 'Renew passport', 'Call mum back']);
+    assert.match(await prose.textContent(), /split it into a list/);
+
+    // A loop is cut, and the page says it was.
+    await page.click('#tools [data-tool="polish"]');
+    await page.evaluate(() => { window.result = "No, I'm not doing overtime this weekend.\n" +
+      "I'm not doing overtime again this weekend.\n".repeat(30) + "I'm not"; });
+    await send("No. I'm not doing overtime again this weekend.");
+    const looped = page.locator('.msg.assistant').last();
+    assert.ok((await looped.locator('.result').textContent()).split('\n').length <= 3);
+    assert.match(await looped.textContent(), /started repeating itself/);
+
     // ---- The privacy meter: zero requests since the model loaded ----------
     assert.equal(await page.locator('#net').isVisible(), true);
     assert.equal(await page.locator('#netn').textContent(), '0',
@@ -184,7 +204,55 @@ try {
     assert.deepEqual(errors, [], `${who}: page errors: ${errors.join('; ')}`);
     await context.close();
   }
-  console.log('Desk checks passed on touch and mouse: Send never reloads, two tools, the checklist ' +
+  // ---- The page picks a model for the device and downloads it by itself ----
+  // No button press: the owner's call. A phone gets Qwen2.5-0.5B (the best
+  // phone-sized model on Desk's prompts), a desktop Qwen3-1.7B.
+  for (const [touch, want, saveData] of [
+    [true, 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC', false],
+    [false, 'Qwen3-1.7B-q4f16_1-MLC', false],
+    [true, 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC', true]]) {
+    const context = await browser.newContext(touch
+      ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+          userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' }
+      : { viewport: { width: 1280, height: 860 } });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.addInitScript(({ saveData }) => {
+      Object.defineProperty(navigator, 'gpu', { value: { requestAdapter: async () => ({
+        features: new Set(['shader-f16']), limits: { maxBufferSize: 1e9 } }) } });
+      if (saveData) Object.defineProperty(navigator, 'connection', { value: { saveData: true } });
+      window.requests = []; window.result = 'ok';
+    }, { saveData });
+    await page.route('**/*', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/mock.mjs') return route.fulfill({ contentType: 'text/javascript', body: stub });
+      const name = url.pathname.replace(/^.*\//, '');
+      const file = /^(sketch|stamps|rough|desk)\.mjs$/.test(name) ? name : PAGE;
+      const dir = file === PAGE && process.env.DESK_PAGE_DIR ? process.env.DESK_PAGE_DIR : '../web/';
+      await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
+        body: await readFile(new URL(dir + file, import.meta.url), 'utf8') });
+    });
+    await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs');
+    const who = `${touch ? 'phone' : 'desktop'}${saveData ? ' with Save-Data' : ''}`;
+    await page.waitForFunction(() => document.querySelector('#model').value !== '');
+    assert.equal(await page.inputValue('#model'), want, `${who}: picked the wrong model`);
+    if (saveData) {
+      await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
+      await page.waitForTimeout(300);
+      assert.equal(await page.locator('#foot.on').count(), 0, `${who}: downloaded without asking`);
+      assert.match(await page.locator('#autonote').textContent(), /save data/);
+    } else {
+      await page.waitForFunction(() => document.querySelector('#foot').classList.contains('on'),
+        null, { timeout: 10000 });
+      assert.match(await page.locator('#status').textContent(), /ready/, `${who}: did not load by itself`);
+    }
+    assert.deepEqual(errors, [], `${who}: page errors: ${errors.join('; ')}`);
+    await context.close();
+  }
+
+  console.log('Desk checks passed on touch and mouse: Send never reloads, two tools, the checklist, ' +
+    'prose split into a list, loops cut, the model picked and loaded by itself per device, ' +
     'and its left-out items, the rewrite check, the length refusal, the privacy meter, nothing ' +
     'stored, and a header that leaves the screen to the conversation.');
 } finally {

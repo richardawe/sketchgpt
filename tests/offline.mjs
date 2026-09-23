@@ -54,7 +54,7 @@ try {
   });
   // The WebLLM import is the one thing a real visitor pulls from a CDN, so
   // serve it from this origin and let the worker cache it like any asset.
-  await page.goto(`${origin}/browser.html?lib=${origin}/mock.mjs&rough=${origin}/rough.mjs`);
+  await page.goto(`${origin}/browser.html?lib=${origin}/mock.mjs&rough=${origin}/rough.mjs&manual=1`);
   // The PAGE must register the worker. Registering it from the test here hid
   // a real bug: the registration sat inside a load listener, and this module
   // top-level awaits its WebLLM import, so load fired while it was suspended

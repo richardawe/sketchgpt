@@ -28,21 +28,22 @@ create a Pages site — it fails with *"Resource not accessible by integration"*
 Already have a repo? Run `./scripts/setup-pages.sh` inside it, or
 `./scripts/setup-pages.sh my-chat` to create one first.
 
-Then open the URL. The first visit asks before downloading the weights;
-after that the page loads them from cache and drops you straight into Desk.
+Then open the URL. The first visit downloads the model picked for the device;
+after that the page loads it from cache and drops you straight into Desk.
 
 ### What visitors get
 
 | Device | Model chosen | Download |
 |---|---|---|
-| Desktop | Qwen3-0.6B | ~500 MB |
-| Phone / tablet | SmolLM2-360M | ~376 MB |
+| Desktop | Qwen3-1.7B where it fits at ≥2048 context, else Qwen3-0.6B | ~990 MB / ~360 MB |
+| Phone / tablet | Qwen2.5-0.5B | ~300 MB |
 
 The page reads the GPU adapter and available memory, filters out models the
-device cannot run, and picks one with headroom to spare. Anything larger is
-labelled and needs a confirmation, because exceeding the limit kills the tab
-rather than raising an error. Bigger models are one dropdown away — Qwen3-1.7B
-is the sweet spot on a desktop.
+device cannot run, picks the best one that fits with headroom, and **starts the
+download by itself** — unless the browser has asked to save data. "Choose a
+different model" is on the card while it downloads. The choices come from
+benching Desk's and Sketch's real prompts (`docs/desk.md`): SmolLM2-360M, the
+old phone default, answered a quarter of brain dumps in prose.
 
 ## Quickstart
 
@@ -306,9 +307,8 @@ The caveat on all of the above: Ollama serves GGUF Q4_K_M and the browser
 serves MLC q4f16, so these are composition numbers, not the exact bytes a
 visitor's device produces.
 
-Nothing above 1.7B has been tried, and no model outside the Qwen3 family. The
-desktop default is still Qwen3-0.6B — moving it to 1.7B would trade a ~500 MB
-download for ~2 GB, which is a product decision rather than a silent one.
+Nothing above 1.7B has been tried, and no model outside the Qwen3 family. A
+desktop now gets Qwen3-1.7B wherever it fits at a 2048 context or more.
 
 #### Checks
 
