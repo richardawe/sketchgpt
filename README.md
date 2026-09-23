@@ -29,7 +29,7 @@ Already have a repo? Run `./scripts/setup-pages.sh` inside it, or
 `./scripts/setup-pages.sh my-chat` to create one first.
 
 Then open the URL. The first visit asks before downloading the weights;
-after that the page loads them from cache and drops you straight into chat.
+after that the page loads them from cache and drops you straight into Desk.
 
 ### What visitors get
 
@@ -132,13 +132,13 @@ also starts Ollama if it is not already running.
 
 ### Three modes
 
-The browser page has a mode picker in the header:
+The browser page has a mode switch in the header:
 
 | | |
 |---|---|
-| **Chat** | open conversation, Markdown and LaTeX rendered |
+| **Desk** | brain dump → to-do list, and say-it-better rewrites, checked by the page. The default. |
 | **Sketch** | describe a scene, get an SVG drawn locally |
-| **Work** | paste or load your own text and work on it — draft, rewrite, summarise, translate, plan. Nothing is uploaded. |
+| **Chat** | open conversation, Markdown and LaTeX rendered |
 
 ### Simple sketches
 
@@ -314,15 +314,17 @@ download for ~2 GB, which is a product decision rather than a silent one.
 
 ```bash
 node --test tests/sketch.test.mjs     # format, stamps, clamping, budget
-node --test tests/work.test.mjs       # the file cap, passages, retrieval, refusals
+node --test tests/desk.test.mjs       # Desk's planner and the page's checks
+node --test tests/retrieval.test.mjs  # the retired Work-mode retrieval, for the bench
 node tests/sketch-browser.mjs         # needs Playwright + Chromium
-node tests/work-browser.mjs           # Work mode in a real page
+node tests/desk-browser.mjs           # Desk on a touch screen and a mouse
 node tests/stop.mjs                   # Stop stops, and chat survives it
 node tests/failure.mjs                # what the page says when generation fails
 node tests/offline.mjs                # loads the page with the network cut
 node scripts/retrieval-bench.mjs      # BM25 vs an embedder; Ollama optional
 node scripts/token-budget.mjs         # real tokenizer; needs @lenml/tokenizers
 node scripts/sketch-bench.mjs qwen3:1.7b   # real models; needs Ollama
+node scripts/desk-bench.mjs qwen3:0.6b     # Desk prompts + the page's checks
 node scripts/build-stamps.mjs         # regenerates web/stamps.mjs from Lucide
 ```
 
@@ -333,73 +335,45 @@ export, mobile width, the flat prompt over seven turns, truncated output,
 invalid output, cancellation and the saved mode. `SKETCH_ROUGH=0` runs them
 against the clean-SVG fallback instead.
 
-### Work mode — your own text, and nothing else
+### Desk — two tools for the work you would not paste into a chatbot
 
-Choose **Work** in the header. Paste a message, a note or a document, or load a
-`.txt`/`.md` file up to **512 KB**, then pick what to do with it:
+Desk is the default mode. It does two things:
 
 | | |
 |---|---|
-| **Write** | draft a text, WhatsApp message, email or letter · suggest a reply · turn rough notes into writing · organise messy notes · creative writing |
-| **Improve** | rewrite it clearer, friendlier, shorter, more professional · shorten · expand |
-| **Understand** | summarise · explain what it means · translate |
-| **Think** | brainstorm · generate questions · critique · role-play a conversation · plan with your constraints · think a decision through |
+| **Brain dump** | type everything on your mind, in any order — get back a to-do list you can tick off |
+| **Say it better** | paste a message you wrote and pick a tone — clearer, friendlier, firmer, shorter, more professional, warmer, simpler |
 
-Nothing is uploaded. The file is read in the tab, held in a variable, and never
-written to storage — that is the whole reason a model this small is an
-acceptable thing to open a tenancy agreement or a clinic letter with.
+Both run on the device, and the header proves it: a shield counts every
+network request the page makes after the model has loaded, and lists them in
+the menu. Desk and Chat make none, so it reads **0**. Nothing you type is
+written to storage either.
 
-Every task carries the same instruction: work only from the supplied text, add
-no fact that is not in it, and say so rather than guess. And every answer is
-shown **with the text it was allowed to see**, because a small model's wrong
-answer is confident and well-formed, and the source is the only thing that
-makes it checkable.
+The model names things; **the page checks what it can compute**, because a
+small model's worst failures are confident ones:
 
-#### When your text does not fit
+- **Say it better** compares the rewrite with your message. If yours says
+  something will *not* happen and the rewrite does not, or a number went
+  missing, it says **Check before sending**. Measured: with an earlier
+  prompt, Qwen3-0.6B turned "the report won't be ready Friday" into "will be
+  ready Friday". The shipped prompt kept it in the final run; the check stays.
+- **Brain dump** lists anything you wrote that is not on the list, as one-tap
+  chips to add back. Measured: both Qwen3 sizes dropped "dentist" from a
+  seven-item dump.
+- **Too long** is refused before the model runs, with the word limit for your
+  device shown as you type — never silently cut short.
 
-The page decides what the model may see before the model runs:
+Five tools were built and benched; three were cut. Draft-a-reply inverted what
+the person wanted to say on the 0.6B, neither size played a rehearsal
+convincingly, and "break it down" worked but two things done well beat five on
+a menu. What the checks do **not** catch is written down too: the 0.6B once
+rewrote "You never reply to my emails" from the recipient's side. Everything is
+in `docs/desk.md`; `scripts/desk-bench.mjs` reruns it.
 
-- **It fits the context window** → the whole text goes in, and all of it is
-  shown with the answer.
-- **It does not fit, and you asked a question** → BM25 retrieval picks the
-  passages that answer it, up to six. Only those are sent, and exactly those
-  are shown, in document order.
-- **It does not fit, and you asked nothing** → **nothing is generated.** You
-  get a contents list: where things are, verbatim, in the document's own words.
-- **No passage shares a single word with your question** → nothing is sent to
-  the model at all, and the page says which words it could not find.
-
-The third case is the point rather than a limitation. `docs/work-mode.md`
-measures what happens otherwise: asked about a document it could not see all
-of, Qwen3-0.6B invented answers to 3 of 5 questions its document did not
-address, and **asking it to quote the source made that 4 of 5**. Qwen3-1.7B
-quoted perfectly and still concluded things the quote did not support. There is
-no passage to check an invented summary against, so that failure is silent by
-construction — and this project ships the visible kind.
-
-#### How good is the retrieval?
-
-`node scripts/retrieval-bench.mjs` runs the shipped BM25 and, if Ollama is
-around, `snowflake-arctic-embed:s` over the same document and the same six
-queries. On that document:
-
-| | Right sentence in top 3 | First | Can it decline? |
-|---|---|---|---|
-| BM25 (shipped) | 4/4 | 3 | only on zero overlap |
-| Embedder (67 MB) | 4/4 | 3 | yes, from a score gap |
-
-Retrieval quality is a tie for no download and no second model in the tab. The
-difference is the refusal: the embedder's scores separate answerable queries
-(0.642–0.798) from unanswerable ones (max 0.574), so a threshold works. BM25's
-do not — *"Who owns the building?"* scores 0.413 against a document full of the
-word "building" that never says who owns it, level with a query the document
-*does* answer. Lexical overlap cannot tell "topic absent" from "topic present,
-question unanswered", so the page declines only where overlap is zero and
-otherwise shows you the passages and lets you judge.
-
-One short document, six queries. Length, headings, tables and a document whose
-wording does not match your question are all untested, and they are what will
-break it.
+Desk replaced **Work mode**, which read uploaded documents with BM25 retrieval.
+Its measurements — including why a small model must never summarise a document
+nobody can check — are in `docs/work-mode.md`, and the review that retired it
+is `docs/fix-plan-work-ui.md`.
 
 ### Why the Ollama page can't go on GitHub Pages
 
@@ -494,10 +468,13 @@ scripts/serve-web.sh      serve the chat UI on localhost
 scripts/build-stamps.mjs  regenerates web/stamps.mjs from Lucide
 scripts/token-budget.mjs  measures sketch cost against Qwen3's tokenizer
 scripts/sketch-bench.mjs  runs the real prompt through real models on CPU
+scripts/desk-bench.mjs    runs Desk's prompts through real models on CPU
+scripts/lib/retrieval.mjs BM25 from the retired Work mode, for retrieval-bench
 scripts/record-demo.mjs   records mp4/gif clips of sketch mode for posting
 web/index.html            streaming chat UI, talks to local Ollama
 web/browser.html          runs the model in-browser via WebGPU (Pages-ready)
 web/sketch.mjs            sketch format, context budget, SVG rendering
+web/desk.mjs              Desk: two tools, the planner, the page's checks
 web/stamps.mjs            generated icon geometry (do not edit by hand)
 web/rough.mjs             vendored rough.js 4.6.6 (MIT), the hand-drawn line
 web/sw.js                 service worker — keeps the page itself usable offline

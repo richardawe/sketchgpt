@@ -20,8 +20,8 @@ public on X. The lab's thesis is at the bottom.
 web/browser.html          in-browser inference (WebGPU via WebLLM) — the public page
 web/index.html            local chat against Ollama — development only
 web/sketch.mjs            sketch format, context budget, SVG rendering
-web/work.mjs              Work mode — file cap, passages, BM25 retrieval, 17 tasks,
-                          and the rule deciding whether the model runs at all
+web/desk.mjs              Desk (the default mode) — Brain dump + Say it better, the
+                          planner, and the checks the page makes on the output
 web/stamps.mjs            generated Lucide path data — never edit by hand
 web/rough.mjs             vendored rough.js 4.6.6 (MIT) — verbatim, keep it so
 web/sw.js                 service worker — the page's own offline cache
@@ -33,14 +33,18 @@ scripts/token-budget.mjs  measure sketch cost against Qwen3's real tokenizer
 scripts/sketch-bench.mjs  run the real prompt through real models, judged by the real parser
 scripts/record-demo.mjs   record clips of sketch mode, one per claim (Playwright + ffmpeg)
 scripts/grounding-bench.mjs  does a small model invent answers about a document? (it does)
-scripts/retrieval-bench.mjs  BM25 (shipped) vs an embedder, same document, same queries
+scripts/retrieval-bench.mjs  BM25 (Work mode's) vs an embedder, same document, same queries
+scripts/lib/retrieval.mjs    the retired Work-mode BM25, kept for that bench
+scripts/desk-bench.mjs       Desk's real prompts through real models, with the page's checks
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
                           (classification AND structured output — two task families)
 docs/mobile-models.md     the phone-suitable models WebLLM ships, and the plan to add them
-docs/work-mode.md         Phase 3 — reading a document on-device, and why the obvious
-                          design fails; read before touching RAG
+docs/work-mode.md         Phase 3 as first built — reading a document on-device, and why
+                          the obvious design fails; read before touching RAG
+docs/desk.md              what replaced it — five tools benched, two shipped, and why
+docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
 ```
 
@@ -89,8 +93,26 @@ serves **4-bit**, and that gap explains most surprises.
 | **Generation failures were a rumour, not a report** | Sketch failures kept the model's raw output; chat and Work printed `"Generation failed: " + err.message` and nothing else. The first phone run of Work mode returned a WebKit GPU error and the page said nothing about which GPU, which context, how long the prompt was, or that the engine was now dead. Every failure now carries a copyable block. **The rule that keeps paying: if a device nobody here can reach can produce it, the page has to report it.** |
 | **The page was throwing away the only evidence** | That one circle is indistinguishable from a misparse without the model's raw output, and nothing in the UI showed it. Anything shipped to a device nobody here can reach needs its raw output one tap away, or every report is a guess. |
 | **A chat history of drawings is unbounded and does not need to be** | Sketch history grew by a whole drawing per turn. Carrying only the previous drawing and the instruction that produced it makes the prompt **O(1) in turns** — measured flat at 391 tokens from turn 2 onward at 4096, 2048 and 1024 context. A revision needs a seed, not a transcript. |
+| **Retrieval failed as a product before it failed as retrieval** | Work mode had no task that *asked* for retrieval — it only ran as a fallback for long documents — and it searched with whatever was typed, so "Translate into French" on a long document searched for *French* and refused. The token estimator also charged prose **2.0×** its real Qwen3 cost (measured on the repo's own docs), so documents were "too long" at half their size. Retired for Desk; review in `docs/fix-plan-work-ui.md`. |
+| **A worked example leaks its content, not just its shape** | Say-it-better with one example: Qwen3-0.6B kept negations, and then added the example's *"I can't make the meeting — my car broke down"* to an unrelated message. Without it, "won't be ready Friday" became "will be ready Friday". Shipped with no example and a page-side check. In sketch mode an echoed example costs a second cat; in a message someone sends, it costs a false statement. |
+| **The page can check meaning where meaning is mechanical** | `checkRewrite` flags a lost negation or number; `leftOut` lists brain-dump items that appear on no line (both Qwen3 sizes dropped "dentist"). Neither makes a rewrite *right*; each turns one silent failure into a visible one. What they miss is written down: the 0.6B rewrote "You never reply to my emails" from the recipient's side, negation intact. |
+| **Two tools, chosen from five by measurement** | Draft-a-reply inverted the person's intent on the 0.6B ("no, I have a family thing" → "I don't have a family thing"); Rehearse was weak on both sizes and spoke the prompt's own phrases aloud. Break-it-down worked and was cut for focus at the user's call. `docs/desk.md`. |
 
 ### Browser gotchas already fixed
+
+- **A `const` read before its declaration killed every phone.** The page
+  called setup functions part-way down a 1,700-line module; on a touch screen
+  in Chat mode one of them read `PLACEHOLDER_SHORT`, declared ~700 lines
+  later, and threw a TDZ `ReferenceError`. Everything after that line never
+  ran — including the submit listener, so **Send submitted the form natively
+  and reloaded the page**, and the text escaper, so pasting a document said
+  "Nothing loaded". Live for a day on every phone. Every browser test used a
+  mouse, where the same function returned early. Fixed structurally: every
+  top-level side effect runs from one `boot()` at the bottom, and the form
+  carries `onsubmit="return false"` so no future startup error can turn Send
+  into a reload. `tests/desk-browser.mjs` runs on a touch screen *starting in
+  Chat mode* and fails on any page error or navigation — mutation-checked
+  against the crash, the missing listener, and the missing guard.
 
 - **`.err` as a bare class name collided with the status dot, and shipped.**
   `setStatus(t, "err")` sets the dot's class to `"dot err"`, and the page-level
@@ -370,27 +392,6 @@ practical fine-tuning.
   SwiftShader could not reach. Budget against floor + that workspace (42 MB
   SmolLM2, 92 MB Llama-3.2-1B, 162 MB Qwen3-0.6B, 410 MB Qwen3.5-0.8B) until a
   real device says otherwise.
-- **Work mode failed on the first real phone, and we do not yet know why.**
-  SmolLM2-360M, iPhone, Safari: `Generation failed: map async was not
-  successful` — a WebKit GPU error, so the device dropped the model rather than
-  the model getting it wrong. **Unknown: whether this is Work-mode-specific or
-  whether that phone/model pair fails in Chat too.** The page could not say,
-  which is why it now reports the facts and offers `?ctx=` a rung down. The
-  leading hypothesis is GPU memory at the 4096 rung SmolLM2-360M is given, and
-  it is consistent with the open "steady-state allocation is unmeasured" thread
-  — the workspace `batch_prefill`/`batch_decode` take on first inference has
-  never been measured on real hardware. **The next phone run decides it**, and
-  the copyable block is what makes that run readable. Note the prompt was NOT
-  unusually long: ~330 estimated tokens, below sketch mode's 391, so "Work mode
-  sends more" is not the explanation.
-- **Work mode is built and shipped — Phase 3's Layer 1 and a scoped Layer 2.**
-  `web/work.mjs` + the Work tab: a 512 KB file cap, passage splitting, BM25
-  retrieval, 17 tasks, and a planner that decides *before the model runs*
-  whether it runs at all. Four browser/node test files cover it, including
-  mutation-checked refusals. **What is untested is everything a real device and
-  a real document would say**: no phone has opened it, and the only documents
-  it has seen are the bench's synthetic policy and the tests' fixtures. The
-  measured retrieval numbers are one short document and six queries.
 - **Phase 4 got much cheaper and the roadmap has not absorbed it.** Ollama on
   CPU in this sandbox means capability-table work no longer needs a GPU or a
   round trip to a phone. `sketch-bench.mjs` is the harness and takes any Ollama
@@ -407,6 +408,19 @@ practical fine-tuning.
   still entirely unwritten: **a visitor draws, sees what their hardware
   managed, and the lab learns nothing.** The page already computes the answer
   per device and throws it away. No datapoint, no public matrix.
+- **Desk is built and benched, and no phone has run it.** Chromium touch
+  emulation is covered (`tests/desk-browser.mjs`); iOS Safari is not. The
+  "map async was not successful" GPU failure from Work mode's one phone run is
+  still unexplained — it happened on SmolLM2-360M at the 4096 rung, and Desk
+  runs the same model at the same rung on phones. The next phone run should
+  try Desk and Chat on that device and note which, if either, fails.
+- **Desk wants Qwen3-1.7B on desktop.** The bench is clear, the default is
+  still 0.6B, and changing it is a 500 MB → 2 GB download decision for the user.
+- **The token estimator still charges prose double.** Measured 2.0× on the
+  repo's docs; a trial rule measured 1.31–1.35× and never read low on any
+  paragraph. Not shipped: sketch budgets depend on it and would need
+  re-verifying with `token-budget.mjs`. Desk's word limit is therefore
+  conservative — about 1,200 words at 4096, 170 at 1024.
 - **The two-engine gate is still untested — and no longer blocking.** "Can two
   WebLLM engines be resident in one tab?" was the reason not to write Work mode
   UI. Retrieving lexically removed the dependency: there is no second engine, so
@@ -414,21 +428,6 @@ practical fine-tuning.
   `embeddings` and has no singleton guard, the arithmetic fits (239 + 376 MB
   against a 900 MB budget), and nobody has run it. `scripts/vram-probe/` can
   answer the allocation half without a GPU.
-- **Retrieval has first numbers for both layers, and the shipped one cannot
-  decline.** BM25 ties the embedder on hit rate (4/4 top-3, 3 first) and loses
-  the graded refusal entirely — see the findings table. One short synthetic
-  policy, six queries. **Length, headings, tables and a document whose wording
-  does not match the question are all untested**, and they are what will break
-  it. Run it over something real before trusting any of it.
-- **The embedder is now an upgrade with a known price, not a prerequisite.**
-  Adding `snowflake-arctic-embed-s-b4` buys back the "this document does not
-  cover that" refusal for 67 MB of download, 239 MB of GPU reserve, and the
-  still-untested co-residency gate below. `findPassages` in `web/work.mjs` is
-  the seam it plugs into — swap the scorer, keep the planner.
-- **Work mode's own untested list**, in rough order of what will bite first:
-  PDF (named as unsupported rather than mangled), a document whose headings the
-  splitter does not recognise, role-play over many turns at a 1024 context, and
-  whether the "contents list" reads as useful or as a shrug on a real document.
 
 ---
 

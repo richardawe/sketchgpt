@@ -42,7 +42,7 @@ export async function CreateMLCEngine() { return {
     const url = new URL(route.request().url());
     if (url.pathname === '/mock.mjs') return route.fulfill({ contentType: 'text/javascript', body: stub });
     const name = url.pathname.replace(/^.*\//, '');
-    const file = /^(sketch|stamps|rough|work)\.mjs$/.test(name) ? name : 'browser.html';
+    const file = /^(sketch|stamps|rough|desk)\.mjs$/.test(name) ? name : 'browser.html';
     await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
@@ -52,7 +52,7 @@ export async function CreateMLCEngine() { return {
     await page.click('#load');
   };
   await open(withRough ? '' : '&rough=0');
-  await page.selectOption('#output', 'sketch');
+  await page.click('#output [data-mode="sketch"]');
   const send = async text => { await page.fill('#input', text); await page.click('#send');
     await page.waitForFunction(() => !document.querySelector('#send').disabled); };
 
@@ -190,14 +190,14 @@ export async function CreateMLCEngine() { return {
   // Chat mode is untouched: no schema, no sketch prompt, its own history, and
   // the system prompt it was written for still applies there.
   await page.evaluate(() => { window.result = 'Hello'; });
-  await page.selectOption('#output', 'chat');
+  await page.click('#output [data-mode="chat"]');
   await send('Hello');
   assert.equal(await page.evaluate(() => requests.at(-1).messages.filter(m => m.role === 'user').length), 1);
   assert.equal(await page.evaluate(() => requests.at(-1).response_format), undefined);
   assert.equal(await page.evaluate(() =>
     requests.at(-1).messages.some(m => m.content.includes('plain English'))), true);
 
-  await page.selectOption('#output', 'sketch');
+  await page.click('#output [data-mode="sketch"]');
   await page.evaluate(() => { window.slow = true; });
   await page.fill('#input', 'Stop this sketch'); await page.click('#send'); await page.click('#stop');
   await page.waitForFunction(() => !document.querySelector('#send').disabled);
@@ -205,7 +205,7 @@ export async function CreateMLCEngine() { return {
   assert.equal(await page.evaluate(() => requests.at(-1).messages.some(m => m.content === 'Broken drawing')), false);
 
   await page.reload();
-  assert.equal(await page.locator('#output').inputValue(), 'sketch');
+  assert.equal(await page.locator('#output').getAttribute('data-value'), 'sketch');
   assert.deepEqual(errors, []);
   console.log(`Browser checks passed${withRough ? ' with the vendored rough.js' : ' on the clean-SVG fallback'}:` +
     ' stamps, render, export, mobile width, flat prompt, truncation, invalid output, history, stop, saved mode.');

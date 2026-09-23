@@ -1,5 +1,15 @@
 # Fix plan — Work mode retrieval and the page UI
 
+> **Status: acted on, differently.** P0 (the touch-screen crash) is fixed:
+> every startup side effect now runs from one `boot()` at the end of the
+> module, the form cannot fall back to a native submit, and
+> `tests/desk-browser.mjs` runs on a touch screen and fails on any page error
+> or reload — mutation-checked. P1–P4 were overtaken by a decision to drop
+> document upload altogether: Work mode was replaced by **Desk**
+> (`docs/desk.md`), and the page was redesigned (one-row header, load card,
+> composer with the tools in it). The retrieval code lives on in
+> `scripts/lib/retrieval.mjs` for `scripts/retrieval-bench.mjs`.
+
 Review of `main` at `fff5d91`. Every finding below was reproduced in this
 session: headless Chromium with the WebLLM stub the tests already use, the
 planner run in node, and Qwen3-0.6B's real tokenizer. **No real phone and no

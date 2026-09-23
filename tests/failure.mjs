@@ -47,7 +47,7 @@ try {
     if (url.pathname === '/mock.mjs')
       return route.fulfill({ contentType: 'text/javascript', body: stub });
     const name = url.pathname.replace(/^.*\//, '');
-    const file = /^(sketch|stamps|rough|work)\.mjs$/.test(name) ? name : 'browser.html';
+    const file = /^(sketch|stamps|rough|desk)\.mjs$/.test(name) ? name : 'browser.html';
     await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
@@ -76,7 +76,8 @@ try {
   let facts = await page.locator('.msg.assistant .source pre').last().textContent();
   for (const key of ['model:', 'mode:', 'context:', 'prompt:', 'gpu:', 'agent:', 'error:'])
     assert.ok(facts.includes(key), `the report is missing "${key}"`);
-  assert.match(facts, /mode: chat/);
+  // Desk is the default mode, and its failures get the same report.
+  assert.match(facts, /mode: desk/);
   assert.match(facts, /gpu: apple apple-m/);
   assert.match(facts, /error: something went sideways/);
   assert.match(facts, /prompt: \d+ tokens/);

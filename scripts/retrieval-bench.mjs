@@ -62,18 +62,18 @@ async function embed(input) {
 const dot = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0);
 const cos = (a, b) => dot(a, b) / (Math.sqrt(dot(a, a)) * Math.sqrt(dot(b, b)));
 
-// ---- 0. the layer that actually ships --------------------------------------
-// web/work.mjs retrieves with BM25, not with an embedder: no download, no
+// ---- 0. the lexical layer Work mode shipped ---------------------------------
+// Work mode retrieved with BM25, not with an embedder: no download, no
 // second engine in the tab, no untested co-residency gate. It shares the
 // property that matters — it returns existing text or nothing — so the fair
 // question is what the embedder buys over it. Same document, same queries.
 // This part needs no Ollama, so it always runs.
-const { buildIndex, findPassages } = await import("../web/work.mjs");
+const { buildIndex, findPassages } = await import("./lib/retrieval.mjs");
 
 const lexIndex = buildIndex(SENTENCES.map((s, i) => ({ i, text: s, start: 0, end: 0, heading: "" })));
 let lexHits = 0, lexScored = 0, lexFirst = 0;
 const lexHitCov = [], lexMissCov = [], lexEmpty = [];
-console.log("BM25 (web/work.mjs) — what the page does today:");
+console.log("BM25 (scripts/lib/retrieval.mjs) — what Work mode shipped:");
 for (const [q, want] of QUERIES) {
   const { hits, coverage, missing } = findPassages(lexIndex, q, { limit: 3 });
   const top = hits.map(h => h.passage.i);

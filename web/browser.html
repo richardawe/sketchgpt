@@ -5,279 +5,435 @@
 <!-- interactive-widget: when the on-screen keyboard opens, resize the layout
      instead of scrolling it, so the composer stays above the keyboard. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
-<title>sketchgpt in-browser</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13'%3E%E2%9C%8F%3C/text%3E%3C/svg%3E">
+<meta name="color-scheme" content="light dark">
+<title>sketchgpt — private AI in your browser</title>
+<meta name="description" content="A small language model that runs in this tab, on your own device. Nothing you type is sent anywhere.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231c1c1a'/%3E%3Cpath d='M9 22.5 20.5 11a2.1 2.1 0 0 1 3 3L12 25.5H9z' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
+  /* ---- Tokens ------------------------------------------------------------
+     One neutral scale, one accent. The accent is green and means exactly one
+     thing on this page: "this happened on your device". Primary actions are
+     ink, not accent, so the privacy signal is never diluted into decoration. */
   :root {
-    --bg: #fbfbfa;       --panel: #ffffff;   --ink: #1a1a18;
-    --muted: #6b6b66;    --line: #e4e4e0;    --accent: #2f6f4f;
-    --user-bg: #eef2f0;  --radius: 10px;  --code-bg: #f1f1ee;
+    --bg: #f6f6f3;        --panel: #ffffff;     --sunk: #f1f0ec;
+    --ink: #1c1c1a;       --ink-2: #3d3d39;     --muted: #6e6e68;   --faint: #9a9a93;
+    --line: #e6e5df;      --line-2: #d6d5ce;
+    --accent: #1d7048;    --accent-bg: #e7f3ec;
+    --primary: #1c1c1a;   --on-primary: #ffffff;
+    --warn-ink: #7a4f00;  --warn-bg: #fdf3dc;   --warn-line: #f0d9a4;
+    --err: #b3261e;       --err-bg: #fcebea;    --err-line: #f2c4c0;
+    --user-bg: #ecebe6;   --code-bg: #f1f0ec;
+    --shadow: 0 1px 2px rgb(20 20 18 / .05), 0 4px 16px rgb(20 20 18 / .05);
+    --shadow-lg: 0 2px 6px rgb(20 20 18 / .06), 0 16px 40px rgb(20 20 18 / .10);
+    --r-sm: 8px; --r: 12px; --r-lg: 16px;
+    --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text",
+            "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #16161a;     --panel: #1e1e23;   --ink: #e8e8e4;
-      --muted: #9a9a94;  --line: #2f2f36;    --accent: #7fd1a6;
-      --user-bg: #26262d; --code-bg: #26262d;
+      --bg: #111112;      --panel: #19191b;     --sunk: #151517;
+      --ink: #ecece8;     --ink-2: #cfcfca;     --muted: #9b9b95;   --faint: #6f6f6a;
+      --line: #2a2a2d;    --line-2: #37373b;
+      --accent: #6fd3a0;  --accent-bg: #16271e;
+      --primary: #ecece8; --on-primary: #111112;
+      --warn-ink: #f2c96b; --warn-bg: #2a2212;  --warn-line: #4a3b17;
+      --err: #ff8a80;     --err-bg: #2d1716;    --err-line: #4d2522;
+      --user-bg: #232326; --code-bg: #232326;
+      --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 4px 16px rgb(0 0 0 / .25);
+      --shadow-lg: 0 2px 6px rgb(0 0 0 / .35), 0 16px 40px rgb(0 0 0 / .45);
+      color-scheme: dark;
     }
   }
+  :root[data-theme="dark"] {
+    --bg: #111112;      --panel: #19191b;     --sunk: #151517;
+    --ink: #ecece8;     --ink-2: #cfcfca;     --muted: #9b9b95;   --faint: #6f6f6a;
+    --line: #2a2a2d;    --line-2: #37373b;
+    --accent: #6fd3a0;  --accent-bg: #16271e;
+    --primary: #ecece8; --on-primary: #111112;
+    --warn-ink: #f2c96b; --warn-bg: #2a2212;  --warn-line: #4a3b17;
+    --err: #ff8a80;     --err-bg: #2d1716;    --err-line: #4d2522;
+    --user-bg: #232326; --code-bg: #232326;
+    color-scheme: dark;
+  }
+
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
-    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font: 15px/1.55 var(--font);
+    -webkit-font-smoothing: antialiased;
     display: flex; flex-direction: column;
     /* 100vh on a phone is the viewport with the URL bar HIDDEN, so the footer
-       sat below the fold until you dragged the page and collapsed the bar.
-       dvh tracks the area actually visible. vh stays as the fallback for
-       browsers without dvh, where the old behaviour is no worse than before. */
+       sat below the fold until you dragged the page. dvh tracks the area
+       actually visible; vh stays as the fallback. */
     height: 100vh;
     height: 100dvh;
   }
+  [hidden] { display: none !important; }
+  svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
+          stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ---- Controls ---------------------------------------------------------- */
+  select, button, input, textarea { font: inherit; color: var(--ink); }
+  select, input[type=number], textarea {
+    background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r-sm);
+    padding: 7px 10px;
+  }
+  select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+  select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-visible {
+    outline: 2px solid var(--ink); outline-offset: 2px;
+  }
+  button {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r-sm);
+    padding: 7px 12px; cursor: pointer; line-height: 1.2; white-space: nowrap;
+    transition: background .12s, border-color .12s, color .12s;
+  }
+  button:hover:not(:disabled) { border-color: var(--faint); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--primary); color: var(--on-primary); border-color: var(--primary); font-weight: 550; }
+  button.primary:hover:not(:disabled) { opacity: .9; border-color: var(--primary); }
+  button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  button.ghost:hover:not(:disabled) { background: var(--sunk); color: var(--ink); border-color: transparent; }
+  button.icon { padding: 7px; }
+  a { color: inherit; }
+
+  /* ---- Header -------------------------------------------------------------
+     One row at every width. At 390px it used to wrap to three rows (~190px)
+     and push the conversation into a sliver. */
   header {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+    display: flex; align-items: center; gap: 12px;
+    height: 56px; padding: 0 16px; flex: none;
+    border-bottom: 1px solid var(--line); background: var(--panel);
   }
-  h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: -0.01em; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
-  .dot.on { background: var(--accent); }
-  .dot.err { background: #c0503f; }
+  .brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot.on { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+  .dot.err { background: var(--err); }
   .dot.busy { background: #d9a441; }
-  #status { color: var(--muted); font-size: 13px; }
-  /* A constrained preset silently rewrites every reply, so it must be visible
-     even when the settings panel is shut. */
-  #mode { font-size: 12px; padding: 2px 8px; border-radius: 999px;
-          background: var(--accent); color: #fff; white-space: nowrap; }
-  #mode[hidden] { display: none; }
   .spacer { flex: 1 1 auto; }
-  select, button, input, textarea {
-    font: inherit; color: var(--ink); background: var(--panel);
-    border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+  #status { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis; max-width: 240px; }
+  /* A constrained preset silently rewrites every reply, so it must be visible
+     even when the menu is shut. */
+  #mode { font-size: 12px; padding: 3px 9px; border-radius: 999px; cursor: pointer;
+          background: var(--sunk); color: var(--ink-2); border: 1px solid var(--line); white-space: nowrap; }
+
+  /* Mode switch: a segmented control, not a dropdown. Three choices that
+     change what the whole page does should all be visible. */
+  .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--sunk);
+         border: 1px solid var(--line); border-radius: 10px; flex: none; }
+  .seg button { border: 0; background: transparent; padding: 5px 12px; border-radius: 7px;
+                color: var(--muted); font-size: 13.5px; font-weight: 550; }
+  .seg button:hover:not(:disabled) { color: var(--ink); }
+  .seg button[aria-selected="true"] { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
+
+  /* The privacy meter. It counts requests the page makes after the model has
+     loaded — the claim "nothing leaves this device", made checkable. */
+  #net { font-size: 12.5px; padding: 5px 10px; border-radius: 999px; gap: 6px;
+         background: var(--accent-bg); color: var(--accent); border: 1px solid transparent; font-weight: 550; }
+  #net svg.i { width: 15px; height: 15px; }
+  #net.dirty { background: var(--warn-bg); color: var(--warn-ink); }
+
+  /* ---- Menu ---------------------------------------------------------------- */
+  #menu {
+    position: fixed; top: 60px; right: 12px; z-index: 20; width: min(380px, calc(100vw - 24px));
+    max-height: calc(100dvh - 76px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+    box-shadow: var(--shadow-lg); padding: 6px;
   }
-  button { cursor: pointer; }
-  /* Long option labels give the select a wide intrinsic width, which pushed the
-     page into horizontal scroll on a phone. Cap it and let the text truncate. */
-  #model { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
-  button:hover:not(:disabled) { border-color: var(--accent); }
-  button:disabled { opacity: 0.5; cursor: default; }
-  #bar { height: 3px; background: var(--line); display: none; }
-  #bar.on { display: block; }
-  #barfill { height: 100%; width: 0; background: var(--accent); transition: width 0.25s; }
-  #settings { padding: 12px 16px; border-bottom: 1px solid var(--line);
-              background: var(--panel); display: none; }
-  #settings.open { display: block; }
-  /* Work mode's document tray. Hidden entirely in the other modes rather than
-     greyed out: a control that does nothing here is worse than no control. */
-  #work { padding: 10px 16px; border-bottom: 1px solid var(--line);
-          background: var(--panel); display: none; }
-  #work.open { display: block; }
-  #work .wrap { display: flex; flex-direction: column; gap: 8px; }
-  #work .line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
-  #work label { font-size: 13px; color: var(--muted); }
-  #paste { width: 100%; min-height: 64px; max-height: 40vh; resize: vertical; }
-  #doc { font-size: 13px; color: var(--muted); }
-  #doc b { color: var(--ink); font-weight: 600; }
-  #doc.bad { color: #b3261e; }
-  #task, #opt { max-width: 100%; min-width: 0; }
-  /* The passages an answer was allowed to see. Not a disclosure nicety: an
-     answer without its source is the failure this mode exists to prevent, so
-     it is open by default and the text is never re-rendered. */
-  .used { margin-top: 10px; font-size: 13px; }
-  .used > summary { cursor: pointer; color: var(--muted); }
-  .used blockquote { margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--accent);
-    background: var(--user-bg); border-radius: 0 8px 8px 0; white-space: pre-wrap; }
-  .used .where { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px;
-    text-transform: uppercase; letter-spacing: 0.06em; }
-  .note { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
-  #settings label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  #menu section { padding: 12px; }
+  #menu section + section { border-top: 1px solid var(--line); }
+  #menu h3 { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--muted);
+             text-transform: uppercase; letter-spacing: .06em; }
+  #menu label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  #menu label.inline { display: flex; align-items: center; gap: 8px; color: var(--ink-2); margin: 8px 0 0; }
+  #menu .kv { font-size: 13px; color: var(--ink-2); }
+  #menu .kv b { font-weight: 600; color: var(--ink); }
   #system { width: 100%; min-height: 76px; resize: vertical; }
-  #preset { width: 100%; max-width: 100%; }
-  .row { display: flex; gap: 16px; align-items: center; margin-top: 10px;
-         flex-wrap: wrap; font-size: 13px; }
-  #log { flex: 1 1 auto; overflow-y: auto; padding: 20px 16px; }
-  .wrap { max-width: 760px; margin: 0 auto; }
-  .msg { margin-bottom: 18px; }
-  /* Rendered Markdown inside an assistant message. Tight vertical rhythm:
-     these are chat turns, not documents. */
-  .body > :first-child { margin-top: 0; }
-  .body > :last-child { margin-bottom: 0; }
-  .body p { margin: 0 0 10px; }
-  .body h1, .body h2, .body h3, .body h4, .body h5, .body h6 {
-    margin: 16px 0 8px; line-height: 1.3; font-weight: 600;
+  #preset { width: 100%; }
+  #hint, .fine { font-size: 12.5px; color: var(--muted); }
+  #evict { width: 100%; justify-content: flex-start; color: var(--err); padding-left: 0; }
+  #netlog { font: 12px/1.5 var(--mono); color: var(--ink-2); background: var(--sunk);
+            border-radius: var(--r-sm); padding: 8px 10px; margin: 8px 0 0; white-space: pre-wrap;
+            word-break: break-all; max-height: 160px; overflow-y: auto; }
+
+  /* ---- Conversation ------------------------------------------------------ */
+  #log { flex: 1 1 auto; overflow-y: auto; padding: 28px 16px 12px; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .msg { margin-bottom: 22px; }
+  .who { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px;
+         display: flex; align-items: center; gap: 6px; }
+  .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
+  .msg.user .who { display: none; }
+  .msg.user .body {
+    background: var(--user-bg); padding: 10px 14px; border-radius: 16px 16px 4px 16px;
+    max-width: min(85%, 560px);
+    /* A pasted email can be long. Keep it readable without letting it push
+       the answer off the screen. */
+    max-height: 11.5em; overflow-y: auto;
   }
-  .body h1 { font-size: 1.3em; } .body h2 { font-size: 1.18em; }
-  .body h3 { font-size: 1.06em; } .body h4, .body h5, .body h6 { font-size: 1em; }
-  .body ul, .body ol { margin: 0 0 10px; padding-left: 22px; }
-  .body li { margin: 2px 0; }
-  .body blockquote {
-    margin: 0 0 10px; padding: 2px 0 2px 12px;
-    border-left: 3px solid var(--line); color: var(--muted);
-  }
-  .body hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
-  .body code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em;
-    background: var(--code-bg); padding: 1px 5px; border-radius: 4px;
-  }
-  .body pre {
-    margin: 0 0 10px; padding: 10px 12px; border-radius: var(--radius);
-    background: var(--code-bg); overflow-x: auto;
-  }
-  .body pre code { background: none; padding: 0; font-size: 0.88em; }
-  .body a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-  /* KaTeX may not have loaded; the source text is the fallback. */
-  .body code.tex { color: var(--muted); }
-  /* A long display formula scrolls rather than forcing the page sideways,
-     which is what breaks a phone layout. */
-  .body .katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
-  .body .katex { font-size: 1.05em; }
-  .who { font-size: 12px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .msg.user .tag { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
   /* Plain text while streaming, and for the user's own messages, so newlines
      survive. `rich` is set once a message has been rendered as Markdown, where
      the markup carries the line breaks and pre-wrap would double them. */
   .body { white-space: pre-wrap; word-wrap: break-word; }
   .body.rich { white-space: normal; }
-  .sketch svg { display: block; width: 100%; max-width: 400px; height: auto; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; }
+  .body > :first-child { margin-top: 0; }
+  .body > :last-child { margin-bottom: 0; }
+  .body p { margin: 0 0 10px; }
+  .body h1, .body h2, .body h3, .body h4, .body h5, .body h6 { margin: 16px 0 8px; line-height: 1.3; font-weight: 600; }
+  .body h1 { font-size: 1.3em; } .body h2 { font-size: 1.18em; }
+  .body h3 { font-size: 1.06em; } .body h4, .body h5, .body h6 { font-size: 1em; }
+  .body ul, .body ol { margin: 0 0 10px; padding-left: 22px; }
+  .body li { margin: 2px 0; }
+  .body blockquote { margin: 0 0 10px; padding: 2px 0 2px 12px; border-left: 3px solid var(--line-2); color: var(--muted); }
+  .body hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+  .body code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .body pre { margin: 0 0 10px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--code-bg); overflow-x: auto; }
+  .body pre code { background: none; padding: 0; }
+  .body a { text-decoration: underline; text-underline-offset: 2px; }
+  .body code.tex { color: var(--muted); }
+  .body .katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+  .body .katex { font-size: 1.05em; }
+  .think { font-size: 13px; color: var(--muted); border-left: 2px solid var(--line-2);
+           padding-left: 10px; margin-bottom: 8px; font-style: italic; white-space: pre-wrap; }
+
+  /* An answer you are meant to use sits in a card, with its actions. */
+  .result { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r);
+            padding: 14px 16px; box-shadow: var(--shadow); }
+  .actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .actions button { font-size: 13px; padding: 5px 10px; }
+  .actions svg.i { width: 15px; height: 15px; }
+
+  /* The brain-dump checklist. The model named the items; the page owns the
+     boxes, the ticking and the order. */
+  .body .checklist { list-style: none; margin: 0; padding: 0; }
+  .body .checklist li { margin: 0; border-bottom: 1px solid var(--line); }
+  .checklist li:last-child { border-bottom: 0; }
+  .checklist label { display: flex; align-items: flex-start; gap: 10px; padding: 9px 2px; cursor: pointer; }
+  .checklist input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--ink); flex: none; }
+  .checklist input:checked + span { color: var(--faint); text-decoration: line-through; }
+
+  .callout { margin-top: 10px; padding: 10px 12px; border-radius: var(--r-sm); font-size: 13.5px;
+             background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-line); }
+  .callout b { font-weight: 600; }
+  .callout .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .callout .chips button { font-size: 13px; padding: 4px 10px; border-radius: 999px;
+                           background: var(--panel); border-color: var(--warn-line); color: var(--ink); }
+  .callout ul { margin: 4px 0 0; padding-left: 18px; }
+
+  .note { font-size: 13.5px; color: var(--muted); margin: 0 0 8px; }
+  .sketch svg { display: block; width: 100%; max-width: 420px; height: auto; background: #fff;
+                border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 10px; }
   /* What the model actually said, one tap away — the only way to tell a
      nearly-empty drawing from a misparsed one on a device we cannot reach. */
   .source { margin-top: 10px; font-size: 13px; color: var(--muted); }
   .source summary { cursor: pointer; }
-  /* The commands are editable: change a number, press Redraw. The coarse
-     pointer rule below already sizes this at 16px, which is what stops iOS
-     zooming the whole page when it is tapped. */
-  .source textarea { display: block; width: 100%; box-sizing: border-box; margin: 6px 0 0;
-    padding: 8px; background: var(--user-bg); border: 1px solid var(--line);
-    border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 12px; line-height: 1.5; color: inherit; resize: vertical; }
+  .source pre { font: 12px/1.5 var(--mono); background: var(--sunk); padding: 8px 10px;
+                border-radius: var(--r-sm); white-space: pre-wrap; word-break: break-word; color: var(--ink-2); }
+  .source textarea { display: block; width: 100%; margin: 6px 0 0; padding: 8px;
+    background: var(--sunk); font-family: var(--mono); font-size: 12px; line-height: 1.5; resize: vertical; }
   .source button { margin-top: 6px; }
-  .source .note { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
-  .source .note.bad { color: #b3261e; }
-  .msg.user .body { background: var(--user-bg); padding: 10px 12px; border-radius: var(--radius); }
-  .think {
-    font-size: 13px; color: var(--muted); border-left: 2px solid var(--line);
-    padding-left: 10px; margin-bottom: 8px; font-style: italic; white-space: pre-wrap;
-  }
-  .card {
-    max-width: 620px; margin: 8vh auto 0; padding: 22px;
-    border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
-  }
-  .card h2 { margin: 0 0 8px; font-size: 17px; }
-  .card p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
-  .card .go { background: var(--accent); color: #fff; border-color: var(--accent); padding: 9px 18px; font-weight: 500; }
-  .meta { font-size: 13px; color: var(--muted); margin-top: 14px; line-height: 1.8; }
-  .meta b { color: var(--ink); font-weight: 600; }
-  /* The page-level error panel. It was called `.err`, which the status dot
-     ALSO matched: setStatus(..., "err") gives the dot class "dot err", so on
-     every error the 8px dot picked up this rule's padding, border and
-     `margin: 0 auto` and inflated into a 26x22 box floated toward the middle
-     of the header, shoving the title to the right. Visible on a real phone;
-     `.dot { width: 8px }` loses because this rule is later and equally
-     specific. Renamed rather than out-specified, because a bare `err` is too
-     generic for a page-level component to own. */
-  .errbox {
-    max-width: 760px; margin: 0 auto 14px; padding: 10px 12px; border-radius: var(--radius);
-    background: #c0503f18; border: 1px solid #c0503f55; font-size: 14px;
-  }
-  code { background: var(--user-bg); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  .source .note { margin: 6px 0 0; font-size: 12px; }
+  .source .note.bad { color: var(--err); }
+
+  /* ---- Load card ---------------------------------------------------------- */
+  .card { max-width: 560px; margin: 6vh auto 0; padding: 28px; background: var(--panel);
+          border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+  .eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600;
+             color: var(--accent); background: var(--accent-bg); padding: 4px 10px; border-radius: 999px; margin-bottom: 14px; }
+  .eyebrow svg.i { width: 14px; height: 14px; }
+  .card h2, .intro h2 { text-wrap: balance; }
+  .card h2 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; letter-spacing: -0.02em; font-weight: 650; }
+  .card > p { margin: 0 0 20px; color: var(--muted); font-size: 15px; }
+  .card label { display: block; font-size: 13px; font-weight: 550; color: var(--ink-2); margin-bottom: 6px; }
+  #model { width: 100%; padding: 9px 10px; }
+  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 14px 0 18px;
+          background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+  .meta .stat { background: var(--panel); padding: 10px 12px; min-width: 0; }
+  .meta .k { font-size: 12px; color: var(--muted); }
+  .meta .v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .meta-notes { font-size: 13px; color: var(--muted); margin: -6px 0 16px; line-height: 1.6; }
+  .meta-notes b { color: var(--ink-2); font-weight: 600; }
+  .meta-notes .bad { color: var(--err); }
+  #load { width: 100%; padding: 11px 16px; font-size: 15px; }
+  #bar { height: 4px; background: var(--sunk); border-radius: 99px; overflow: hidden; margin-top: 12px; display: none; }
+  #bar.on { display: block; }
+  #barfill { height: 100%; width: 0; background: var(--ink); transition: width .25s; }
+  .credit { margin: 16px 0 0; font-size: 12.5px; color: var(--faint); text-align: center; }
+  /* The page-level error panel. NOT `.err`: the status dot takes "err" as a
+     modifier, and a bare `.err` panel rule once inflated the 8px dot into a
+     26x22 box that shoved the title across the header. tests/failure.mjs
+     pins the dot. */
+  .errbox { max-width: 720px; margin: 0 auto 14px; padding: 12px 14px; border-radius: var(--r);
+            background: var(--err-bg); border: 1px solid var(--err-line); font-size: 14px; color: var(--ink); }
+  .errbox code, .meta-notes code { font-family: var(--mono); font-size: 12px; background: var(--sunk);
+            padding: 1px 5px; border-radius: 4px; word-break: break-word; }
+
+  /* ---- Empty states --------------------------------------------------------- */
+  .intro { max-width: 640px; margin: 5vh auto 0; text-align: center; }
+  .intro h2 { font-size: 26px; letter-spacing: -0.02em; margin: 0 0 8px; font-weight: 650; }
+  .intro > p { color: var(--muted); margin: 0 auto 24px; max-width: 460px; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align: left; }
+  .tile { display: block; width: 100%; text-align: left; white-space: normal; padding: 16px;
+          border-radius: var(--r); background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .tile:hover:not(:disabled) { border-color: var(--line-2); }
+  .tile .t { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .tile .d { color: var(--muted); font-size: 13.5px; }
+  .tile .ex { display: block; margin-top: 10px; font-size: 13px; color: var(--ink-2);
+              background: var(--sunk); border-radius: var(--r-sm); padding: 7px 9px; }
+  .suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .suggest button { border-radius: 999px; font-size: 13.5px; }
+
+  /* ---- Composer ----------------------------------------------------------- */
   footer {
-    border-top: 1px solid var(--line); background: var(--panel); display: none;
-    /* The inset keeps the composer clear of the iOS home indicator on browsers
-       that report one; it resolves to 0 everywhere else. */
-    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    flex: none; display: none; background: linear-gradient(to bottom, transparent, var(--bg) 24px);
+    /* The inset keeps the composer clear of the iOS home indicator. */
+    padding: 4px 16px calc(14px + env(safe-area-inset-bottom, 0px));
   }
   footer.on { display: block; }
-  form { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
-  /* rows="1" sizes the box to ONE line, so a placeholder that wraps to two is
-     clipped — which on a phone reads as a broken input. Give it a floor that
-     fits a line comfortably and let the autosize handler grow it from there. */
-  #input { flex: 1; resize: none; min-height: 38px; max-height: 180px; overflow-y: auto; }
-  /* iOS zooms the whole page in when a focused form control is under 16px,
-     which pushes the layout wider than the screen and clips it on the right —
-     the header and the answer text both. Nothing here is actually overflowing;
-     the page is magnified. 16px on touch devices stops it. */
+  form { max-width: 720px; margin: 0 auto; }
+  .composer { background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r-lg);
+              box-shadow: var(--shadow); transition: border-color .12s, box-shadow .12s; }
+  .composer:focus-within { border-color: var(--faint); box-shadow: var(--shadow-lg); }
+  .tools { display: flex; align-items: center; gap: 6px; padding: 8px 8px 0; flex-wrap: wrap; }
+  .tools .tab { border: 1px solid transparent; background: transparent; color: var(--muted);
+                font-size: 13.5px; font-weight: 550; padding: 5px 10px; border-radius: 8px; }
+  .tools .tab svg.i { width: 16px; height: 16px; }
+  .tools .tab[aria-selected="true"] { background: var(--sunk); color: var(--ink); border-color: var(--line); }
+  #opt { font-size: 13px; padding: 4px 8px; border-radius: 8px; margin-left: auto; }
+  #input { display: block; width: 100%; border: 0; background: transparent; resize: none;
+           min-height: 52px; max-height: 220px; overflow-y: auto; padding: 12px 14px 4px; outline: none; }
+  #input:focus-visible { outline: none; }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 6px 8px 8px 14px; }
+  #count { font-size: 12.5px; color: var(--faint); font-variant-numeric: tabular-nums;
+           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  #count.over { color: var(--err); }
+  #count.warn { color: var(--warn-ink); }
+  #send { border-radius: 10px; padding: 7px 12px; }
+
+  /* ---- Small screens -------------------------------------------------------- */
+  @media (max-width: 640px) {
+    header { gap: 8px; padding: 0 10px; }
+    h1 { font-size: 14px; }
+    /* The words go; the dot stays. #status keeps its text for screen readers
+       and for tests, it just is not drawn. */
+    #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .seg button { padding: 5px 9px; font-size: 13px; }
+    #net .long { display: none; }
+    #net { padding: 5px 8px; }
+    .card { margin-top: 12px; padding: 20px; border-radius: var(--r); }
+    .card h2 { font-size: 21px; }
+    .meta .stat { padding: 9px 10px; }
+    .meta .v { font-size: 14px; }
+    .intro { margin-top: 2vh; }
+    .intro h2 { font-size: 22px; }
+    .tiles { grid-template-columns: 1fr; }
+    #log { padding: 18px 12px 8px; }
+    footer { padding-left: 10px; padding-right: 10px; }
+  }
+  @media (max-width: 380px) { h1 { display: none; } }
+  /* iOS zooms the whole page when a focused form control is under 16px, which
+     looks exactly like horizontal overflow and is not. Chromium never zooms,
+     so emulation will not catch this; the rule has to stay. */
   @media (pointer: coarse) {
-    select, button, input, textarea { font-size: 16px; }
-    #input { min-height: 42px; }
+    select, input, textarea { font-size: 16px; }
+    #opt { font-size: 16px; }
   }
 </style>
 </head>
 <body>
 <header>
-  <span class="dot" id="dot"></span>
-  <h1>sketchgpt</h1>
-  <select id="model" title="Model"></select>
-  <select id="output" aria-label="Output mode"><option value="chat">Chat</option><option value="sketch">Sketch</option><option value="work">Work</option></select>
+  <div class="brand"><span class="dot" id="dot"></span><h1>sketchgpt</h1></div>
+  <div class="seg" id="output" role="tablist" aria-label="Mode" data-value="desk">
+    <button type="button" role="tab" data-mode="desk" aria-selected="true">Desk</button>
+    <button type="button" role="tab" data-mode="sketch" aria-selected="false">Sketch</button>
+    <button type="button" role="tab" data-mode="chat" aria-selected="false">Chat</button>
+  </div>
+  <span class="spacer"></span>
   <span id="status">checking…</span>
   <span id="mode" hidden></span>
-  <span class="spacer"></span>
-  <button id="toggle">Settings</button>
-  <button id="evict" title="Remove the cached weights from this browser">Clear cache</button>
+  <button type="button" id="net" hidden title="Network requests this page has made since the model loaded">
+    <svg class="i" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+    <span id="netn">0</span><span class="long">&nbsp;sent</span>
+  </button>
+  <button type="button" id="toggle" class="ghost icon" aria-label="Menu" aria-expanded="false">
+    <svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+  </button>
 </header>
-<div id="bar"><div id="barfill"></div></div>
 
-<div id="settings">
-  <div class="wrap">
+<div id="menu" hidden>
+  <section>
+    <h3>This device</h3>
+    <div class="kv" id="menuinfo">No model loaded.</div>
+    <div class="kv" id="netinfo" style="margin-top:8px"></div>
+    <pre id="netlog" hidden></pre>
+  </section>
+  <section id="settings">
+    <h3>Chat settings</h3>
     <label for="preset">Preset</label>
     <select id="preset">
       <option value="chat">Chat — open conversation</option>
       <option value="concise">Concise — short answers</option>
       <option value="custom">Custom</option>
     </select>
-
-    <label for="system" style="margin-top:12px">System prompt</label>
+    <label for="system">System prompt</label>
     <textarea id="system" placeholder="Instructions the model sees before every message."></textarea>
-
-    <div class="row">
-      <span><label for="temp" style="display:inline">Temperature</label>
-        <input id="temp" type="number" min="0" max="2" step="0.1" value="0.7" style="width:70px"></span>
-      <label style="display:inline" title="Send each message on its own, ignoring earlier turns">
-        <input type="checkbox" id="single"> one message at a time</label>
-      <label style="display:inline" title="Qwen3 and similar models reason before answering">
-        <input type="checkbox" id="think"> show reasoning</label>
-      <span id="hint" style="color:var(--muted)"></span>
-    </div>
-  </div>
+    <label for="temp">Temperature</label>
+    <input id="temp" type="number" min="0" max="2" step="0.1" value="0.7" style="width:90px">
+    <label class="inline" title="Send each message on its own, ignoring earlier turns">
+      <input type="checkbox" id="single"> One message at a time</label>
+    <label class="inline" title="Qwen3 and similar models reason before answering">
+      <input type="checkbox" id="think"> Show reasoning</label>
+    <p id="hint" style="margin:8px 0 0"></p>
+  </section>
+  <section>
+    <button type="button" id="evict" class="ghost">Remove downloaded models from this browser</button>
+  </section>
 </div>
 
-<div id="work"><div class="wrap">
-  <div class="line">
-    <label for="file">Your text</label>
-    <input type="file" id="file">
-    <button type="button" id="clear-doc" hidden>Remove</button>
-    <span id="doc">Nothing loaded — paste below or choose a file.</span>
-  </div>
-  <textarea id="paste" placeholder="…or paste the message, note or document here."></textarea>
-  <div class="line">
-    <label for="task">Do what?</label>
-    <select id="task"></select>
-    <select id="opt" hidden></select>
-    <span class="spacer"></span>
-    <span id="docnote" style="color:var(--muted);font-size:12px">Nothing is uploaded, and nothing is saved.</span>
-  </div>
-</div></div>
-
 <div id="log"><div class="wrap" id="wrap">
-  <div class="card" id="card">
-    <h2>Run the model in this tab</h2>
-    <p>
-      The weights download once from the Hugging Face CDN into this browser's
-      cache, then inference runs locally on your GPU. No server, no install —
-      and it keeps working offline afterwards.
-    </p>
-    <button class="go" id="load">Download &amp; load model</button>
-    <div class="meta" id="meta"></div>
-  </div>
+  <section class="card" id="card">
+    <span class="eyebrow"><svg class="i" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>Runs on this device</span>
+    <h2>Private AI that never leaves this tab</h2>
+    <p>The model downloads once, then runs on your own graphics chip. What you type is
+       not sent anywhere — and after the first load it works offline.</p>
+    <label for="model">Model</label>
+    <select id="model" title="Model"></select>
+    <div id="meta"></div>
+    <button type="button" class="primary" id="load">Download &amp; load model</button>
+    <div id="bar"><div id="barfill"></div></div>
+    <p class="credit">Inference by <a href="https://webllm.mlc.ai/" target="_blank" rel="noopener">WebLLM</a> · weights from Hugging Face</p>
+  </section>
 </div></div>
 
 <footer id="foot">
-  <form id="form">
-    <textarea id="input" rows="1" placeholder="Send a message…"></textarea>
-    <button type="submit" id="send">Send</button>
-    <button type="button" id="stop" style="display:none">Stop</button>
+  <!-- onsubmit returns false so that Send can NEVER fall back to a native form
+       submission. It did: a startup error on touch screens stopped the submit
+       listener being attached, and every Send reloaded the page. -->
+  <form id="form" onsubmit="return false">
+    <div class="composer">
+      <div class="tools" id="tools" role="tablist" aria-label="Tool"></div>
+      <textarea id="input" rows="2" placeholder="Send a message…"></textarea>
+      <div class="bar">
+        <span id="count"></span>
+        <span class="spacer"></span>
+        <button type="button" id="stop" style="display:none">Stop</button>
+        <button type="submit" id="send" class="primary" aria-label="Send">
+          <svg class="i" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+        </button>
+      </div>
+    </div>
   </form>
 </footer>
-
 <script type="module">
 import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, estimateTokens } from "./sketch.mjs";
-import { TASKS, taskById, planWorkTurn, splitPassages, buildIndex, wordCount,
-         rejectFile, rejectText, fmtBytes, article, MAX_FILE_BYTES, FILE_ACCEPT } from "./work.mjs";
+import { TOOLS, TONES, toolById, planDeskTurn, maxWords, wordCount,
+         parseChecklist, stripPreamble, checkRewrite, leftOut } from "./desk.mjs";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
 
@@ -448,13 +604,17 @@ let CTX = 4096;
 let sketchHistory = [];
 let engine = null, history = [], generating = false, stopFlag = false;
 
-// ---- Work mode state -----------------------------------------------------
-// The document lives here and nowhere else. It is never written to
-// localStorage, never sent anywhere, and dropped when the tab closes — which
-// is the entire reason a 0.6B model is an acceptable thing to read a tenancy
-// agreement with. `save()` below must never learn about it.
-let workHistory = [];
-let doc = { name: "", text: "", passages: [], index: null };
+// ---- Desk state ------------------------------------------------------------
+// What you type in Desk lives in the composer and the conversation on screen,
+// and nowhere else. It is never written to localStorage and never sent
+// anywhere; save() stores the chosen tool and tone, never the text.
+let deskTool = "dump";
+let savedTone = null;
+
+// Everything the page itself fetches after the model has loaded, for the
+// privacy meter in the header. See startNetMeter().
+let netSince = null;
+const netSeen = [];
 
 // ---- Where the weights get stored ---------------------------------------
 // WebLLM defaults to the Cache API. On some phones that fails in a way that is
@@ -636,9 +796,10 @@ async function init() {
     }
   } catch {}
 }
-init();
 
 // ---- Cache + storage reporting ------------------------------------------
+// Three numbers up front, because they are the three that decide whether this
+// works on a given device; everything else is a footnote under them.
 async function refreshMeta() {
   const id = $("model").value;
   let cached = false;
@@ -646,66 +807,53 @@ async function refreshMeta() {
 
   const dl = downloadOf(id);
   const gpu = gpuOf(id, CTX);
+  const m = modelOf(id);
 
-  let quota = "";
-  try {
-    const e = await navigator.storage.estimate();
-    if (e && e.usage != null) {
-      quota = `<br><b>Browser storage used:</b> ${(e.usage / 1e6).toFixed(0)} MB` +
-              (e.quota ? ` of ~${(e.quota / 1e9).toFixed(1)} GB available` : "");
-    }
-  } catch {}
-
+  let est = null;
+  try { est = await navigator.storage.estimate(); } catch {}
   let persisted = false;
   try { persisted = await navigator.storage.persisted(); } catch {}
 
-  // Too large for the device = the tab is killed with no catchable error.
-  let toobig = "";
-  if (gpu && gpu > DEV.budgetMB) {
-    toobig = `<br><span style="color:#c0503f"><b>Too large for this device.</b> ` +
-             `It needs ~${Math.round(gpu)} MB of GPU memory but this ` +
-             `${DEV.mobile ? "phone" : "device"} can only be counted on for ` +
-             `~${Math.round(DEV.budgetMB)} MB. Loading it will crash the tab ` +
-             `rather than fail gracefully — pick a smaller model above.</span>`;
-  }
+  const stat = (k, v) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const ctxLabel = CTX >= 1024 ? `${CTX / 1024}k tokens` : `${CTX} tokens`;
+
+  const notes = [];
+  notes.push(`${DEV.mobile ? "Phone or tablet" : "Desktop"} · fp16 ${DEV.f16 ? "supported" : "not supported"}` +
+             (DEV.maxBufMB ? ` · max GPU buffer ${DEV.maxBufMB} MB` : ""));
+  // Say why the context is what it is. A window quietly reduced under the
+  // visitor's feet reads as a broken page rather than a deliberate trade.
+  if (CTX !== CTX_LADDER[0]) notes.push("Context reduced to fit this device's memory.");
+  if (m && m.slidingWindow && m.slidingWindow < CTX)
+    notes.push(`This model caps its cache at ${m.slidingWindow} tokens.`);
+  if (m && m.note) notes.push(m.note);
+  if (est && est.usage != null)
+    notes.push(`Browser storage: ${(est.usage / 1e6).toFixed(0)} MB used` +
+               (est.quota ? ` of ~${(est.quota / 1e9).toFixed(1)} GB` : "") +
+               ` · eviction protection ${persisted ? "on" : "requested at load"}`);
 
   // A quota smaller than the DOWNLOAD means the transfer dies partway. This
   // used to compare against the GPU figure, which for Qwen3-0.6B overstated
   // the disk requirement by about a gigabyte.
-  let tight = "";
-  try {
-    const e = await navigator.storage.estimate();
-    if (e?.quota && dl && e.quota < dl * 1e6) {
-      tight = `<br><span style="color:#c0503f">This browser only allows ` +
-              `~${(e.quota / 1e6).toFixed(0)} MB of storage, which is less than ` +
-              `the ${dl} MB this model downloads. Free up disk space or pick a ` +
-              `smaller one.</span>`;
-    }
-  } catch {}
-
-  const dev = `<br><b>Device:</b> ${DEV.mobile ? "phone/tablet" : "desktop"}` +
-              `, fp16 ${DEV.f16 ? "yes" : "no"}` +
-              (DEV.maxBufMB ? `, max buffer ${DEV.maxBufMB} MB` : "");
-
-  // Say why the context is what it is. A window quietly reduced under the
-  // visitor's feet reads as a broken page rather than a deliberate trade.
-  const m = modelOf(id);
-  const capped = m && m.slidingWindow && m.slidingWindow < CTX;
-  const ctxNote = CTX === CTX_LADDER[0]
-    ? `${CTX} tokens`
-    : `${CTX} tokens — reduced to fit this device's memory`;
+  if (est?.quota && dl && est.quota < dl * 1e6)
+    notes.push(`<span class="bad">This browser only allows ~${(est.quota / 1e6).toFixed(0)} MB of ` +
+               `storage, less than the ${dl} MB this model downloads. Free up disk space or pick a ` +
+               `smaller one.</span>`);
+  // Too large for the device = the tab is killed with no catchable error.
+  if (gpu && gpu > DEV.budgetMB)
+    notes.push(`<span class="bad"><b>Too large for this device.</b> It needs ~${Math.round(gpu)} MB ` +
+               `of GPU memory; this ${DEV.mobile ? "phone" : "device"} can be counted on for ` +
+               `~${Math.round(DEV.budgetMB)} MB. Loading it will crash the tab rather than fail ` +
+               `gracefully — pick a smaller model.</span>`);
 
   $("meta").innerHTML =
-    `<b>Weights cached here:</b> ${cached ? "yes — loads instantly, works offline" : "no — first load downloads them"}` +
-    `<br><b>Download:</b> ${dl ? `~${dl} MB` : "unknown"}${cached ? " (already fetched)" : ""}` +
-    `<br><b>GPU memory:</b> ~${gpu ? Math.round(gpu) : "?"} MB` +
-    `<br><b>Context window:</b> ${ctxNote}` +
-    (capped ? ` <span style="color:var(--muted)">(this model caps its cache at ${m.slidingWindow})</span>` : "") +
-    (m && m.note ? `<br><span style="color:var(--muted)">${m.note}</span>` : "") +
-    `<br><b>Eviction protection:</b> ${persisted ? "on" : "off (requested at load)"}` +
-    dev + quota + tight + toobig;
+    `<div class="meta">` +
+      stat("Download", cached ? "Cached" : (dl ? `${dl} MB` : "?")) +
+      stat("GPU memory", gpu ? `${Math.round(gpu)} MB` : "?") +
+      stat("Context", ctxLabel) +
+    `</div>` +
+    `<div class="meta-notes">${notes.join("<br>")}</div>`;
 
-  $("load").textContent = cached ? "Load model (cached)" : "Download & load model";
+  $("load").textContent = cached ? "Load model" : `Download ${dl ? dl + " MB " : ""}& load`;
 }
 $("model").addEventListener("change", () => {
   const safeMB = DEV.budgetMB * HEADROOM;
@@ -765,11 +913,20 @@ $("load").addEventListener("click", async () => {
       }
     }, chatOptsFor(id));
     $("bar").classList.remove("on");
-    $("wrap").innerHTML = "";
+    // Hidden, not removed: the card holds #model, which the failure report and
+    // the small-model notes read for the rest of the session.
+    $("card").hidden = true;
     $("foot").classList.add("on");
-    fitPlaceholder();
     setStatus("ready — running locally", "on");
-    $("input").focus();
+    startNetMeter();
+    const m = modelOf(id);
+    $("menuinfo").innerHTML = `<b>${esc(m ? m.label : id)}</b><br>` +
+      `${CTX.toLocaleString()}-token context · ~${Math.round(gpuOf(id, CTX) || 0)} MB GPU memory` +
+      `<br><span class="fine">To switch model, reload the page.</span>`;
+    syncMode();
+    // On a phone, focusing the composer throws up the keyboard over the
+    // welcome screen before anyone has read it.
+    if (!DEV.mobile) $("input").focus();
   } catch (e) {
     $("bar").classList.remove("on");
     $("load").disabled = false;
@@ -873,7 +1030,7 @@ function syncBadge() {
   // Sketch mode does not send the chat prompt, so a badge that just says
   // "custom prompt" would claim an effect it no longer has.
   $("mode").textContent = (MODE_LABEL[name] || "") +
-    ($("output").value === "chat" ? "" : " — not used in this mode");
+    (outMode() === "chat" ? "" : " — not used in this mode");
 }
 
 function applyPreset(name) {
@@ -893,7 +1050,9 @@ function save() {
     localStorage.setItem("sketchgpt.cfg", JSON.stringify({
       preset: $("preset").value, system: $("system").value,
       temp: $("temp").value, single: $("single").checked,
-      think: $("think").checked, output: $("output").value
+      think: $("think").checked, output: outMode(),
+      // The chosen tool and tone, never the text: Desk input is not stored.
+      tool: deskTool, tone: $("opt") ? $("opt").value : savedTone
     }));
   } catch {}
 }
@@ -907,7 +1066,9 @@ function restore() {
     $("temp").value = c.temp != null ? c.temp : 0.7;
     $("single").checked = !!c.single;
     $("think").checked = !!c.think;
-    $("output").value = ["sketch", "work"].includes(c.output) ? c.output : "chat";
+    setMode(c.output || "desk", { quiet: true });
+    if (c.tool && toolById(c.tool)) deskTool = c.tool;
+    if (c.tone) savedTone = c.tone;
     $("hint").textContent = HINTS[$("preset").value] || "";
     syncBadge();
   } else {
@@ -930,146 +1091,218 @@ for (const id of ["system", "temp", "single"]) {
     save();
   });
 }
-$("toggle").addEventListener("click", () => $("settings").classList.toggle("open"));
-$("mode").addEventListener("click", () => $("settings").classList.add("open"));
-$("mode").style.cursor = "pointer";
+
+// ---- The menu ----------------------------------------------------------------
+function setMenu(open) {
+  $("menu").hidden = !open;
+  $("toggle").setAttribute("aria-expanded", String(open));
+}
+$("toggle").addEventListener("click", e => { e.stopPropagation(); setMenu($("menu").hidden); });
+$("mode").addEventListener("click", e => { e.stopPropagation(); setMenu(true); });
 $("mode").title = "Constrained mode — tap to change";
-restore();
-// Fetch the sketch renderer as soon as the mode is chosen, so the first
-// drawing is not waiting on a CDN after the model has already answered.
-const warmRough = () => { if ($("output").value === "sketch") loadRough(ROUGH); };
-$("output").addEventListener("change", () => {
-  save(); fitPlaceholder(); warmRough(); syncBadge(); syncWork();
+$("net").addEventListener("click", e => { e.stopPropagation(); setMenu(true); });
+document.addEventListener("click", e => {
+  if (!$("menu").hidden && !$("menu").contains(e.target)) setMenu(false);
 });
+document.addEventListener("keydown", e => { if (e.key === "Escape") setMenu(false); });
 
-// ---- Work mode -----------------------------------------------------------
-// The tray that holds your text, and the task picker. The rules this UI has to
-// keep are in web/work.mjs; the only one it owns is that the file never leaves
-// the tab.
-$("file").accept = FILE_ACCEPT;
+// ---- Modes -----------------------------------------------------------------
+// Desk is the default: it is the part of the page that is for doing something.
+// A saved "work" (the mode Desk replaced) comes back as Desk.
+const MODES = ["desk", "sketch", "chat"];
+const outMode = () => $("output").dataset.value;
 
-for (const t of TASKS) {
-  let group = $("task").querySelector(`optgroup[label="${t.group}"]`);
-  if (!group) {
-    group = document.createElement("optgroup");
-    group.label = t.group;
-    $("task").appendChild(group);
-  }
-  const o = document.createElement("option");
-  o.value = t.id; o.textContent = t.label;
-  group.appendChild(o);
+function setMode(m, { quiet = false } = {}) {
+  if (m === "work") m = "desk";
+  if (!MODES.includes(m)) m = "desk";
+  $("output").dataset.value = m;
+  for (const b of $("output").querySelectorAll("button"))
+    b.setAttribute("aria-selected", String(b.dataset.mode === m));
+  if (quiet) return;
+  save();
+  syncMode();
 }
-$("task").value = "rewrite";
+for (const b of $("output").querySelectorAll("button"))
+  b.addEventListener("click", () => { if (b.dataset.mode !== outMode()) setMode(b.dataset.mode); });
 
-function currentTask() { return taskById($("task").value); }
-
-function syncTask() {
-  const t = currentTask();
-  const sel = $("opt");
-  sel.hidden = !t || !t.options;
-  if (t && t.options) {
-    sel.innerHTML = "";
-    sel.setAttribute("aria-label", t.options.label);
-    for (const v of t.options.values) {
-      const o = document.createElement("option");
-      o.value = v;
-      o.textContent = t.options.label === "As a" ? `As ${article(v)} ${v}` : `${t.options.label} ${v}`;
-      sel.appendChild(o);
-    }
-  }
+function syncMode() {
+  syncBadge();
+  syncTools();
   fitPlaceholder();
+  updateCount();
+  showIntro();
+  // Chat settings do nothing in the other modes, so they are not offered there.
+  $("settings").hidden = outMode() !== "chat";
 }
 
-function syncWork() {
-  $("work").classList.toggle("open", $("output").value === "work");
-  syncTask();
+// ---- Desk --------------------------------------------------------------------
+const ICON = {
+  inbox: '<svg class="i" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>',
+  wand: '<svg class="i" viewBox="0 0 24 24"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>',
+  copy: '<svg class="i" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  check: '<svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>'
+};
+
+const currentTool = () => toolById(deskTool) || TOOLS[0];
+
+// A 0.6B model measurably fails at the tools marked smallWeak. The page says
+// so while that model is loaded, instead of letting a phone user find out from
+// a draft that says the opposite of what they meant.
+const smallModel = () => { const m = modelOf($("model").value); return !m || m.tier === 0; };
+
+function selectTool(id) {
+  deskTool = toolById(id) ? id : TOOLS[0].id;
+  save();
+  syncTools();
+  fitPlaceholder();
+  updateCount();
 }
 
-// Indexing is linear in words and runs on whatever device is here, so it
-// happens once per document rather than once per question.
-function setDoc(name, text) {
-  const bad = rejectText(text);
-  if (bad) { showDoc(bad, true); return false; }
-  doc.name = name;
-  doc.text = text;
-  doc.passages = splitPassages(text);
-  doc.index = buildIndex(doc.passages);
-  workHistory = [];
-  showDoc();
-  return true;
-}
-
-function dropDoc() {
-  doc = { name: "", text: "", passages: [], index: null };
-  workHistory = [];
-  $("file").value = "";
-  showDoc();
-}
-
-function showDoc(msg, bad) {
-  const el = $("doc");
-  el.classList.toggle("bad", !!bad);
-  $("clear-doc").hidden = !doc.text;
-  if (msg) { el.textContent = msg; return; }
-  if (!doc.text) { el.textContent = "Nothing loaded — paste below or choose a file."; return; }
-  const words = wordCount(doc.text);
-  const fits = doc.passages.length <= 1 || words < CTX / 2;
-  el.innerHTML = `<b>${esc(doc.name || "pasted text")}</b> — ${words.toLocaleString()} words, ` +
-    `${doc.passages.length} passage${doc.passages.length === 1 ? "" : "s"}` +
-    (fits ? "" : ` · too long to read whole at ${CTX} tokens, so questions are answered from passages`);
-}
-
-$("file").addEventListener("change", async () => {
-  const file = $("file").files[0];
-  if (!file) return;
-  // Checked before a byte is read: an oversized file costs nothing to refuse.
-  const bad = rejectFile(file);
-  if (bad) { $("file").value = ""; showDoc(bad, true); return; }
-  try {
-    const text = await file.text();
-    if (setDoc(file.name, text)) $("paste").value = "";
-  } catch (e) {
-    $("file").value = "";
-    showDoc("Could not read that file: " + (e && e.message || e), true);
-  }
-});
-
-$("clear-doc").addEventListener("click", () => { $("paste").value = ""; dropDoc(); });
-
-// Pasted text is the same thing as a file, and gets the same cap. Debounced:
-// indexing on every keystroke of a long paste is the one way this can feel slow.
-let pasteTimer = null;
-$("paste").addEventListener("input", () => {
-  clearTimeout(pasteTimer);
-  pasteTimer = setTimeout(() => {
-    const text = $("paste").value;
-    if (!text.trim()) { if (!$("file").files[0]) dropDoc(); return; }
-    const bytes = new Blob([text]).size;
-    if (bytes > MAX_FILE_BYTES) {
-      showDoc(`That is ${fmtBytes(bytes)} of text. The limit is ${fmtBytes(MAX_FILE_BYTES)}.`, true);
-      return;
+function syncTools() {
+  const box = $("tools");
+  const desk = outMode() === "desk";
+  box.hidden = !desk;
+  if (!desk) return;
+  if (!box.childElementCount) {
+    for (const t of TOOLS) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "tab"; b.setAttribute("role", "tab"); b.dataset.tool = t.id;
+      b.innerHTML = ICON[t.icon] || "";
+      b.append(t.label);
+      b.addEventListener("click", () => { selectTool(t.id); $("input").focus(); });
+      box.appendChild(b);
     }
-    $("file").value = "";
-    setDoc("", text);
-  }, 250);
-});
+    const opt = document.createElement("select");
+    opt.id = "opt";
+    opt.setAttribute("aria-label", "Tone");
+    for (const v of TONES) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = `Make it ${v}`;
+      opt.appendChild(o);
+    }
+    opt.value = savedTone && TONES.includes(savedTone) ? savedTone : TONES[0];
+    opt.addEventListener("change", save);
+    box.appendChild(opt);
+  }
+  const tool = currentTool();
+  for (const b of box.querySelectorAll(".tab"))
+    b.setAttribute("aria-selected", String(b.dataset.tool === tool.id));
+  $("opt").hidden = !tool.options;
+}
 
-$("task").addEventListener("change", syncTask);
-syncWork();
-warmRough();
+// The composer says how much fits BEFORE Send, using the same rule the planner
+// applies after it. Work mode's tray and planner disagreed about what fitted;
+// here there is one function, and both ends call it.
+function updateCount(note) {
+  const el = $("count");
+  el.className = "";
+  if (outMode() !== "desk" || !engine) { el.textContent = ""; return; }
+  if (note) { el.textContent = note; el.className = "over"; el.title = note; return; }
+  const tool = currentTool();
+  const n = wordCount($("input").value);
+  const max = maxWords(tool, CTX);
+  el.title = "";
+  if (!n) {
+    el.textContent = smallModel() && tool.smallWeak
+      ? "Small model — check the result before you use it"
+      : "Stays on this device";
+    return;
+  }
+  el.textContent = `${n.toLocaleString()} / ${max.toLocaleString()} words`;
+  if (n > max) el.className = "over";
+  else if (n > max * 0.85) el.className = "warn";
+}
 
-// Keep the page itself available with no signal. The weights already
-// persisted; the HTML did not, because GitHub Pages expires it after ten
-// minutes. Registered late and failure-tolerant: a browser that refuses
-// service workers (private mode, an insecure origin, an old phone) should
-// lose offline use and nothing else.
-// Registered straight away, NOT on the load event: this module top-level
-// awaits the WebLLM import, so "load" fires while it is still suspended and a
-// listener added afterwards never runs. That bug shipped once, and the test
-// missed it by registering the worker itself instead of letting the page do it.
-if ("serviceWorker" in navigator && location.protocol !== "file:") {
-  navigator.serviceWorker.register("./sw.js").catch(e =>
-    console.warn("offline support unavailable:", e.message));
+// ---- Empty states ------------------------------------------------------------
+// Each mode opens on what it is for and something to try, rather than on a
+// blank log with a blinking cursor.
+const SKETCH_IDEAS = ["a house beside a tree", "a sailboat on the sea under the sun",
+                      "a cat next to a cup of coffee"];
+const CHAT_IDEAS = ["Give me five names for a bakery", "Write a haiku about Monday mornings"];
+
+function showIntro() {
+  const wrap = $("wrap");
+  if (!engine) return;                        // the load card owns the page until then
+  let el = $("intro");
+  if (wrap.querySelector(".msg")) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement("section"); el.id = "intro"; el.className = "intro"; wrap.prepend(el); }
+  const m = outMode();
+  el.dataset.mode = m;
+  if (m === "desk") {
+    el.innerHTML = `<h2>Your private desk</h2>
+      <p>For the things you would not paste into a chatbot. It all runs on this device —
+      the shield in the header counts what has been sent since the model loaded.</p>
+      <div class="tiles"></div>`;
+    for (const t of TOOLS) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "tile";
+      b.innerHTML = `<span class="t">${ICON[t.icon] || ""}${esc(t.label)}</span>` +
+        `<span class="d">${esc(t.blurb)}` +
+        (smallModel() && t.smallWeak ? ` On this small model, read it before you send it.` : "") +
+        `</span><span class="ex">Try: “${esc(t.example)}”</span>`;
+      b.addEventListener("click", () => {
+        selectTool(t.id);
+        $("input").value = t.example;
+        $("input").dispatchEvent(new Event("input"));
+        $("input").focus();
+      });
+      el.querySelector(".tiles").appendChild(b);
+    }
+  } else {
+    const sketch = m === "sketch";
+    el.innerHTML = sketch
+      ? `<h2>Describe a picture</h2><p>The model names what to draw and where; the page draws
+         it by hand. If something lands in the wrong place, edit the numbers and redraw.</p>`
+      : `<h2>Ask a small model</h2><p>It runs on this device. Good for ideas and first drafts;
+         unreliable on facts — check anything that matters.</p>`;
+    const row = document.createElement("div");
+    row.className = "suggest";
+    for (const idea of sketch ? SKETCH_IDEAS : CHAT_IDEAS) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = idea;
+      b.addEventListener("click", () => { $("input").value = idea; $("form").requestSubmit(); });
+      row.appendChild(b);
+    }
+    el.appendChild(row);
+  }
+}
+
+// ---- The privacy meter -------------------------------------------------------
+// "Nothing you type leaves this device" is a claim every privacy page makes.
+// This one counts: every request the page makes after the model has loaded
+// shows up here, with its address, from the browser's own Resource Timing
+// record. Desk and Chat make none. The counter does not pretend otherwise if
+// something does — a KaTeX font fetched for a formula is listed like anything
+// else, so the reader can see it is a font and not their text.
+function startNetMeter() {
+  netSince = performance.now();
+  $("net").hidden = false;
+  renderNet();
+  try {
+    new PerformanceObserver(list => {
+      for (const e of list.getEntries()) if (e.startTime >= netSince) netSeen.push(e.name);
+      renderNet();
+    }).observe({ type: "resource", buffered: true });
+  } catch {
+    $("net").hidden = true;
+    $("netinfo").textContent = "This browser cannot report its own requests, so there is no counter.";
+  }
+}
+
+function renderNet() {
+  const n = netSeen.length;
+  $("netn").textContent = String(n);
+  $("net").classList.toggle("dirty", n > 0);
+  $("net").title = n
+    ? `${n} network request${n === 1 ? "" : "s"} since the model loaded — open the menu to see them`
+    : "No network requests since the model loaded";
+  $("netinfo").innerHTML = n
+    ? `<b>${n} request${n === 1 ? "" : "s"}</b> since the model loaded:`
+    : `<b>0 requests</b> since the model loaded. Nothing you have typed has left this device.`;
+  $("netlog").hidden = !n;
+  $("netlog").textContent = netSeen.map(u => {
+    try { const x = new URL(u); return x.host + x.pathname; } catch { return u; }
+  }).join("\n");
 }
 
 // ---- Rendering model output ----------------------------------------------
@@ -1268,10 +1501,15 @@ async function paint(el, text) {
 }
 
 // ---- Chat ----------------------------------------------------------------
-function addMsg(role, text) {
+function addMsg(role, text, tag) {
   const el = document.createElement("div");
   el.className = "msg " + role;
   el.innerHTML = `<div class="who">${role === "user" ? "you" : "sketchgpt"}</div>`;
+  if (tag) {
+    const t = document.createElement("div");
+    t.className = "tag"; t.textContent = tag;
+    el.appendChild(t);
+  }
   const think = document.createElement("div");
   think.className = "think"; think.style.display = "none";
   const body = document.createElement("div");
@@ -1300,33 +1538,119 @@ function splitThink(raw) {
     : { think: raw.slice(open + 7, close), answer: raw.slice(close + 8) };
 }
 
-// ---- Work mode rendering -------------------------------------------------
-// The passages an answer was allowed to see, shown with it and never instead
-// of it. docs/work-mode.md is the argument for this being non-optional: a
-// small model's wrong answer is confident and well-formed, so the only thing
-// that makes it checkable is the text it came from, in the person's own words,
-// on the same screen. Inserted as textContent — a document the page did not
-// write is never parsed as markup.
-function showUsed(el, passages, label, open = true) {
-  if (!passages || !passages.length) return;
-  const d = document.createElement("details");
-  d.className = "used";
-  d.open = open;
-  const s = document.createElement("summary");
-  s.textContent = label || `The ${passages.length} passage${passages.length === 1 ? "" : "s"} this came from`;
-  d.appendChild(s);
-  for (const p of passages) {
-    const q = document.createElement("blockquote");
-    if (p.heading) {
-      const w = document.createElement("span");
-      w.className = "where";
-      w.textContent = p.heading;
-      q.appendChild(w);
-    }
-    q.appendChild(document.createTextNode(p.text));
-    d.appendChild(q);
+// ---- Desk rendering -----------------------------------------------------------
+// The model named things; the page lays them out, checks what it mechanically
+// can, and says what it found. Everything here is inserted as text, never as
+// markup: the model's words and the person's words are both untrusted.
+async function copyText(text, btn) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch {
+    const t = document.createElement("textarea");
+    t.value = text; t.style.position = "fixed"; t.style.opacity = "0";
+    document.body.appendChild(t); t.select();
+    try { ok = document.execCommand("copy"); } catch {}
+    t.remove();
   }
-  el.appendChild(d);
+  if (btn) {
+    const was = btn.innerHTML;
+    btn.innerHTML = ok ? ICON.check + "Copied" : "Could not copy";
+    setTimeout(() => { btn.innerHTML = was; }, 1400);
+  }
+}
+
+function actionRow(getText) {
+  const row = document.createElement("div");
+  row.className = "actions";
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "ghost";
+  b.innerHTML = ICON.copy + "Copy";
+  b.addEventListener("click", () => copyText(getText(), b));
+  row.appendChild(b);
+  return row;
+}
+
+function checkItem(text) {
+  const li = document.createElement("li");
+  const label = document.createElement("label");
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  const span = document.createElement("span");
+  span.textContent = text;
+  label.append(box, span);
+  li.appendChild(label);
+  return li;
+}
+
+/** Returns the text the conversation should remember for this turn. */
+function renderDesk(body, tool, source, raw) {
+  const text = stripPreamble(raw);
+  body.textContent = "";
+  if (!text) {
+    // Measured: the only thing Qwen3-0.6B returned for two rewrites was
+    // "Sure! Here's a firmer version of your message:" — and then nothing.
+    showNote(body, "The model did not return anything usable. Try again, or try shorter text.");
+    return "";
+  }
+  const card = document.createElement("div");
+  card.className = "result";
+  body.appendChild(card);
+
+  if (tool.list) {
+    const items = parseChecklist(text);
+    if (!items) {
+      card.textContent = text;
+      showNote(body, "This came back as prose rather than a list.");
+      body.appendChild(actionRow(() => text));
+      return text;
+    }
+    const ul = document.createElement("ul");
+    ul.className = "checklist";
+    for (const it of items) ul.appendChild(checkItem(it));
+    card.appendChild(ul);
+
+    // What the person said that is nowhere on the list. Shown as one-tap
+    // chips, because the page cannot tell a dropped task from a worry the
+    // prompt told the model to leave out — the person can, instantly.
+    const missing = leftOut(source, items);
+    if (missing.length) {
+      const c = document.createElement("div");
+      c.className = "callout";
+      c.innerHTML = "<b>Not on the list.</b> Tap any that are tasks to add them.";
+      const chips = document.createElement("div");
+      chips.className = "chips";
+      for (const m of missing) {
+        const b = document.createElement("button");
+        b.type = "button"; b.textContent = "+ " + m;
+        b.addEventListener("click", () => {
+          ul.appendChild(checkItem(m.charAt(0).toUpperCase() + m.slice(1)));
+          b.remove();
+          if (!chips.childElementCount) c.remove();
+        });
+        chips.appendChild(b);
+      }
+      c.appendChild(chips);
+      body.appendChild(c);
+    }
+    body.appendChild(actionRow(() =>
+      [...ul.querySelectorAll("li")].map(li =>
+        (li.querySelector("input").checked ? "- [x] " : "- [ ] ") + li.textContent.trim()).join("\n")));
+    return text;
+  }
+
+  card.textContent = text;
+  const warn = tool.checked ? checkRewrite(source, text) : [];
+  if (warn.length) {
+    const c = document.createElement("div");
+    c.className = "callout";
+    const b = document.createElement("b");
+    b.textContent = "Check before sending.";
+    const ul = document.createElement("ul");
+    for (const w of warn) { const li = document.createElement("li"); li.textContent = w; ul.appendChild(li); }
+    c.append(b, ul);
+    body.appendChild(c);
+  }
+  body.appendChild(actionRow(() => text));
+  return text;
 }
 
 // ---- When generation fails ------------------------------------------------
@@ -1454,7 +1778,6 @@ function showNote(el, text) {
   p.textContent = text;
   el.appendChild(p);
 }
-
 $("form").addEventListener("submit", async e => {
   e.preventDefault();
   const text = $("input").value.trim();
@@ -1468,46 +1791,27 @@ $("form").addEventListener("submit", async e => {
     return;
   }
 
-  const outMode = $("output").value;
-  const sketching = outMode === "sketch";
-  const working = outMode === "work";
-  // Work mode can run on a document alone — "Rewrite it" needs no sentence
-  // typed into the composer. Every other mode needs something to answer.
-  if (!text && !working) return;
+  const outModeNow = outMode();
+  const sketching = outModeNow === "sketch";
+  const desking = outModeNow === "desk";
+  if (!text) return;
+
+  // Desk decides BEFORE the model runs whether it runs at all. A refusal
+  // leaves the text in the composer: it is theirs, and they need to trim it.
+  let plan = null, tool = null;
+  if (desking) {
+    tool = currentTool();
+    plan = planDeskTurn({ tool, text, option: tool.options ? $("opt").value : "", ctx: CTX });
+    if (!plan.run) { updateCount(plan.note); return; }
+  }
+
   $("input").value = ""; $("input").style.height = "auto";
+  if ($("intro")) $("intro").remove();
+  updateCount();
 
-  const conversation = sketching ? sketchHistory : working ? workHistory : history;
-
-  // Work mode decides BEFORE the model exists whether the model may run at
-  // all, and on what. Three of the five answers it can give involve no
-  // generation: see planWorkTurn.
-  let plan = null;
-  if (working) {
-    const task = currentTask();
-    plan = planWorkTurn({
-      task, source: doc.text, query: text,
-      option: $("opt").hidden ? "" : $("opt").value,
-      index: doc.index, passages: doc.passages, ctx: CTX, history: workHistory
-    });
-    addMsg("user", (task ? task.label : "Work") + (text ? " — " + text : ""));
-    if (plan.mode !== "whole" && plan.mode !== "passages") {
-      // Nothing is generated. A contents list is passages, verbatim; a refusal
-      // is a sentence about what is missing. Neither is a model's opinion.
-      const stop = addMsg("assistant", "");
-      showNote(stop.body, plan.note);
-      showUsed(stop.body, plan.used, plan.mode === "contents"
-        ? `Where things are — ${plan.used.length} passage${plan.used.length === 1 ? "" : "s"}, unedited`
-        : "The closest passages");
-      if (plan.used && plan.used.length > 1) scrollToAnswer(stop.body);
-      else $("log").scrollTop = $("log").scrollHeight;
-      setStatus("ready — running locally", "on");
-      $("input").focus();
-      return;
-    }
-    // Role-play is the only task with a conversation, and what it stores is
-    // the raw line typed — not the built prompt, which carries the whole
-    // source with it and would put another copy in the window every turn.
-    if (task.multiTurn) conversation.push({ role: "user", content: text });
+  const conversation = sketching ? sketchHistory : history;
+  if (desking) {
+    addMsg("user", text, tool.label + (tool.options ? " · make it " + $("opt").value : ""));
   } else {
     addMsg("user", text);
     conversation.push({ role: "user", content: text });
@@ -1529,22 +1833,20 @@ $("form").addEventListener("submit", async e => {
     const sys = $("system").value.trim();
     // A sketch turn is planned, not accumulated: planSketchTurn carries only
     // the previous drawing and the instruction that produced it, so the prompt
-    // stays the same size on turn ten as on turn two. Letting the history grow
-    // ran a 1024-token phone into the context wall on the third drawing.
-    // The chat system prompt is written for prose and is not passed here: a
+    // stays the same size on turn ten as on turn two. The chat system prompt is
+    // written for prose and is not passed to a sketch or a Desk tool: a
     // leftover "answer concisely in plain English" silently fought the drawing
-    // instructions on every sketch, and the only visible sign was a badge in
-    // the header. Say the style in the request instead.
+    // instructions on every sketch.
     const sketchPlan = sketching ? planSketchTurn(conversation, CTX) : null;
     // One-at-a-time sends just this turn: for classification, earlier turns
     // bias the answer rather than help it. Clone so wrapping cannot corrupt
     // the stored history.
     let base = sketchPlan ? sketchPlan.messages
-      : working ? plan.messages
+      : desking ? plan.messages
       : ($("single").checked ? [conversation[conversation.length - 1]] : conversation)
           .map(m => ({ ...m }));
 
-    if (!sketching && !working) {
+    if (!sketching && !desking) {
       if (preset && preset.wrap && base.length && base[base.length - 1].role === "user") {
         base[base.length - 1].content = preset.wrap(base[base.length - 1].content);
       }
@@ -1556,8 +1858,9 @@ $("form").addEventListener("submit", async e => {
     if (!isNaN(temp)) req.temperature = temp;
 
     // Reasoning models otherwise spend most of their output budget thinking
-    // out loud before the answer. Off by default; the block is collapsed when on.
-    if (sketching || !$("think").checked) req.extra_body = { enable_thinking: false };
+    // out loud before the answer. Off by default, and always off for tools
+    // whose output the page parses.
+    if (sketching || desking || !$("think").checked) req.extra_body = { enable_thinking: false };
 
     // Single-turn means a short structured answer is expected, so cap the
     // output. Without this a model that loops emits a wall of repeated text.
@@ -1569,11 +1872,10 @@ $("form").addEventListener("submit", async e => {
       req.max_tokens = sketchPlan.maxTokens;
       req.temperature = 0.2;
       req.response_format = { type: "json_object", schema: SKETCH_SCHEMA };
-    } else if (working) {
-      // Same rule, same reason: the plan already costed the prompt, and the
-      // document in it is the part that makes the window tight.
+    } else if (desking) {
+      // Same rule, same reason: the plan already costed the prompt.
       req.max_tokens = plan.maxTokens;
-      req.temperature = currentTask().temp;
+      req.temperature = tool.temp;
     } else if (cap) req.max_tokens = cap;
 
     sentTokens = base.reduce((n, m) => n + estimateTokens(m.content) + 4, 0);
@@ -1582,12 +1884,12 @@ $("form").addEventListener("submit", async e => {
     let stream;
     try {
       stream = await engine.chat.completions.create(
-        !working && preset && preset.grammar
+        !desking && !sketching && preset && preset.grammar
           ? { ...req, response_format: { type: "grammar", grammar: preset.grammar } }
           : req);
     } catch (e) {
       // Grammar support varies by model build; fall back rather than break chat.
-      if (working || !(preset && preset.grammar)) throw e;
+      if (desking || sketching || !(preset && preset.grammar)) throw e;
       console.warn("grammar constraint rejected, retrying without:", e.message);
       stream = await engine.chat.completions.create(req);
     }
@@ -1631,28 +1933,16 @@ $("form").addEventListener("submit", async e => {
       // builds on what the person drew, not on what the model sent.
       onEdit: edited => { const last = conversation[conversation.length - 1];
         if (last && last.role === "assistant") last.content = edited; } });
-    else await paint(out.body, done);
-    if (working) {
-      if (plan.note) showNote(out.body, plan.note);
-      // Retrieved passages open, because the person did not choose them and
-      // cannot check the answer without reading them. A whole short document
-      // is collapsed: it is already sitting in the tray above — unless it came
-      // from a file, in which case this is the only place it is visible.
-      showUsed(out.body, plan.used,
-        plan.mode === "passages"
-          ? `The ${plan.used.length} passage${plan.used.length === 1 ? "" : "s"} this answer could see`
-          : `The text this answer was given`,
-        plan.mode === "passages");
+    else if (desking) {
+      renderDesk(out.body, tool, text, done);
+      if (stopFlag) showNote(out.body, "Stopped before the end.");
     }
-    // Scrolling to the bottom is right for a chat turn and wrong here: several
-    // open passages below an answer push the answer itself off the top, so the
-    // last thing written is the last thing anybody reads. Put the answer at the
-    // top of the view and let the passages follow it.
-    if (working && plan.used && plan.used.length > 1) scrollToAnswer(out.body);
+    else await paint(out.body, done);
+    // Put the top of a long answer at the top of the view, not its end.
+    if (desking) scrollToAnswer(out.body);
     else $("log").scrollTop = $("log").scrollHeight;
-    // Only role-play keeps a conversation; every other task is one-shot, and a
-    // history nobody reads is a context window nobody gets back.
-    if (!working || currentTask().multiTurn) conversation.push({ role: "assistant", content: done });
+    // Desk turns are one-shot: nothing from one rides into the next.
+    if (!desking) conversation.push({ role: "assistant", content: done });
     setStatus("ready — running locally", "on");
   } catch (err) {
     if (stopFlag) {
@@ -1662,7 +1952,7 @@ $("form").addEventListener("submit", async e => {
       // sketch keeps its own line first, because "try a simpler request" is
       // real advice there and nowhere else.
       showGenerationFailure(out.body, err, {
-        mode: outMode,
+        mode: outModeNow,
         promptTokens: sentTokens,
         maxTokens: sentMax,
         fallbackHead: sketching
@@ -1684,10 +1974,8 @@ $("form").addEventListener("submit", async e => {
       details.append(summary, pre);
       out.body.append(details);
     }
-    // Undo the turn — but only if this turn pushed one. Most work tasks are
-    // one-shot and pushed nothing, and popping then eats the last line of a
-    // role-play that happened earlier in the same mode.
-    if (!working || currentTask().multiTurn) conversation.pop();
+    // Undo the turn — Desk turns pushed nothing, so there is nothing to undo.
+    if (!desking) conversation.pop();
     setStatus(stopFlag ? "ready — running locally"
             : engineDead ? "GPU lost — reload the page" : "error",
               stopFlag ? "on" : "err");
@@ -1697,43 +1985,59 @@ $("form").addEventListener("submit", async e => {
     // cannot work is the page lying about its own state.
     $("send").disabled = engineDead;
     $("stop").style.display = "none";
-    if (!engineDead) $("input").focus();
+    if (!engineDead && !DEV.mobile) $("input").focus();
   }
 });
 
 $("stop").addEventListener("click", () => { stopFlag = true; engine?.interruptGenerate(); });
 $("input").addEventListener("keydown", e => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("form").requestSubmit(); }
+  // On a touch keyboard Return is a newline; only a physical keyboard sends.
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !DEV.mobile) {
+    e.preventDefault(); $("form").requestSubmit();
+  }
 });
 $("input").addEventListener("input", function () {
   this.style.height = "auto";
-  this.style.height = Math.min(this.scrollHeight, 180) + "px";
+  this.style.height = Math.min(this.scrollHeight, 220) + "px";
+  updateCount();
 });
 
 // "Enter to send, Shift+Enter for newline" is advice for a physical keyboard,
-// and the full string wraps to two lines in a narrow composer — where rows="1"
-// then clips it, which reads as a broken input. On a touch screen it is also
-// simply wrong, since the on-screen Return key inserts a newline.
-//
-// The fit has to be measured while the composer is VISIBLE: a display:none
-// element reports scrollHeight 0, so checking at startup always "fits".
-const PLACEHOLDER_FULL  = "Send a message…  (Enter to send, Shift+Enter for newline)";
-const PLACEHOLDER_SHORT = "Send a message…";
+// and on a touch screen it is simply wrong, since Return inserts a newline.
+const PLACEHOLDER_FULL  = "Message the model…  (Enter to send, Shift+Enter for a new line)";
+const PLACEHOLDER_SHORT = "Message the model…";
 
 function fitPlaceholder() {
   const el = $("input");
-  if ($("output").value === "sketch") { el.placeholder = "Describe a sketch…"; return; }
-  if ($("output").value === "work") {
-    const t = currentTask();
-    el.placeholder = t ? t.ask : "What would you like done?";
-    return;
-  }
-  if (!matchMedia("(pointer: fine)").matches) { el.placeholder = PLACEHOLDER_SHORT; return; }
-  if (el.value || !$("foot").classList.contains("on")) return;  // nothing to measure
-  el.placeholder = PLACEHOLDER_FULL;
-  if (el.scrollHeight > el.clientHeight + 1) el.placeholder = PLACEHOLDER_SHORT;
+  if (outMode() === "sketch") { el.placeholder = "Describe a picture…"; return; }
+  if (outMode() === "desk") { el.placeholder = currentTool().ask; return; }
+  el.placeholder = matchMedia("(pointer: fine)").matches ? PLACEHOLDER_FULL : PLACEHOLDER_SHORT;
 }
-addEventListener("resize", fitPlaceholder);
+
+// ---- Boot ----------------------------------------------------------------------
+// Every top-level side effect happens HERE, after every declaration above has
+// run. The page used to call its setup functions part-way down the module; on
+// a touch screen one of them read a `const` declared hundreds of lines later,
+// threw, and the rest of the module never ran — no submit listener, so Send
+// submitted the form natively and reloaded the page, on every phone, for a day.
+// One entry point at the bottom makes that whole class of bug impossible.
+function boot() {
+  restore();
+  syncMode();
+  // Fetched now rather than on first use, so switching to Sketch after the
+  // model has loaded makes no request the privacy meter would have to list.
+  loadRough(ROUGH);
+  init();
+  // Keep the page itself available with no signal: the weights persist, but
+  // GitHub Pages expires the HTML after ten minutes. Registered here, not on
+  // "load": this module top-level awaits the WebLLM import, so "load" fires
+  // while it is suspended and a listener added afterwards never runs.
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("./sw.js").catch(e =>
+      console.warn("offline support unavailable:", e.message));
+  }
+}
+boot();
 </script>
 </body>
 </html>

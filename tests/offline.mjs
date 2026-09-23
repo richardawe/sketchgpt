@@ -81,16 +81,14 @@ try {
     return m.parseSketch('{"t":"A cat","c":["cat 50 52 34"]}').commands[0].text;
   });
   assert.equal(drew, 'cat', 'sketch.mjs was not available offline');
-  // Work mode is the one people will most want offline — the whole argument
-  // for reading a contract on a 0.6B model is that nothing leaves the device —
+  // Desk is the mode whose whole argument is that nothing leaves the device,
   // so its module has to be in the shell cache, not fetched on demand.
-  const found = await page.evaluate(async () => {
-    const m = await import('./work.mjs');
-    const ps = m.splitPassages('Routine repairs take 28 days.\n\nEmergencies take 24 hours.');
-    return m.findPassages(m.buildIndex(ps), 'how long for routine repairs').hits[0].passage.text;
+  const planned = await page.evaluate(async () => {
+    const m = await import('./desk.mjs');
+    return m.planDeskTurn({ tool: m.toolById('dump'), text: 'buy milk, call mum' }).run;
   });
-  assert.match(found, /28 days/, 'work.mjs was not available offline');
-  console.log('Offline check passed: page, composer, sketch and work modules all load ' +
+  assert.equal(planned, true, 'desk.mjs was not available offline');
+  console.log('Offline check passed: page, composer, sketch and desk modules all load ' +
     'with the network down.');
 } finally {
   await context.close(); await browser.close();

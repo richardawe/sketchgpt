@@ -15,9 +15,9 @@
 //   the CDN lib  -> cache first. It is pinned to an exact version in the URL,
 //                   so it can never go stale, and it is 6 MB we should not
 //                   re-download.
-const VERSION = "sketchgpt-v2";
+const VERSION = "sketchgpt-v3";
 const SHELL = ["./", "./index.html", "./browser.html", "./sketch.mjs",
-               "./stamps.mjs", "./rough.mjs", "./work.mjs"];
+               "./stamps.mjs", "./rough.mjs", "./desk.mjs"];
 
 self.addEventListener("install", event => {
   // Never let one missing file fail the whole install — a page that is

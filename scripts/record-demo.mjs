@@ -114,7 +114,7 @@ const CLIPS = {
     await page.reload();                    // the page itself, with no network
     await page.waitForFunction(() => document.querySelector("#status") !== null);
     await page.click("#load");
-    await page.selectOption("#output", "sketch");
+    await page.click(`#output [data-mode="sketch"]`);
     await page.waitForTimeout(600);
     await ask(page, "a red house with a green tree", HOUSE);
     await page.waitForTimeout(2200);
@@ -196,7 +196,7 @@ for (const name of names) {
     await page.goto(`${origin}/browser.html?lib=${origin}/mock.mjs&rough=${origin}/rough.mjs`);
     await page.waitForFunction(() => document.querySelector("#status").textContent === "ready to load");
     await page.click("#load");
-    await page.selectOption("#output", "sketch");
+    await page.click(`#output [data-mode="sketch"]`);
     await page.waitForTimeout(500);
     await clip.run(page, context);
   } finally {

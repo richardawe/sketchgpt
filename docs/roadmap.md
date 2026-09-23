@@ -40,7 +40,7 @@ Reviewed against what is built, not against what was planned.
 |---|---|---|
 | 1 Foundation | **shipped** | Template, Pages deploy, device-aware model picking. Plus offline that now genuinely works — `web/sw.js`, checked by `tests/offline.mjs` with the network cut. |
 | 2 Sketch mode | **shipped** | Reassigned: sketch mode *is* Phase 2. It is the thing people open, and it demonstrates on the visitor's own hardware what their device can do. The device-matrix half — **no visitor leaves a datapoint, there is no public matrix** — is still unwritten and is what remains of the original Phase 2. |
-| 3 Work mode | **shipped, unproven on a device** | Built: `web/work.mjs` and the Work tab — 512 KB file cap, passage splitting, BM25 retrieval, 17 tasks, and a planner that decides *before the model runs* whether it runs at all. The gate ("can two WebLLM engines share a tab?") was sidestepped rather than answered: retrieving lexically means there is no second engine, and it now governs only the embedder upgrade. **No phone has opened it and no real document has been through it** — every number is node, a stubbed browser, or Ollama on CPU. |
+| 3 Desk *(was Work mode)* | **shipped, unproven on a device** | Work mode's document retrieval was reviewed and retired (`fix-plan-work-ui.md`): it searched with instructions, called documents too long at half their size, and offered no task that asked for retrieval. Replaced by **Desk** — `web/desk.mjs`, two tools (Brain dump, Say it better) chosen from five by `scripts/desk-bench.mjs`, with the page checking what the model cannot be trusted with and a header meter counting requests since load. See `desk.md`. **No phone has run it**; touch is covered by emulation only. |
 | 4 Capability table | **advanced by accident** | Sketch mode produced eight new measured rows (see `CLAUDE.md` and `customising.md`) and, more usefully, **`scripts/sketch-bench.mjs` is a working practitioner eval harness**: real prompt, real models, judged by the real parser, on any Ollama tag. That is the Phase 4 machinery, built as a side effect. |
 | 5 One vertical | **not started** | One input though: "field work without signal" is the row where offline is the requirement, and offline is now real rather than claimed. |
 | 6 Body of work | **accumulating** | Four measurement tools now exist — `vram-probe/`, `token-budget.mjs`, `sketch-bench.mjs`, `record-demo.mjs`. Nobody has packaged them, but they are the shape Phase 6 describes. |
@@ -102,7 +102,9 @@ Air — that grows without further work.
 **Content angle:** "tell me your phone, I'll tell you what it runs." The
 engagement loop is built into the product.
 
-## Phase 3 — Work mode *(shipped; unproven on a real device)*
+## Phase 3 — Work mode *(retired — replaced by Desk, see [`desk.md`](desk.md))*
+
+What follows is the original plan, kept because its measurements still stand.
 
 A third mode beside Chat and Sketch: open a document, find your way around it,
 nothing uploaded. Full plan and the measurements behind it:
