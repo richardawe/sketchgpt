@@ -116,6 +116,19 @@ serves **4-bit**, and that gap explains most surprises.
   Chat mode* and fails on any page error or navigation — mutation-checked
   against the crash, the missing listener, and the missing guard.
 
+- **A new page can meet an old module for ten minutes.** GitHub Pages sends
+  `max-age=600` on everything, so after a deploy a browser can pair the new
+  HTML with a cached `desk.mjs` that lacks a name the page imports — and one
+  failed named import kills the whole page. Module imports carry `?v=N`
+  (bump it when exports change), and the worker's network-first fetch uses
+  `cache: "no-cache"` so it cannot itself serve the stale copy.
+- **"Works offline" still needed a second visit, and the test hid it.** On a
+  first visit the worker takes control after the page has loaded its scripts,
+  WebLLM included, so it never cached them; offline after one visit, the page
+  could not start. `tests/offline.mjs` only checked for elements that are
+  static HTML. The page now re-fetches its scripts through the worker on
+  `controllerchange` (`warmWorker`), and the test waits for the engine module
+  in the cache and for the script to actually run offline — mutation-checked.
 - **`.err` as a bare class name collided with the status dot, and shipped.**
   `setStatus(t, "err")` sets the dot's class to `"dot err"`, and the page-level
   error PANEL was also `.err`. So on every error the 8px dot picked up that

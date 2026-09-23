@@ -15,7 +15,7 @@
 //   the CDN lib  -> cache first. It is pinned to an exact version in the URL,
 //                   so it can never go stale, and it is 6 MB we should not
 //                   re-download.
-const VERSION = "sketchgpt-v3";
+const VERSION = "sketchgpt-v4";
 const SHELL = ["./", "./index.html", "./browser.html", "./sketch.mjs",
                "./stamps.mjs", "./rough.mjs", "./desk.mjs"];
 
@@ -53,7 +53,13 @@ self.addEventListener("fetch", event => {
   if (sameOrigin) {
     event.respondWith((async () => {
       try {
-        const fresh = await fetch(request);
+        // no-cache: revalidate with the server rather than take the HTTP
+        // cache's copy. GitHub Pages says max-age=600, and without this the
+        // "network-first" fetch could itself return a ten-minute-old module
+        // next to a new page. (A navigation request cannot be re-initialised,
+        // and the browser revalidates those on reload anyway.)
+        const fresh = await fetch(request.mode === "navigate"
+          ? request : new Request(request, { cache: "no-cache" }));
         if (fresh.ok) (await caches.open(VERSION)).put(request, fresh.clone());
         return fresh;
       } catch (err) {

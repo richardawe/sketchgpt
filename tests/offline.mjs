@@ -64,6 +64,13 @@ try {
     async () => (await navigator.serviceWorker.getRegistrations()).length > 0,
     { timeout: 15000 });
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null, { timeout: 15000 });
+  // The engine module stands in for the WebLLM bundle: fetched before the
+  // worker had control, so it is only cached if the page warms the worker.
+  await page.waitForFunction(async () => {
+    for (const k of await caches.keys())
+      if (await (await caches.open(k)).match(new URL('mock.mjs', location.href).href, { ignoreSearch: true })) return true;
+    return false;
+  }, null, { timeout: 15000 });
   await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
 
   // Now cut it off entirely — server down AND the browser offline.
@@ -75,6 +82,12 @@ try {
   await page.waitForFunction(() => document.querySelector('#status') !== null);
   assert.equal(await page.locator('#input').count(), 1, 'the composer is missing offline');
   assert.equal(await page.locator('#output').count(), 1, 'the mode picker is missing offline');
+  // The elements above are static HTML and exist even if the script died. This
+  // is the check that the page's own modules — imported with a ?v= cache-buster
+  // — came back from the worker's cache and ran.
+  await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load',
+    null, { timeout: 10000 });
+  assert.equal(await page.locator('#tools .tab').count(), 2, 'the Desk tools did not render offline');
   // The local modules must come from the cache too, not just the HTML.
   const drew = await page.evaluate(async () => {
     const m = await import('./sketch.mjs');

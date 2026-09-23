@@ -434,10 +434,15 @@
   </form>
 </footer>
 <script type="module">
-import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, estimateTokens } from "./sketch.mjs";
+// The ?v= is a cache-buster, and it is load-bearing. GitHub Pages serves every
+// file with max-age=600, so a browser can pair a NEW page with an OLD module
+// for ten minutes — and an import of a name the old module does not export
+// kills the whole page. Bump it whenever a module's exports change. The
+// service worker falls back with ignoreSearch, so offline still finds them.
+import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, estimateTokens } from "./sketch.mjs?v=4";
 import { TOOLS, TONES, toolById, planDeskTurn, maxWords, wordCount,
          parseChecklist, listFromProse, collapseRepeats,
-         stripPreamble, checkRewrite, leftOut } from "./desk.mjs";
+         stripPreamble, checkRewrite, leftOut } from "./desk.mjs?v=4";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
 
@@ -2081,9 +2086,31 @@ function boot() {
   // "load": this module top-level awaits the WebLLM import, so "load" fires
   // while it is suspended and a listener added afterwards never runs.
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    // On a first visit the worker takes control only AFTER this page has
+    // loaded its scripts — WebLLM included — so it never saw them, and a
+    // visitor who went offline after one visit got a page that could not
+    // start. tests/offline.mjs checked only for static HTML and missed it.
+    // When control arrives, fetch those scripts again through the worker so
+    // it caches them. Weights are excluded: WebLLM keeps its own cache.
+    if (!navigator.serviceWorker.controller) {
+      navigator.serviceWorker.addEventListener("controllerchange", warmWorker, { once: true });
+    }
     navigator.serviceWorker.register("./sw.js").catch(e =>
       console.warn("offline support unavailable:", e.message));
   }
+}
+
+function warmWorker() {
+  const urls = new Set();
+  for (const e of performance.getEntriesByType("resource")) {
+    try {
+      const u = new URL(e.name);
+      const code = /\.(m?js|css)$|\+esm$/.test(u.pathname);
+      if (code && (u.origin === location.origin || u.hostname === "cdn.jsdelivr.net")) urls.add(u.href);
+    } catch {}
+  }
+  for (const u of urls) fetch(u, { mode: new URL(u).origin === location.origin ? "same-origin" : "cors" })
+    .catch(() => {});
 }
 boot();
 </script>
