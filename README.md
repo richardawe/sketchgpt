@@ -141,6 +141,19 @@ The browser page has a mode switch in the header:
 | **Sketch** | describe a scene, get an SVG drawn locally |
 | **Chat** | open conversation, Markdown and LaTeX rendered |
 
+### Scenes on desktop
+
+On a desktop model (1.5B and up), Sketch mode asks the model only **what** is
+in the picture — `cabin`, `pine x5`, `moon`, `fire front` — and the page decides
+**where**: sky along the top, mountains on the horizon, water behind the shore,
+people and animals in front. It then draws the lot by hand: hatched night skies
+and seas, grass tufts, coloured-pencil fills, a slight tilt on everything. The
+coordinate format fell apart on real scenes even at 1.7B — loops, the prompt's
+own example copied back, objects at y=245 on a 100-unit grid — and the list
+format measured clean on 7 of 7 at a fifteenth of the time. Phones keep the
+coordinate format, because the phone-sized models loop or copy the list prompt.
+`docs/sketch-scenes.md` has the numbers; `?scene=0` / `?scene=1` override.
+
 ### Simple sketches
 
 In the browser page, choose **Sketch** in the header, load a model, and describe
@@ -318,6 +331,9 @@ node --test tests/desk.test.mjs       # Desk's planner and the page's checks
 node --test tests/retrieval.test.mjs  # the retired Work-mode retrieval, for the bench
 node tests/sketch-browser.mjs         # needs Playwright + Chromium
 node tests/desk-browser.mjs           # Desk on a touch screen and a mouse
+node --test tests/scene.test.mjs      # scene composer, on real model output
+node tests/scene-browser.mjs          # scene mode in the page, desktop and phone
+node --test tests/deploy.test.mjs     # every imported module is deployed and cached
 node tests/stop.mjs                   # Stop stops, and chat survives it
 node tests/failure.mjs                # what the page says when generation fails
 node tests/offline.mjs                # loads the page with the network cut

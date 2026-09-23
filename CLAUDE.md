@@ -22,6 +22,7 @@ web/index.html            local chat against Ollama — development only
 web/sketch.mjs            sketch format, context budget, SVG rendering
 web/desk.mjs              Desk (the default mode) — Brain dump + Say it better, the
                           planner, and the checks the page makes on the output
+web/scene.mjs             scene mode (desktop) — the model lists things, the page places them
 web/stamps.mjs            generated Lucide path data — never edit by hand
 web/rough.mjs             vendored rough.js 4.6.6 (MIT) — verbatim, keep it so
 web/sw.js                 service worker — the page's own offline cache
@@ -44,6 +45,7 @@ docs/mobile-models.md     the phone-suitable models WebLLM ships, and the plan t
 docs/work-mode.md         Phase 3 as first built — reading a document on-device, and why
                           the obvious design fails; read before touching RAG
 docs/desk.md              what replaced it — five tools benched, two shipped, and why
+docs/sketch-scenes.md     why desktop sketches stopped asking for coordinates
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
 ```
@@ -99,6 +101,8 @@ serves **4-bit**, and that gap explains most surprises.
 | **Two tools, chosen from five by measurement** | Draft-a-reply inverted the person's intent on the 0.6B ("no, I have a family thing" → "I don't have a family thing"); Rehearse was weak on both sizes and spoke the prompt's own phrases aloud. Break-it-down worked and was cut for focus at the user's call. `docs/desk.md`. |
 | **The phone ran a model nobody had benched** | "After a few chats it shows prose, not a list" — Desk was benched on Qwen3, and phones loaded SmolLM2-360M, which returned prose in **4 of 12** brain dumps, looped, and invented content in rewrites. Qwen2.5-0.5B: 12/12 lists, fits a phone at 4096, 296 MB, and the best phone-sized sketcher too (10/10 things drawn vs 8 and 7). Now the phone default. **Bench the model the device will actually get.** |
 | **JSON-constrained output fixes shape and costs content** | `{"items":[…]}` gave 12/12 valid lists on every model — and the Qwen models dropped 2–3× more items, while SmolLM2 returned the schema's example (`"first task","second task"`). Rejected; the page splits prose into a list instead (`listFromProse`), merges duplicates, and cuts loops (`collapseRepeats`), saying so each time. |
+| **Coordinates collapse on real scenes, even at 1.7B** | Past "a house and a tree", Qwen3-1.7B looped (40 horizontal lines for "a city street"), copied the prompt's example stamp list in order for "a farm", and ran to y=245 on a 0–100 grid. `sketch-bench.mjs` never showed it — every request in it is simple. Scene mode (`web/scene.mjs`, desktop only): the model lists things (`cabin x1`, `tree x3`), the page places them. 0/7 loops, ~2 s instead of 9–50 s. `docs/sketch-scenes.md`. |
+| **A count after the noun gets read as an index** | `house 4` made the model number its entries — `palm 3, house 4, person 5, flower 6`. `x3` fixed most of it; the page caps the rest (`5 suns` → one). And the example's night sky leaked into daytime scenes until the example changed and the page ruled: a sun means day, rain means no sun. |
 
 ### Browser gotchas already fixed
 
@@ -437,6 +441,16 @@ practical fine-tuning.
   paragraph. Not shipped: sketch budgets depend on it and would need
   re-verifying with `token-budget.mjs`. Desk's word limit is therefore
   conservative — about 1,200 words at 4096, 170 at 1024.
+- **Scene mode has never run in a real browser.** Qwen3-1.7B on Ollama plus the
+  page's real composer and renderer in headless Chromium; the q4f16 build has
+  not generated a scene on a GPU. Phones stay on coordinates on the numbers
+  (Qwen2.5-0.5B loops the list, Qwen3-0.6B copies the example).
+- **The phone's "Load failed" is still unexplained and unfixed.** Screenshot:
+  Qwen2.5-0.5B, iPhone, Safari, bare "Load failed" (Safari's word for a
+  dropped request). Leading guess: the download cut off when the screen
+  locked or Safari went to the background — made likelier by auto-download.
+  Planned and not built: a screen wake lock during download, one automatic
+  retry (finished files are kept), and a report naming the stage that failed.
 - **The two-engine gate is still untested — and no longer blocking.** "Can two
   WebLLM engines be resident in one tab?" was the reason not to write Work mode
   UI. Retrieving lexically removed the dependency: there is no second engine, so

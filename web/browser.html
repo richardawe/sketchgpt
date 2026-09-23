@@ -439,10 +439,12 @@
 // for ten minutes — and an import of a name the old module does not export
 // kills the whole page. Bump it whenever a module's exports change. The
 // service worker falls back with ignoreSearch, so offline still finds them.
-import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, estimateTokens } from "./sketch.mjs?v=4";
+import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, estimateTokens,
+         readDrawing } from "./sketch.mjs?v=5";
+import { scenePrompt, composeScene, looksLikeCoordinates } from "./scene.mjs?v=5";
 import { TOOLS, TONES, toolById, planDeskTurn, maxWords, wordCount,
          parseChecklist, listFromProse, collapseRepeats,
-         stripPreamble, checkRewrite, leftOut } from "./desk.mjs?v=4";
+         stripPreamble, checkRewrite, leftOut } from "./desk.mjs?v=5";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
 
@@ -606,6 +608,14 @@ const CTX_PARAM = parseInt(new URLSearchParams(location.search).get("ctx"), 10);
 // ?manual=1 shows the model picker instead of downloading the chosen model
 // straight away. The "Choose a different model" link sets it.
 const MANUAL = new URLSearchParams(location.search).has("manual");
+
+// Scene mode: the model lists what is in the picture and the page places it
+// (web/scene.mjs). On for models of 1.5B and up at a 2048+ context, where the
+// coordinate format measurably fell apart on real scenes. Phones keep the
+// coordinate path that was proven on one. ?scene=1 or ?scene=0 overrides.
+const SCENE_PARAM = new URLSearchParams(location.search).get("scene");
+const sceneMode = () => SCENE_PARAM === "1" || (SCENE_PARAM !== "0" &&
+  (modelOf($("model").value)?.tier ?? 0) >= 2 && CTX >= 2048);
 
 // Set when the GPU device itself fails. Everything after that fails the same
 // way, so the page stops offering to try again and says what to do instead.
@@ -1580,6 +1590,18 @@ function splitThink(raw) {
     : { think: raw.slice(open + 7, close), answer: raw.slice(close + 8) };
 }
 
+// ---- Scene staging --------------------------------------------------------------
+// null means "draw it as a coordinate drawing" — the model answered in
+// coordinates despite being asked for a list, which the tests' stub always
+// does and a real model sometimes will.
+function stageScene(raw) {
+  const data = readDrawing(raw);
+  if (looksLikeCoordinates(data.c)) return null;
+  const plan = { t: data.t, c: data.c.filter(e => typeof e === "string").slice(0, 24) };
+  const composed = composeScene(plan);
+  return { raw: JSON.stringify({ t: composed.t, c: composed.c }), plan, unknown: composed.unknown };
+}
+
 // ---- Desk rendering -----------------------------------------------------------
 // The model named things; the page lays them out, checks what it mechanically
 // can, and says what it found. Everything here is inserted as text, never as
@@ -1890,7 +1912,8 @@ $("form").addEventListener("submit", async e => {
     // written for prose and is not passed to a sketch or a Desk tool: a
     // leftover "answer concisely in plain English" silently fought the drawing
     // instructions on every sketch.
-    const sketchPlan = sketching ? planSketchTurn(conversation, CTX) : null;
+    const sketchPlan = sketching
+      ? planSketchTurn(conversation, CTX, "", { scene: sceneMode() ? scenePrompt : null }) : null;
     // One-at-a-time sends just this turn: for classification, earlier turns
     // bias the answer rather than help it. Clone so wrapping cannot corrupt
     // the stored history.
@@ -1973,15 +1996,29 @@ $("form").addEventListener("submit", async e => {
     }
     // Now the message is whole, format it.
     let done = sketching ? raw.trim() : splitThink(raw).answer.trim();
+    // A scene plan becomes a drawing here: the model's list in, the page's
+    // coordinates out. A model that answered in coordinates anyway is drawn
+    // as it is.
+    const staged = sketching && sketchPlan.scene ? stageScene(done) : null;
     if (sketching && stopFlag) {
       // Whatever arrived before the stop is still a drawing, if it parses.
-      try { renderSketch(out.body, done, { rough: await loadRough(ROUGH) }); }
+      try { renderSketch(out.body, staged ? staged.raw : done, { rough: await loadRough(ROUGH), spread: !staged }); }
       catch { out.body.textContent = "Drawing stopped. Try again with fewer details."; }
       conversation.pop();
       setStatus("ready — running locally", "on");
       return;
     }
-    if (sketching) done = renderSketch(out.body, done, { rough: await loadRough(ROUGH),
+    if (sketching && staged) {
+      renderSketch(out.body, staged.raw, { rough: await loadRough(ROUGH), spread: false });
+      // Say who did what. The model chose the things; the page placed them.
+      const list = staged.plan.c.slice(0, 16).join(", ");
+      showNote(out.body, `The model listed: ${list}. The page placed them.` +
+        (staged.unknown.length ? ` No drawing for ${staged.unknown.map(w => `"${w}"`).join(", ")}, so ${staged.unknown.length === 1 ? "it is" : "they are"} written as words.` : "") +
+        " Edits change this picture; asking for a change starts again from the model's list.");
+      // The conversation keeps the model's LIST, so "add a dog" revises the
+      // plan in the language it was written in.
+      done = JSON.stringify(staged.plan);
+    } else if (sketching) done = renderSketch(out.body, done, { rough: await loadRough(ROUGH),
       // An edit replaces the stored drawing, so a following "make it bigger"
       // builds on what the person drew, not on what the model sent.
       onEdit: edited => { const last = conversation[conversation.length - 1];

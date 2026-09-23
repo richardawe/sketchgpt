@@ -17,7 +17,7 @@
 //      covering the same scene cost 26, and look better. Naming a noun is the
 //      easiest thing a small model does; drawing a recognisable tree from
 //      line segments is among the hardest.
-import { STAMPS, ALIASES, STAMP_BOX } from "./stamps.mjs";
+import { STAMPS, ALIASES, STAMP_BOX } from "./stamps.mjs?v=5";   // ?v= : see browser.html
 
 export const GRID = 100;    // the coordinate space the model is given
 export const CANVAS = 400;  // SVG user units
@@ -115,7 +115,7 @@ const messageTokens = m => estimateTokens(m.content) + MESSAGE_OVERHEAD;
 // the third one — WebLLM then stops generating mid-JSON with finishReason
 // "length", or throws ContextWindowSizeExceededError once the prompt alone
 // passes the window.
-export function planSketchTurn(history, ctx, style = "") {
+export function planSketchTurn(history, ctx, style = "", { scene = null } = {}) {
   // Clone: the caller owns the stored history, and nothing here should be able
   // to write back into it.
   const tail = history.slice(-1).map(m => ({ ...m }));
@@ -130,7 +130,8 @@ export function planSketchTurn(history, ctx, style = "") {
   // only the teaching that is rationed.
   const colour = ctx >= COLOUR_CONTEXT;
   const fit = (commands, brief) => {
-    const system = { role: "system", content: sketchPrompt(commands, brief, colour) + suffix };
+    const system = { role: "system", content:
+      (scene ? scene(Math.min(14, commands)) : sketchPrompt(commands, brief, colour)) + suffix };
     const withSeed = [system, ...seed, ...tail];
     const cost = list => list.reduce((n, m) => n + messageTokens(m), 0);
     const messages = cost(withSeed) + RESERVE + MIN_COMMANDS * COMMAND_TOKENS < ctx
@@ -154,8 +155,11 @@ export function planSketchTurn(history, ctx, style = "") {
     colour,
     // Cap output at the room left, never past it: generation that runs into
     // the context edge is truncated silently.
-    maxTokens: Math.max(64, Math.min(1200, plan.room)),
-    seeded: plan.messages.length > 2
+    // A scene plan is a dozen short entries. Capping it is the cheap half of
+    // the defence against a loop; the de-duplication is the other half.
+    maxTokens: Math.max(64, Math.min(scene ? 320 : 1200, plan.room)),
+    seeded: plan.messages.length > 2,
+    scene: !!scene
   };
 }
 
@@ -185,6 +189,19 @@ function salvage(text) {
   const commands = [...body.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map(m => m[1]).slice(1);
   if (!commands.length) return null;
   return { t: title ? title[1] : "", c: commands, truncated: true };
+}
+
+/** The model's JSON envelope as { t, c, truncated }, salvaged if it was cut off. */
+export function readDrawing(raw) {
+  if (typeof raw !== "string" || raw.length > 24000) throw new Error("Drawing is too large.");
+  const text = drawingJSON(raw);
+  let data;
+  try { data = JSON.parse(text); }
+  catch { data = salvage(text); }
+  if (!data || typeof data.t !== "string" || !Array.isArray(data.c) || !data.c.length) {
+    throw new Error("The model did not return a complete drawing. Please try again.");
+  }
+  return data;
 }
 
 const ALIAS_TOOL = { rect: "box", rectangle: "box", square: "box", path: "curve",
@@ -223,11 +240,23 @@ export function resolveStamp(word) {
 
 const clamp = n => Math.max(0, Math.min(GRID, n));
 
+// Backdrops are the setting a scene sits in: a night sky, the ground, a sea, a
+// road. Scene mode's composer writes them (web/scene.mjs); the model can too.
+// They are drawn first, as hatched washes, so everything else sits on them.
+// "water" and "road" are also stamps — one number means a backdrop, three
+// mean a stamp.
+const BACKDROP = new Set(["ground", "sand", "water", "sea", "road"]);
+
 function parseCommand(line) {
   const parts = line.trim().split(/[\s,]+/);
   if (parts.length < 2) return null;
   const head = parts[0].toLowerCase().replace(/[^a-z0-9-]/g, "");
   const tool = ALIAS_TOOL[head] || head;
+
+  if (tool === "sky" && /^(day|night|dusk|rain)$/i.test(parts[1]))
+    return { tool: "backdrop", kind: "sky", args: [], text: parts[1].toLowerCase() };
+  if (BACKDROP.has(tool) && parts.length === 2 && Number.isFinite(Number(parts[1])))
+    return { tool: "backdrop", kind: tool === "sea" ? "water" : tool, args: [clamp(Number(parts[1]))], text: "" };
 
   if (tool === "label") {
     // No colour here: every trailing word belongs to the text, and a label
@@ -366,16 +395,24 @@ export function parseSketch(raw, { spread = true } = {}) {
 
   const lines = data.c.slice(0, MAX_COMMANDS).filter(c => typeof c === "string");
   const commands = [];
-  let dropped = 0;
+  let dropped = 0, repeated = 0;
+  const seen = new Set();
   for (const line of lines) {
     if (line.length > 120) { dropped++; continue; }
+    // The same command twice draws the same mark twice. Measured on
+    // Qwen3-1.7B: "a cabin in the woods" repeated one rectangle ten times and
+    // "a beach" drew the example's ground line 31 times. A loop is not a
+    // drawing, and nobody means an exact duplicate.
+    const key = line.trim().toLowerCase().replace(/\s+/g, " ");
+    if (seen.has(key)) { repeated++; continue; }
+    seen.add(key);
     const command = parseCommand(line);
     if (command) commands.push(command); else dropped++;
   }
   // A couple of bad lines is a model being sloppy; mostly-bad output is a
   // model that did not understand the format, and saying so beats rendering
   // a confident fragment of nonsense.
-  if (!commands.length || dropped > commands.length) {
+  if (!commands.some(c => c.tool !== "backdrop") || dropped > commands.length) {
     throw new Error("The model did not return a drawing in the expected format.");
   }
   // Keep what the model said before the page tidies it. "Show commands" is
@@ -383,7 +420,7 @@ export function parseSketch(raw, { spread = true } = {}) {
   // worth much less showing coordinates the page had written itself.
   const source = commandLines({ commands }, { said: true });
   const moved = spread ? spreadStamps(commands) : 0;
-  return { title: data.t.slice(0, 80), commands, dropped, moved, source,
+  return { title: data.t.slice(0, 80), commands, dropped, repeated, moved, source,
            truncated: !!data.truncated };
 }
 
@@ -391,6 +428,7 @@ export function commandLines(drawing, { said = false } = {}) {
   return drawing.commands.map(c => {
     const colour = c.colour ? " " + c.colour : "";
     if (c.tool === "label") return `label ${c.args.join(" ")} ${c.text}`;
+    if (c.tool === "backdrop") return c.kind === "sky" ? `sky ${c.text}` : `${c.kind} ${c.args[0]}`;
     if (c.tool === "stamp") return `${said && c.said ? c.said : c.text} ${c.args.join(" ")}${colour}`;
     return `${c.tool} ${c.args.join(" ")}${colour}`;
   });
@@ -430,20 +468,123 @@ const svgNode = (doc, name, attrs = {}) => {
 // download and a screenshot all agree.
 const seedOf = title => [...title].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) || 7;
 
-function drawStamp(doc, parent, rough, { args: [x, y, size], text, colour }) {
+// Hand lettering for words on the picture. No web font: it would have to be
+// fetched, and the page works offline. These ship with the systems people
+// actually use — Chalkboard and Bradley Hand on Apple, Segoe Print on Windows
+// — and "cursive" is the browser's own fallback.
+const HAND = '"Chalkboard SE", "Segoe Print", "Bradley Hand", "Comic Sans MS", "Marker Felt", cursive';
+const PAPER = "#fffdf7";
+
+function drawStamp(doc, parent, rough, { args: [x, y, size], text, colour }, tilt = 0) {
   const px = size * SCALE, k = px / STAMP_BOX;
+  const ink = (colour && PALETTE[colour]) || INK;
   const group = svgNode(doc, "g", {
-    stroke: (colour && PALETTE[colour]) || INK,
-    transform: `translate(${(x * SCALE - px / 2).toFixed(1)} ${(y * SCALE - px / 2).toFixed(1)}) scale(${k.toFixed(4)})`,
+    stroke: ink,
+    // A hand never places two things at exactly the same angle. A degree or
+    // three either way, seeded, so every render of a drawing agrees.
+    transform: `translate(${(x * SCALE - px / 2).toFixed(1)} ${(y * SCALE - px / 2).toFixed(1)}) ` +
+      `scale(${k.toFixed(4)})` + (tilt ? ` rotate(${tilt.toFixed(1)} ${STAMP_BOX / 2} ${STAMP_BOX / 2})` : ""),
     // The transform scales the pen too, so undo it here and the stamp is
     // drawn with the same nib as everything else.
     "stroke-width": (STROKE / k).toFixed(3)
   });
+  // Colour is a coloured-pencil wash under the ink line: hatched, light, and
+  // drawn first so the outline sits on top. It costs no tokens — the model
+  // said one colour word, or none and the scene composer chose one.
+  if (colour && rough && rough.fill) {
+    const wash = svgNode(doc, "g", { opacity: 0.38 });
+    for (const d of STAMPS[text]) {
+      wash.append(rough.fill(d, { fill: ink, fillStyle: "hachure", stroke: "none",
+        hachureGap: 3.2 / k, fillWeight: 1.3 / k, hachureAngle: -41, roughness: 1.1 / k }));
+    }
+    group.append(wash);
+  }
   for (const d of STAMPS[text]) {
     if (rough) group.append(rough.path(d, { roughness: 0.7 / k, strokeWidth: STROKE / k, seed: rough.seed }));
     else group.append(svgNode(doc, "path", { d }));
   }
   parent.append(group);
+}
+
+// The setting, drawn before anything else: a night sky, the ground, a sea, a
+// road. Hatched in light colour like a coloured pencil laid on its side, so it
+// reads as backdrop and never competes with the ink.
+function drawBackdrops(doc, parent, rc, backdrops, seed) {
+  const s = n => n * SCALE;
+  const ground = backdrops.find(b => b.kind === "ground" || b.kind === "sand");
+  const water = backdrops.find(b => b.kind === "water");
+  const land = s(ground ? ground.args[0] : 62);
+  // The sky ends where the first thing below it starts: water if there is
+  // any above the land, otherwise the land itself.
+  const skyline = water && s(water.args[0]) < land ? s(water.args[0]) : land;
+  // Seeded, so tufts and wave offsets land in the same place on every render.
+  let h = seed || 7;
+  const rand = () => ((h = (h * 1103515245 + 12345) >>> 0) % 1000) / 1000;
+
+  const wash = (x, y, w, hgt, colour, opacity, gap = 7, angle = -41) => {
+    if (hgt <= 0) return;
+    const g = svgNode(doc, "g", { opacity });
+    g.append(rc
+      ? rc.rectangle(x, y, w, hgt, { seed, fill: colour, fillStyle: "hachure", stroke: "none",
+          hachureGap: gap, fillWeight: 1.1, hachureAngle: angle, roughness: 1.6 })
+      : svgNode(doc, "rect", { x, y, width: w, height: hgt, fill: colour, stroke: "none" }));
+    parent.append(g);
+  };
+  const line = (d, colour, width = STROKE, opacity = 1) => {
+    const node = rc
+      ? rc.path(d, { seed, stroke: colour, strokeWidth: width, roughness: 1.2, bowing: 2 })
+      : svgNode(doc, "path", { d, stroke: colour, "stroke-width": width, fill: "none" });
+    if (opacity < 1) node.setAttribute("opacity", opacity);
+    parent.append(node);
+  };
+  const skyline_d = y => `M 0 ${y + 2} Q ${CANVAS / 3} ${y - 6} ${CANVAS / 2} ${y} T ${CANVAS} ${y - 1}`;
+
+  for (const b of backdrops.filter(b => b.kind === "sky")) {
+    if (b.text === "night") wash(0, 0, CANVAS, skyline, "#27345e", rc ? 0.42 : 0.16, 7, -35);
+    else if (b.text === "dusk") wash(0, 0, CANVAS, skyline, "#d98a4f", rc ? 0.28 : 0.12, 9, -35);
+    else if (b.text === "rain") wash(0, 0, CANVAS, skyline, "#7d8590", rc ? 0.3 : 0.12, 8, -70);
+  }
+  if (water) {
+    const top = s(water.args[0]);
+    const bottom = ground && land > top ? land : CANVAS;
+    wash(0, top, CANVAS, bottom - top, PALETTE.blue, rc ? 0.3 : 0.14, 7, 0);
+    line(skyline_d(top), PALETTE.blue, 1.8);
+    const rows = Math.max(1, Math.round((bottom - top) / 34));
+    for (let i = 0; i < rows; i++) {
+      const y = top + (i + 0.6) * ((bottom - top) / (rows + 0.2));
+      const x0 = 6 + rand() * 30;
+      line(`M ${x0} ${y} q 12 -6 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0`,
+        PALETTE.blue, 1.4, 0.8);
+    }
+  }
+  if (ground) {
+    const sand = ground.kind === "sand";
+    wash(0, land, CANVAS, CANVAS - land, sand ? "#d9b86c" : PALETTE.green, rc ? (sand ? 0.34 : 0.16) : 0.1, sand ? 6 : 12, sand ? -20 : 60);
+    line(skyline_d(land), INK, 1.8);
+    // Grass is tufts, not a hatched field: a field of long parallel strokes
+    // read as rain in the first screenshots.
+    if (!sand) {
+      const roads = backdrops.filter(b => b.kind === "road").map(b => s(b.args[0]));
+      for (let i = 0; i < 16; i++) {
+        const x = 8 + rand() * (CANVAS - 16), y = land + 14 + rand() * (CANVAS - land - 22);
+        if (roads.some(r => Math.abs(y - 3 - r) < 30)) continue;   // no grass on the road
+        line(`M ${x - 5} ${y} L ${x - 2} ${y - 7} M ${x} ${y} L ${x + 1} ${y - 9} M ${x + 4} ${y} L ${x + 6} ${y - 6}`,
+          PALETTE.green, 1.4, 0.75);
+      }
+    } else {
+      for (let i = 0; i < 22; i++) {
+        const x = 8 + rand() * (CANVAS - 16), y = land + 8 + rand() * (CANVAS - land - 12);
+        line(`M ${x} ${y} l 1.5 0.5`, "#9a7b3c", 1.6, 0.7);
+      }
+    }
+  }
+  for (const b of backdrops.filter(b => b.kind === "road")) {
+    const y = s(b.args[0]);
+    wash(0, y - 22, CANVAS, 44, "#6b6b6b", rc ? 0.3 : 0.14, 5, 0);
+    line(`M 0 ${y - 22} L ${CANVAS} ${y - 22}`, INK, 1.8);
+    line(`M 0 ${y + 22} L ${CANVAS} ${y + 22}`, INK, 1.8);
+    for (let x = 12; x < CANVAS; x += 52) line(`M ${x} ${y} L ${x + 26} ${y}`, "#f4f1e8", 3);
+  }
 }
 
 export function renderSketch(container, raw, { rough = null, onEdit = null, spread = true } = {}) {
@@ -453,7 +594,7 @@ export function renderSketch(container, raw, { rough = null, onEdit = null, spre
     viewBox: `0 0 ${CANVAS} ${CANVAS}`, width: CANVAS, height: CANVAS, role: "img",
     "aria-label": drawing.title || "Generated sketch" });
   const title = svgNode(doc, "title"); title.textContent = drawing.title; svg.append(title);
-  svg.append(svgNode(doc, "rect", { width: CANVAS, height: CANVAS, fill: "white" }));
+  svg.append(svgNode(doc, "rect", { width: CANVAS, height: CANVAS, fill: PAPER }));
   const group = svgNode(doc, "g", { fill: "none", stroke: INK, "stroke-width": STROKE,
     "stroke-linecap": "round", "stroke-linejoin": "round" });
   svg.append(group);
@@ -463,17 +604,27 @@ export function renderSketch(container, raw, { rough = null, onEdit = null, spre
   const ink = c => (c.colour && PALETTE[c.colour]) || INK;
   const s = n => n * SCALE;
 
+  const backdrops = drawing.commands.filter(c => c.tool === "backdrop");
+  if (backdrops.length) drawBackdrops(doc, group, rc, backdrops, seed);
+
+  let index = 0;
   for (const command of drawing.commands) {
     const { tool, args: a, text } = command;
+    if (tool === "backdrop") continue;
     const pen = { seed, roughness: 0.9, bowing: 1, strokeWidth: STROKE, stroke: ink(command) };
     let node;
     if (tool === "stamp") {
-      drawStamp(doc, group, rc && { path: (d, o) => rc.path(d, { ...pen, ...o }), seed }, command);
+      // Tilt from the drawing's seed and the stamp's place in it: stable.
+      const tilt = rc ? (((seed >>> (index++ % 24)) % 7) - 3) : 0;
+      drawStamp(doc, group, rc && {
+        path: (d, o) => rc.path(d, { ...pen, ...o }),
+        fill: (d, o) => rc.path(d, { seed, ...o }),
+        seed }, command, tilt);
       continue;
     }
     if (tool === "label") {
       node = svgNode(doc, "text", { x: s(a[0]), y: s(a[1]), fill: INK, stroke: "none",
-        "font-size": 16, "font-family": "sans-serif" });
+        "font-size": 17, "font-family": HAND });
       node.textContent = text;
     } else if (rc) {
       if (tool === "line") node = rc.line(s(a[0]), s(a[1]), s(a[2]), s(a[3]), pen);
@@ -496,6 +647,7 @@ export function renderSketch(container, raw, { rough = null, onEdit = null, spre
   caption.textContent = drawing.title;
   if (drawing.truncated) caption.textContent += " — the model ran out of room, so this drawing is unfinished.";
   else if (drawing.dropped) caption.textContent += ` — ${drawing.dropped} command${drawing.dropped > 1 ? "s" : ""} could not be read.`;
+  if (drawing.repeated) caption.textContent += ` The model repeated itself; ${drawing.repeated} duplicate command${drawing.repeated > 1 ? "s were" : " was"} skipped.`;
 
   // What the model actually said, and a place to change it. Without this every
   // test on a device nobody here can reach is a guess: a drawing that comes

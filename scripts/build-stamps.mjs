@@ -25,6 +25,9 @@ const ICONS = [
   "wind", "rainbow", "waves-horizontal", "zap", "road", "bridge", "fence",
   "tent", "castle", "church", "factory", "building", "store", "school",
   "hospital", "fuel", "traffic-cone", "signpost", "flag", "map-pin", "globe",
+  // added for scene mode: what the first real complex prompts asked for
+  // ("a farm with a tractor", "a beach", "a birthday party") and missed
+  "tractor", "tree-palm", "party-popper", "shell", "snail", "lamp-floor",
   // things that move
   "car", "truck", "bus", "bike", "plane", "sailboat", "ship", "train-front",
   "rocket", "anchor",
@@ -51,6 +54,10 @@ const ICONS = [
 // through to a text label just because Lucide spells it differently.
 const ALIASES = {
   home: "house", building2: "building", office: "building", shop: "store",
+  palm: "tree-palm", palmtree: "tree-palm", party: "party-popper",
+  confetti: "party-popper", seashell: "shell", streetlight: "lamp-floor",
+  streetlamp: "lamp-floor", cabin: "house", cottage: "house", hut: "house",
+  barn: "house", skyscraper: "building", tower: "building", shops: "store",
   tree: "tree-deciduous", pine: "tree-pine", forest: "trees", plant: "sprout",
   grass: "sprout", bush: "trees", water: "waves-horizontal",
   sea: "waves-horizontal", ocean: "waves-horizontal", wave: "waves-horizontal",

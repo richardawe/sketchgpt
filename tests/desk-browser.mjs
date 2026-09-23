@@ -52,7 +52,7 @@ try {
       if (url.pathname === '/mock.mjs')
         return route.fulfill({ contentType: 'text/javascript', body: stub });
       const name = url.pathname.replace(/^.*\//, '');
-      const file = /^(sketch|stamps|rough|desk)\.mjs$/.test(name) ? name : PAGE;
+      const file = /^(sketch|stamps|rough|desk|scene)\.mjs$/.test(name) ? name : PAGE;
       const dir = file === PAGE && process.env.DESK_PAGE_DIR ? process.env.DESK_PAGE_DIR : '../web/';
       await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
         body: await readFile(new URL(dir + file, import.meta.url), 'utf8') });
@@ -228,7 +228,7 @@ try {
       const url = new URL(route.request().url());
       if (url.pathname === '/mock.mjs') return route.fulfill({ contentType: 'text/javascript', body: stub });
       const name = url.pathname.replace(/^.*\//, '');
-      const file = /^(sketch|stamps|rough|desk)\.mjs$/.test(name) ? name : PAGE;
+      const file = /^(sketch|stamps|rough|desk|scene)\.mjs$/.test(name) ? name : PAGE;
       const dir = file === PAGE && process.env.DESK_PAGE_DIR ? process.env.DESK_PAGE_DIR : '../web/';
       await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
         body: await readFile(new URL(dir + file, import.meta.url), 'utf8') });
