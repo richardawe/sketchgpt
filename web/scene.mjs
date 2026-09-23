@@ -64,7 +64,7 @@ const SETTINGS = {
   beach: "water", sea: "water", ocean: "water", lake: "water", river: "water", harbour: "water",
   harbor: "water", coast: "water", sand: "water", seaside: "water",
   street: "road", road: "road", city: "road", town: "road", traffic: "road",
-  night: "night", evening: "night", dark: "night", midnight: "night",
+  night: "night", dark: "night", midnight: "night", evening: "dusk", sunset: "dusk", dusk: "dusk",
   sky: "none", grass: "none", ground: "none", field: "none", garden: "none", park: "none",
   farm: "none", meadow: "none", campsite: "none", camping: "none", countryside: "none",
   village: "none", day: "none", sunny: "none", rainy: "rain", weather: "none",
@@ -90,11 +90,14 @@ export function parseEntry(raw) {
   const words = String(raw).toLowerCase().replace(/[×]/g, "x").replace(/[^a-z0-9\s-]/g, " ")
     .split(/\s+/).filter(Boolean);
   if (!words.length) return null;
-  let count = 1, colour = null, place = null;
+  let count = 1, colour = null, place = null, scale = 1;
   const nouns = [];
   for (const w of words) {
     const n = w.match(/^x?(\d+)x?$/);
     if (n) count = Math.max(1, Math.min(8, Number(n[1])));
+    // Size words: a story's hero is drawn big, a far-off bird small.
+    else if (/^(big|large|huge|giant|tall)$/.test(w)) scale = 1.7;
+    else if (/^(small|little|tiny)$/.test(w)) scale = 0.7;
     else if (Object.hasOwn(PALETTE, w)) colour = w;
     else if (PLACES.has(w)) place = PLACE_OF[w] || w;
     else if (!/^(a|an|the|some|of|and|with|in|on|at|by|x|lots|many|few|several|playing|sitting|standing|flying|swimming|parked)$/.test(w)) nouns.push(w);
@@ -104,7 +107,7 @@ export function parseEntry(raw) {
   // Settings are checked BEFORE the stamp matcher, whose prefix rule is loose
   // on purpose: it turned "sky" into a building, via "skyscraper".
   if (nouns.every(w => SETTINGS[w])) {
-    return { stamp: null, said: nouns.join(" "), count: 1, colour, place, setting: SETTINGS[nouns[0]] };
+    return { stamp: null, said: nouns.join(" "), count: 1, colour, place, setting: SETTINGS[nouns[0]], scale };
   }
   let stamp = resolveStamp(nouns.join(""));
   for (let i = 0; !stamp && i < nouns.length; i++) {
@@ -113,10 +116,10 @@ export function parseEntry(raw) {
   }
   const settingWord = nouns.find(w => SETTINGS[w]);
   if (settingWord && (!stamp || stamp === "waves-horizontal" || stamp === "road")) {
-    return { stamp: null, said: nouns.join(" "), count: 1, colour, place, setting: SETTINGS[settingWord] };
+    return { stamp: null, said: nouns.join(" "), count: 1, colour, place, setting: SETTINGS[settingWord], scale };
   }
   if (stamp && MAX_COUNT[stamp]) count = Math.min(MAX_COUNT[stamp], count);
-  return { stamp, said: nouns.join(" "), count, colour, place, setting: null };
+  return { stamp, said: nouns.join(" "), count, colour, place, setting: null, scale };
 }
 
 /**
@@ -169,10 +172,14 @@ const SIZE = {
   "roller-coaster": 32, carousel: 24, statue: 26, crane: 30, island: 30, volcano: 38,
   "christmas-tree": 24, "beach-umbrella": 18, "fire-engine": 20, ambulance: 18, taxi: 16,
   "police-car": 16, motorbike: 12, tram: 20, canoe: 14, speedboat: 16, surfer: 13, swimmer: 12,
-  runner: 12, cyclist: 13, dancer: 12, farmer: 13, cook: 13, astronaut: 13, santa: 14, snowman: 16,
+  girl: 10, boy: 10, child: 10, runner: 12, cyclist: 13, dancer: 12, farmer: 13, cook: 13, astronaut: 13, santa: 14, snowman: 16,
   family: 16, picnic: 9, "christmas": 24, pumpkin: 9, fireworks: 16, sparkler: 8,
 };
 const sizeOf = s => SIZE[s] || 11;
+// An entry's size: the page's size for the thing, times any size word.
+// "Big" on a thing that is already big stops at 30: a big dragon (26 x 1.7)
+// swallowed the castle behind it and ran off the cover.
+const sized = e => Math.min(sizeOf(e.stamp) * (e.scale || 1), Math.max(sizeOf(e.stamp), 30));
 
 // Colour the page adds when the model names none. It needs no tokens and
 // makes the picture read at a glance — "enrichment is free if it needs no
@@ -211,8 +218,11 @@ function row(items, from, to, rand) {
 }
 
 const r1 = n => Math.round(n * 10) / 10;
+// Every picture stays wholly inside the frame: a row spreads centres across
+// the page without knowing sizes, and a big thing at the edge was cut in half.
+const inside = (v, size) => Math.max(size / 2 + 1, Math.min(GRID - size / 2 - 1, v));
 const cmd = (stamp, x, y, size, colour) =>
-  `${stamp} ${r1(x)} ${r1(y)} ${r1(size)}${colour ? " " + colour : ""}`;
+  `${stamp} ${r1(inside(x, size))} ${r1(inside(y, size))} ${r1(size)}${colour ? " " + colour : ""}`;
 
 /**
  * A scene plan → { t, c } in the ordinary coordinate format, plus what the page
@@ -245,8 +255,12 @@ export function composeScene(plan) {
   const rain = settings.has("rain") || /rain|storm|wet|drizzle/.test(lower) ||
     all.includes("cloud-rain") || all.includes("umbrella");
   const sun = all.includes("sun") && !rain;
-  const night = !sun && (settings.has("night") || /night|dark|evening|midnight/.test(lower) ||
+  const night = !sun && (settings.has("night") || /night|dark|midnight/.test(lower) ||
     all.includes("moon") || all.includes("star"));
+  // Sunset is its own sky: warm, with the sun low on the horizon. Measured in a
+  // story — "as the sun dipped below the horizon" got a midday sky.
+  const dusk = !night && !rain && (settings.has("dusk") ||
+    /sunset|sun ?set|dusk|evening|dipped|twilight|setting sun|golden hour/.test(lower));
   const water = settings.has("water") ||
     entries.some(e => e.stamp && (WATER.has(e.stamp) || e.stamp === "waves-horizontal" || e.place === "water")) ||
     /beach|sea|ocean|lake|harbou?r|river|coast/.test(lower);
@@ -261,7 +275,7 @@ export function composeScene(plan) {
   const horizon = water ? 46 : 62;      // where the sky ends
   const shore = water ? 68 : horizon;   // where the land in front begins
   const out = [];
-  out.push(night ? "sky night" : rain ? "sky rain" : "sky day");
+  out.push(night ? "sky night" : rain ? "sky rain" : dusk ? "sky dusk" : "sky day");
   if (water) out.push(`water ${horizon}`);
   out.push(`${beach ? "sand" : "ground"} ${shore}`);
   if (road && !water) out.push(`road ${horizon + 20}`);
@@ -292,8 +306,11 @@ export function composeScene(plan) {
   const floaters = sky.filter(s => !lights.includes(s) && !stars.includes(s) && !skipped.includes(s));
   lights.forEach((s, i) => {
     const x = s.place === "left" ? 14 + i * 16 : 84 - i * 16;
-    out.push(cmd(s.stamp, x, 15, sizeOf(s.stamp), tint(s)));
+    const setting = dusk && s.stamp === "sun";
+    out.push(cmd(s.stamp, x, setting ? horizon - 8 : 15, sizeOf(s.stamp) * (setting ? 1.3 : 1), tint(s)));
   });
+  // A sunset needs its sun even when the list forgot it.
+  if (dusk && !lights.length) out.push(cmd("sun", 76, horizon - 8, sizeOf("sun") * 1.3, tint({ stamp: "sun" })));
   for (const s of stars) {
     out.push(cmd("star", 6 + rand() * 88, 5 + rand() * (horizon - 30),
       sizeOf("star") * (0.7 + rand() * 0.6), tint(s)));
@@ -305,7 +322,7 @@ export function composeScene(plan) {
 
   // Far: mountains stand on the horizon, big and behind everything.
   for (const s of row(far, 5, 95, rand)) {
-    const size = sizeOf(s.stamp) * (0.9 + rand() * 0.25);
+    const size = sized(s) * (0.9 + rand() * 0.25);
     out.push(cmd(s.stamp, s.x, horizon - size / 2 + 3, size, tint(s)));
   }
 
@@ -318,7 +335,7 @@ export function composeScene(plan) {
     const base = shore + (water ? 12 : 2) + r * 9;
     const scale = r ? 0.85 : 1;
     for (const s of row(items, 4, 96, rand)) {
-      const size = sizeOf(s.stamp) * scale * (0.9 + rand() * 0.2);
+      const size = sized(s) * scale * (0.9 + rand() * 0.2);
       out.push(cmd(s.stamp, s.x, base - size / 2, size, tint(s)));
     }
   });
@@ -326,7 +343,7 @@ export function composeScene(plan) {
   // Water: boats ride on it, a little smaller for being further off; fish
   // swim lower down in it; shells lie on the shore.
   for (const s of row(sea, 8, 92, rand)) {
-    const size = sizeOf(s.stamp) * (0.75 + rand() * 0.2);
+    const size = sized(s) * (0.75 + rand() * 0.2);
     const y = s.stamp === "shell" ? shore + 6
       : s.stamp === "fish" || s.stamp === "turtle" ? shore - 5 - rand() * 4
       : horizon + 9 + rand() * 5;
@@ -339,7 +356,7 @@ export function composeScene(plan) {
   const frontItems = row([...front, ...labels.map(l => ({ ...l, label: true }))], 6, 94, rand);
   for (const s of frontItems) {
     if (s.label) { out.push(`label ${r1(s.x - 4)} ${r1(frontBase - 2)} ${s.said}`); continue; }
-    const size = sizeOf(s.stamp) * (0.9 + rand() * 0.2);
+    const size = sized(s) * (0.9 + rand() * 0.2);
     const base = frontBase - (rand() * 4);
     out.push(cmd(s.stamp, s.x, Math.min(GRID - size / 2 - 1, base - size / 2), size, tint(s)));
   }

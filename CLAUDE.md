@@ -40,6 +40,8 @@ scripts/grounding-bench.mjs  does a small model invent answers about a document?
 scripts/retrieval-bench.mjs  BM25 (Work mode's) vs an embedder, same document, same queries
 scripts/lib/retrieval.mjs    the retired Work-mode BM25, kept for that bench
 scripts/desk-bench.mjs       Desk's real prompts through real models, with the page's checks
+scripts/storybook.mjs        write a six-page story + scene plans with a real model (Book-mode spike)
+scripts/storybook-render.mjs lay a written story out as a printable picture book
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
@@ -49,6 +51,7 @@ docs/work-mode.md         Phase 3 as first built — reading a document on-devic
                           the obvious design fails; read before touching RAG
 docs/desk.md              what replaced it — five tools benched, two shipped, and why
 docs/sketch-scenes.md     why desktop sketches stopped asking for coordinates
+docs/storybook.md         a story written by the model, illustrated by the page — what broke
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
 ```
@@ -108,6 +111,7 @@ serves **4-bit**, and that gap explains most surprises.
 | **A count after the noun gets read as an index** | `house 4` made the model number its entries — `palm 3, house 4, person 5, flower 6`. `x3` fixed most of it; the page caps the rest (`5 suns` → one). And the example's night sky leaked into daytime scenes until the example changed and the page ruled: a sun means day, rain means no sun. |
 | **Line icons read as a diagram; illustrations read as a picture** | Same scene plan, same placement: Lucide pictograms looked like "basic drawing", Twemoji redrawn in "ink and wash" (own colours, slight wobble, thin ink, tiny details crisp) looked illustrated. Twemoji beat Fluent Emoji, whose cow and person muddied when roughened; OpenMoji is share-alike. The model's job did not change — it still names a noun. `docs/sketch-scenes.md`. |
 | **A bigger vocabulary makes a loose matcher wrong** | With 485 words, the prefix rule drew a ship for "line" (via "liner") and a building for "sky" (via "skyscraper"). A known word may extend the model's word only when that word is at least five letters. |
+| **A story breaks continuity in ways a sketch never shows** | Across three model-written books: the prompt's example copied onto 5 of 18 vague pages, a dog named Ducky drawn as a duck, "he" drawn as a boy, the hero missing when the text used a pronoun. All fixed on the page — the cast is drawn on every page as the same picture, names are not nouns, stand-ins are dropped, and a near-empty plan is rebuilt from the page's own words. **The page owns continuity; the model is never trusted with it.** `docs/storybook.md`. |
 
 ### Browser gotchas already fixed
 
@@ -456,6 +460,9 @@ practical fine-tuning.
   locked or Safari went to the background — made likelier by auto-download.
   Planned and not built: a screen wake lock during download, one automatic
   retry (finished files are kept), and a report naming the stage that failed.
+- **Storybook is the use case the owner picked, and it is two scripts.**
+  `scripts/storybook.mjs` + `storybook-render.mjs` make a printable book in
+  ~25 s on CPU with Qwen3-1.7B. No Book mode in the app yet, and no browser run.
 - **The two-engine gate is still untested — and no longer blocking.** "Can two
   WebLLM engines be resident in one tab?" was the reason not to write Work mode
   UI. Retrieving lexically removed the dependency: there is no second engine, so

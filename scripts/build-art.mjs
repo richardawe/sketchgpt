@@ -72,7 +72,12 @@ const ART = [
   // people
   ["user", "1f9cd", "person", "man", "woman", "adult", "someone", "human"],
   ["users", "1f46b", "people", "couple", "friends", "crowd"], ["family", "1f46a"],
-  ["baby", "1f476", "child", "kid", "boy", "girl", "children", "kids", "toddler"],
+  // Children are standing figures drawn child-sized by the composer. They were
+  // the baby's-face emoji at first, and a girl called Lily came out as a head.
+  ["girl", "1f9cd-200d-2640-fe0f", "daughter", "sister", "princess"],
+  ["boy", "1f9cd-200d-2642-fe0f", "son", "brother", "prince"],
+  ["child", "1f9cd", "kid", "children", "kids", "friend"],
+  ["baby", "1f476", "toddler", "infant"],
   ["runner", "1f3c3", "running", "jogger"], ["swimmer", "1f3ca", "swimming"], ["surfer", "1f3c4", "surfing"],
   ["cyclist", "1f6b4", "biker"], ["dancer", "1f483", "dancing"], ["cook", "1f9d1-200d-1f373", "chef"],
   ["farmer", "1f9d1-200d-1f33e"], ["artist", "1f9d1-200d-1f3a8", "painter"],

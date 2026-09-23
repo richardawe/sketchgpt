@@ -16,7 +16,7 @@ const drawn = composed => parseSketch(JSON.stringify({ t: composed.t, c: compose
 const stamps = composed => drawn(composed).commands.filter(c => c.tool === "stamp");
 
 test("counts, colours and places are read, in any order", () => {
-  assert.deepEqual(parseEntry("pine tree x3"), { stamp: "tree-pine", said: "pine tree", count: 3, colour: null, place: null, setting: null });
+  assert.deepEqual(parseEntry("pine tree x3"), { stamp: "tree-pine", said: "pine tree", count: 3, colour: null, place: null, setting: null, scale: 1 });
   assert.equal(parseEntry("3 trees").count, 3);
   assert.equal(parseEntry("boat ×2").count, 2);
   assert.equal(parseEntry("red balloons").colour, "red");
@@ -25,7 +25,7 @@ test("counts, colours and places are read, in any order", () => {
 
 test("nouns are read left to right, past words that are not things", () => {
   assert.equal(parseEntry("cake on table").stamp, "cake");
-  assert.equal(parseEntry("children playing").stamp, "baby");
+  assert.equal(parseEntry("children playing").stamp, "child");
 });
 
 test("setting words shape the backdrop instead of being printed", () => {
@@ -87,6 +87,28 @@ test("rain rules out a sun (Qwen3-1.7B put one in a rainy day in town)", () => {
   const c = plan("A rainy day in town", ["rain x3", "road", "house x2", "tree x2", "cloud sky", "sun front"]);
   assert.ok(c.c.includes("sky rain"));
   assert.ok(!stamps(c).some(s => s.text === "sun"), "a sun was drawn on a rainy day");
+});
+
+test("a sunset gets a dusk sky with the sun low (a story page got midday)", () => {
+  const c = plan("As the sun dipped below the horizon, Pip looked at the ocean", ["dog front", "sea"]);
+  assert.ok(c.c.includes("sky dusk"), c.c.join(" | "));
+  const sun = stamps(c).find(s => s.text === "sun");
+  assert.ok(sun && sun.args[1] > 30, `the setting sun is at y=${sun && sun.args[1]}`);
+  assert.ok(plan("An evening walk", ["dog"]).c.includes("sky dusk"), "evening is dusk, not night");
+});
+
+test("size words scale a thing: the story's hero is drawn big", () => {
+  assert.equal(parseEntry("big dog front").scale, 1.7);
+  assert.equal(parseEntry("little bird").scale, 0.7);
+  const big = stamps(plan("A dog", ["big dog front"])).find(s => s.text === "dog").args[2];
+  const plain = stamps(plan("A dog", ["dog front"])).find(s => s.text === "dog").args[2];
+  assert.ok(big > plain * 1.4, `big ${big} vs plain ${plain}`);
+});
+
+test("a girl is a standing child, not a baby's face", () => {
+  assert.equal(parseEntry("girl").stamp, "girl");
+  assert.equal(parseEntry("boy").stamp, "boy");
+  assert.equal(parseEntry("baby").stamp, "baby");
 });
 
 test("night comes from the title, the moon, or stars without a sun", () => {

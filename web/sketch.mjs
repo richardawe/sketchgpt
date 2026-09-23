@@ -551,8 +551,11 @@ function drawArt(doc, parent, rc, art, { args: [x, y, size], text, colour }, til
   shapes.forEach(([d, fill, small, transform], i) => {
     const paint = repaint && fill === repaint ? PALETTE[colour] : fill;
     const node = rc && !small
-      ? rc.path(d, { seed: seed + i, fill: paint, fillStyle: "solid", roughness: 0.45, bowing: 0.6,
-          stroke: "#3a3a3a", strokeWidth: ink })
+      // The wobble is in the picture's own units, so it grows with the picture:
+      // a big dragon came out scribbled. Steady it as the picture grows, and
+      // drop rough.js's second pass on big pictures, where it reads as mess.
+      ? rc.path(d, { seed: seed + i, fill: paint, fillStyle: "solid", roughness: 0.45 * Math.min(1, 2.5 / k),
+          bowing: 0.6 * Math.min(1, 2.5 / k), disableMultiStroke: k > 3, stroke: "#3a3a3a", strokeWidth: ink })
       : svgNode(doc, "path", { d, fill: paint, stroke: "none" });
     if (transform) node.setAttribute("transform", transform);
     group.append(node);
