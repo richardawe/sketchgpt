@@ -29,7 +29,7 @@ function modules() {
 
 test("the page's module graph is what we think it is", () => {
   const found = modules();
-  for (const m of ["sketch.mjs", "desk.mjs", "scene.mjs", "stamps.mjs"]) assert.ok(found.includes(m), m);
+  for (const m of ["sketch.mjs", "desk.mjs", "scene.mjs", "stamps.mjs", "art-names.mjs"]) assert.ok(found.includes(m), m);
 });
 
 test("every imported module is copied by the deploy workflow", () => {
@@ -39,8 +39,12 @@ test("every imported module is copied by the deploy workflow", () => {
 test("every imported module is precached by the service worker", () => {
   const shell = sw.match(/const SHELL = \[([\s\S]*?)\];/)[1];
   for (const m of modules()) assert.ok(shell.includes(`"./${m}"`), `${m} is not cached for offline use`);
-  // rough.mjs is loaded dynamically, not imported, and must be cached too.
-  assert.ok(shell.includes('"./rough.mjs"'));
+  // rough.mjs and art.mjs are loaded dynamically, not imported, and must be
+  // cached (and deployed) too.
+  for (const m of ["rough.mjs", "art.mjs"]) {
+    assert.ok(shell.includes(`"./${m}"`), `${m} is not cached for offline use`);
+    assert.match(workflow, new RegExp(`cp web/${m.replace(".", "\\.")}\\s`), `${m} is not deployed`);
+  }
 });
 
 test("every versioned import of a module uses the same version", () => {

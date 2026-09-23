@@ -8,8 +8,8 @@
 // sun on the grass; a leaked moon turned a sunny party into night).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseEntry, composeScene, looksLikeCoordinates, scenePrompt } from "../web/scene.mjs?v=5";
-import { parseSketch, GRID } from "../web/sketch.mjs?v=5";
+import { parseEntry, composeScene, looksLikeCoordinates, scenePrompt } from "../web/scene.mjs?v=6";
+import { parseSketch, GRID } from "../web/sketch.mjs?v=6";
 
 const plan = (t, c) => composeScene({ t, c });
 const drawn = composed => parseSketch(JSON.stringify({ t: composed.t, c: composed.c }), { spread: false });
@@ -41,9 +41,11 @@ test("setting words shape the backdrop instead of being printed", () => {
 });
 
 test("things with no drawing stay words, never the nearest icon", () => {
-  const cow = parseEntry("cow x2");
-  assert.equal(cow.stamp, null);
-  assert.equal(cow.said, "cow");
+  // "cow" was this test's example until the illustrations drew one.
+  const llama = parseEntry("llama x2");
+  assert.equal(llama.stamp, null);
+  assert.equal(llama.said, "llama");
+  assert.equal(parseEntry("cow x2").stamp, "cow");
 });
 
 test("counts are capped where more than one makes no sense", () => {
@@ -106,6 +108,10 @@ test("water sits behind the shore, with boats on it and people in front", () => 
 test("a lake is grass, a beach is sand", () => {
   assert.ok(plan("A camping trip by a lake", ["tent", "lake", "fire x2"]).c.some(l => l.startsWith("ground ")));
   assert.ok(plan("A sunny beach", ["sand", "sea", "boat"]).c.some(l => l.startsWith("sand ")));
+});
+
+test("a short word does not match a longer one it merely starts ('line' is not a liner)", () => {
+  assert.notEqual(parseEntry("line").stamp, "ship");
 });
 
 test("a repeated entry is drawn once", () => {

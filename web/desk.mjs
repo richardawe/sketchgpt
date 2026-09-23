@@ -18,7 +18,7 @@
 // draws the checklist, counts the words, and decides before anything runs
 // whether the input fits.
 
-import { estimateTokens } from "./sketch.mjs?v=5";   // ?v= matches browser.html
+import { estimateTokens } from "./sketch.mjs?v=6";   // ?v= matches browser.html
 
 const GROUND =
   "You work only with what the person gives you. You cannot browse and you " +

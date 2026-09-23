@@ -17,7 +17,8 @@
 //      covering the same scene cost 26, and look better. Naming a noun is the
 //      easiest thing a small model does; drawing a recognisable tree from
 //      line segments is among the hardest.
-import { STAMPS, ALIASES, STAMP_BOX } from "./stamps.mjs?v=5";   // ?v= : see browser.html
+import { STAMPS, ALIASES, STAMP_BOX } from "./stamps.mjs?v=6";   // ?v= : see browser.html
+import { ART_NAMES } from "./art-names.mjs?v=6";
 
 export const GRID = 100;    // the coordinate space the model is given
 export const CANVAS = 400;  // SVG user units
@@ -225,6 +226,11 @@ const INK = "#202020";
 const NORMAL = new Map();
 for (const name of Object.keys(STAMPS)) NORMAL.set(name.replace(/[^a-z0-9]/g, ""), name);
 for (const [from, to] of Object.entries(ALIASES)) NORMAL.set(from.replace(/[^a-z0-9]/g, ""), to);
+// Twemoji illustrations (web/art.mjs) win over the line icons wherever both
+// exist, and add the nouns the icons never had: cow, pig, horse, barn, beach
+// umbrella. Names shared with the icon set are the same names, so a drawing's
+// commands read the same either way.
+for (const [from, to] of Object.entries(ART_NAMES)) NORMAL.set(from, to);
 
 export function resolveStamp(word) {
   const key = String(word).toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -232,8 +238,13 @@ export function resolveStamp(word) {
   for (const form of [key, key.replace(/(ies)$/, "y"), key.replace(/e?s$/, "")]) {
     if (NORMAL.has(form)) return NORMAL.get(form);
   }
+  // Loose on purpose ("puppies", "sailboats"), but not TOO loose: with the
+  // illustrations' 485 words, "line" matched "liner" and drew a ship, and
+  // "sky" matched "skyscraper". A word may extend a known one; a known word
+  // may extend the word only when the word is long enough to mean something.
   for (const [norm, name] of NORMAL) {
-    if (norm.length > 3 && (norm.startsWith(key) || key.startsWith(norm))) return name;
+    if (norm.length > 3 && key.startsWith(norm)) return name;
+    if (key.length >= 5 && norm.startsWith(key)) return name;
   }
   return null;
 }
@@ -458,6 +469,16 @@ export function loadRough(url = ROUGH_URL) {
 }
 export function resetRough() { roughPromise = null; }
 
+// The illustrations are ~330 KB, so they load only when a drawing needs them,
+// and never for Desk or Chat. A failed load leaves the line icons, then words.
+const ART_URL = "./art.mjs?v=6";
+let artPromise = null;
+export function loadArt(url = ART_URL) {
+  if (url === null) return Promise.resolve(null);
+  if (!artPromise) artPromise = import(url).catch(() => null);
+  return artPromise;
+}
+
 const svgNode = (doc, name, attrs = {}) => {
   const node = doc.createElementNS("http://www.w3.org/2000/svg", name);
   for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
@@ -506,6 +527,39 @@ function drawStamp(doc, parent, rough, { args: [x, y, size], text, colour }, til
   parent.append(group);
 }
 
+// A Twemoji illustration in "ink and wash": the picture's own flat colours,
+// laid down with a slight hand wobble and a thin ink line. Small details —
+// eyes, windows, buttons — stay crisp, because wobbling a 2-unit eye at scene
+// scale smudged every face in the prototype. A colour word from the model
+// repaints the picture's main colour ("blue car"), nothing else.
+function mainFill(shapes) {
+  const area = new Map();
+  for (const [d, fill, small] of shapes) if (!small) area.set(fill, (area.get(fill) || 0) + d.length);
+  return [...area].sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
+function drawArt(doc, parent, rc, art, { args: [x, y, size], text, colour }, tilt, seed) {
+  const shapes = art.ART[text];
+  const box = art.ART_BOX || 36;
+  const px = size * SCALE, k = px / box;
+  const group = svgNode(doc, "g", {
+    transform: `translate(${(x * SCALE - px / 2).toFixed(1)} ${(y * SCALE - px / 2).toFixed(1)}) ` +
+      `scale(${k.toFixed(4)})` + (tilt ? ` rotate(${tilt.toFixed(1)} ${box / 2} ${box / 2})` : ""),
+  });
+  const repaint = colour && PALETTE[colour] ? mainFill(shapes) : null;
+  const ink = Math.max(0.3, 0.8 / k);
+  shapes.forEach(([d, fill, small, transform], i) => {
+    const paint = repaint && fill === repaint ? PALETTE[colour] : fill;
+    const node = rc && !small
+      ? rc.path(d, { seed: seed + i, fill: paint, fillStyle: "solid", roughness: 0.45, bowing: 0.6,
+          stroke: "#3a3a3a", strokeWidth: ink })
+      : svgNode(doc, "path", { d, fill: paint, stroke: "none" });
+    if (transform) node.setAttribute("transform", transform);
+    group.append(node);
+  });
+  parent.append(group);
+}
+
 // The setting, drawn before anything else: a night sky, the ground, a sea, a
 // road. Hatched in light colour like a coloured pencil laid on its side, so it
 // reads as backdrop and never competes with the ink.
@@ -521,12 +575,17 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
   let h = seed || 7;
   const rand = () => ((h = (h * 1103515245 + 12345) >>> 0) % 1000) / 1000;
 
-  const wash = (x, y, w, hgt, colour, opacity, gap = 7, angle = -41) => {
+  // Backdrops are flat washes, like watercolour under an ink drawing. They
+  // were pencil hatching first, and beside painted illustrations a hatched
+  // night sky read as rain. Hatching is kept for the one sky that IS rain.
+  const wash = (x, y, w, hgt, colour, opacity, hatch = null) => {
     if (hgt <= 0) return;
     const g = svgNode(doc, "g", { opacity });
     g.append(rc
-      ? rc.rectangle(x, y, w, hgt, { seed, fill: colour, fillStyle: "hachure", stroke: "none",
-          hachureGap: gap, fillWeight: 1.1, hachureAngle: angle, roughness: 1.6 })
+      ? rc.rectangle(x, y, w, hgt, hatch
+          ? { seed, fill: colour, fillStyle: "hachure", stroke: "none", hachureGap: hatch.gap,
+              fillWeight: 1.1, hachureAngle: hatch.angle, roughness: 1.6 }
+          : { seed, fill: colour, fillStyle: "solid", stroke: "none", roughness: 1.2 })
       : svgNode(doc, "rect", { x, y, width: w, height: hgt, fill: colour, stroke: "none" }));
     parent.append(g);
   };
@@ -540,14 +599,17 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
   const skyline_d = y => `M 0 ${y + 2} Q ${CANVAS / 3} ${y - 6} ${CANVAS / 2} ${y} T ${CANVAS} ${y - 1}`;
 
   for (const b of backdrops.filter(b => b.kind === "sky")) {
-    if (b.text === "night") wash(0, 0, CANVAS, skyline, "#27345e", rc ? 0.42 : 0.16, 7, -35);
-    else if (b.text === "dusk") wash(0, 0, CANVAS, skyline, "#d98a4f", rc ? 0.28 : 0.12, 9, -35);
-    else if (b.text === "rain") wash(0, 0, CANVAS, skyline, "#7d8590", rc ? 0.3 : 0.12, 8, -70);
+    if (b.text === "night") wash(0, 0, CANVAS, skyline, "#26345f", 0.78);
+    else if (b.text === "dusk") wash(0, 0, CANVAS, skyline, "#e6a26a", 0.35);
+    else if (b.text === "rain") {
+      wash(0, 0, CANVAS, skyline, "#8f97a3", 0.3);
+      wash(0, 0, CANVAS, skyline, "#5f6b7a", rc ? 0.45 : 0, { gap: 11, angle: -70 });
+    } else wash(0, 0, CANVAS, skyline, "#bfe0f5", 0.45);
   }
   if (water) {
     const top = s(water.args[0]);
     const bottom = ground && land > top ? land : CANVAS;
-    wash(0, top, CANVAS, bottom - top, PALETTE.blue, rc ? 0.3 : 0.14, 7, 0);
+    wash(0, top, CANVAS, bottom - top, "#5ba3d9", 0.55);
     line(skyline_d(top), PALETTE.blue, 1.8);
     const rows = Math.max(1, Math.round((bottom - top) / 34));
     for (let i = 0; i < rows; i++) {
@@ -559,7 +621,7 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
   }
   if (ground) {
     const sand = ground.kind === "sand";
-    wash(0, land, CANVAS, CANVAS - land, sand ? "#d9b86c" : PALETTE.green, rc ? (sand ? 0.34 : 0.16) : 0.1, sand ? 6 : 12, sand ? -20 : 60);
+    wash(0, land, CANVAS, CANVAS - land, sand ? "#ecd49a" : "#9fcf7f", sand ? 0.75 : 0.55);
     line(skyline_d(land), INK, 1.8);
     // Grass is tufts, not a hatched field: a field of long parallel strokes
     // read as rain in the first screenshots.
@@ -580,14 +642,14 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
   }
   for (const b of backdrops.filter(b => b.kind === "road")) {
     const y = s(b.args[0]);
-    wash(0, y - 22, CANVAS, 44, "#6b6b6b", rc ? 0.3 : 0.14, 5, 0);
+    wash(0, y - 22, CANVAS, 44, "#8c8c8c", 0.55);
     line(`M 0 ${y - 22} L ${CANVAS} ${y - 22}`, INK, 1.8);
     line(`M 0 ${y + 22} L ${CANVAS} ${y + 22}`, INK, 1.8);
     for (let x = 12; x < CANVAS; x += 52) line(`M ${x} ${y} L ${x + 26} ${y}`, "#f4f1e8", 3);
   }
 }
 
-export function renderSketch(container, raw, { rough = null, onEdit = null, spread = true } = {}) {
+export function renderSketch(container, raw, { rough = null, art = null, onEdit = null, spread = true } = {}) {
   const drawing = parseSketch(raw, { spread }); // Validate the whole drawing before touching the DOM.
   const doc = container.ownerDocument;
   const svg = svgNode(doc, "svg", { xmlns: "http://www.w3.org/2000/svg",
@@ -607,7 +669,7 @@ export function renderSketch(container, raw, { rough = null, onEdit = null, spre
   const backdrops = drawing.commands.filter(c => c.tool === "backdrop");
   if (backdrops.length) drawBackdrops(doc, group, rc, backdrops, seed);
 
-  let index = 0;
+  let index = 0, usedArt = false;
   for (const command of drawing.commands) {
     const { tool, args: a, text } = command;
     if (tool === "backdrop") continue;
@@ -616,6 +678,16 @@ export function renderSketch(container, raw, { rough = null, onEdit = null, spre
     if (tool === "stamp") {
       // Tilt from the drawing's seed and the stamp's place in it: stable.
       const tilt = rc ? (((seed >>> (index++ % 24)) % 7) - 3) : 0;
+      if (art && art.ART && art.ART[text]) { usedArt = true; drawArt(doc, group, rc, art, command, tilt, seed); continue; }
+      if (!STAMPS[text]) {
+        // A noun only the illustrations know, with the illustrations not
+        // loaded: say the word where the picture would have gone.
+        node = svgNode(doc, "text", { x: s(a[0]) - 12, y: s(a[1]), fill: INK, stroke: "none",
+          "font-size": 17, "font-family": HAND });
+        node.textContent = command.said || text;
+        group.append(node);
+        continue;
+      }
       drawStamp(doc, group, rc && {
         path: (d, o) => rc.path(d, { ...pen, ...o }),
         fill: (d, o) => rc.path(d, { seed, ...o }),
@@ -641,6 +713,14 @@ export function renderSketch(container, raw, { rough = null, onEdit = null, spre
       if (command.colour && tool !== "label") node.setAttribute("stroke", ink(command));
       group.append(node);
     }
+  }
+
+  // The illustrations are CC-BY: the credit travels inside the SVG, so a
+  // downloaded drawing carries it wherever it goes.
+  if (usedArt) {
+    const desc = svgNode(doc, "desc");
+    desc.textContent = "Illustrations from Twemoji (c) Twitter, Inc and other contributors, CC-BY 4.0 — https://github.com/jdecked/twemoji";
+    svg.insertBefore(desc, svg.children[1] || null);
   }
 
   const caption = doc.createElement("p");
@@ -683,7 +763,7 @@ export function renderSketch(container, raw, { rough = null, onEdit = null, spre
     try {
       // renderSketch parses before it touches the DOM, so a bad edit throws
       // here with the drawing still on screen.
-      const kept = renderSketch(container, edited, { rough, onEdit, spread: false });
+      const kept = renderSketch(container, edited, { rough, art, onEdit, spread: false });
       const panel = container.querySelector("details.source");
       if (panel) {
         panel.open = true;

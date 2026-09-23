@@ -23,6 +23,8 @@ web/sketch.mjs            sketch format, context budget, SVG rendering
 web/desk.mjs              Desk (the default mode) — Brain dump + Say it better, the
                           planner, and the checks the page makes on the output
 web/scene.mjs             scene mode (desktop) — the model lists things, the page places them
+web/art.mjs               generated Twemoji illustrations (CC-BY 4.0) — never edit by hand
+web/art-names.mjs         generated word -> illustration map — never edit by hand
 web/stamps.mjs            generated Lucide path data — never edit by hand
 web/rough.mjs             vendored rough.js 4.6.6 (MIT) — verbatim, keep it so
 web/sw.js                 service worker — the page's own offline cache
@@ -30,6 +32,7 @@ scripts/setup-pages.sh    push, enable Pages, deploy, print URL (needs the user'
 scripts/setup-ollama.sh   install Ollama, pull the pinned model, verify, smoke-test
 scripts/serve-web.sh      serve web/ on localhost
 scripts/build-stamps.mjs  regenerate web/stamps.mjs from Lucide
+scripts/build-art.mjs     regenerate web/art.mjs + art-names.mjs from Twemoji (needs svg-path-bbox)
 scripts/token-budget.mjs  measure sketch cost against Qwen3's real tokenizer
 scripts/sketch-bench.mjs  run the real prompt through real models, judged by the real parser
 scripts/record-demo.mjs   record clips of sketch mode, one per claim (Playwright + ffmpeg)
@@ -103,6 +106,8 @@ serves **4-bit**, and that gap explains most surprises.
 | **JSON-constrained output fixes shape and costs content** | `{"items":[…]}` gave 12/12 valid lists on every model — and the Qwen models dropped 2–3× more items, while SmolLM2 returned the schema's example (`"first task","second task"`). Rejected; the page splits prose into a list instead (`listFromProse`), merges duplicates, and cuts loops (`collapseRepeats`), saying so each time. |
 | **Coordinates collapse on real scenes, even at 1.7B** | Past "a house and a tree", Qwen3-1.7B looped (40 horizontal lines for "a city street"), copied the prompt's example stamp list in order for "a farm", and ran to y=245 on a 0–100 grid. `sketch-bench.mjs` never showed it — every request in it is simple. Scene mode (`web/scene.mjs`, desktop only): the model lists things (`cabin x1`, `tree x3`), the page places them. 0/7 loops, ~2 s instead of 9–50 s. `docs/sketch-scenes.md`. |
 | **A count after the noun gets read as an index** | `house 4` made the model number its entries — `palm 3, house 4, person 5, flower 6`. `x3` fixed most of it; the page caps the rest (`5 suns` → one). And the example's night sky leaked into daytime scenes until the example changed and the page ruled: a sun means day, rain means no sun. |
+| **Line icons read as a diagram; illustrations read as a picture** | Same scene plan, same placement: Lucide pictograms looked like "basic drawing", Twemoji redrawn in "ink and wash" (own colours, slight wobble, thin ink, tiny details crisp) looked illustrated. Twemoji beat Fluent Emoji, whose cow and person muddied when roughened; OpenMoji is share-alike. The model's job did not change — it still names a noun. `docs/sketch-scenes.md`. |
+| **A bigger vocabulary makes a loose matcher wrong** | With 485 words, the prefix rule drew a ship for "line" (via "liner") and a building for "sky" (via "skyscraper"). A known word may extend the model's word only when that word is at least five letters. |
 
 ### Browser gotchas already fixed
 

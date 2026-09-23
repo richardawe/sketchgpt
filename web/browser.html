@@ -410,7 +410,7 @@
     <button type="button" class="primary" id="load">Download &amp; load model</button>
     <div id="bar"><div id="barfill"></div></div>
     <p class="autonote" id="autonote" hidden></p>
-    <p class="credit">Inference by <a href="https://webllm.mlc.ai/" target="_blank" rel="noopener">WebLLM</a> · weights from Hugging Face</p>
+    <p class="credit">Inference by <a href="https://webllm.mlc.ai/" target="_blank" rel="noopener">WebLLM</a> · weights from Hugging Face · illustrations by <a href="https://github.com/jdecked/twemoji" target="_blank" rel="noopener">Twemoji</a> (CC-BY 4.0)</p>
   </section>
 </div></div>
 
@@ -439,12 +439,12 @@
 // for ten minutes — and an import of a name the old module does not export
 // kills the whole page. Bump it whenever a module's exports change. The
 // service worker falls back with ignoreSearch, so offline still finds them.
-import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, estimateTokens,
-         readDrawing } from "./sketch.mjs?v=5";
-import { scenePrompt, composeScene, looksLikeCoordinates } from "./scene.mjs?v=5";
+import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, loadArt, estimateTokens,
+         readDrawing } from "./sketch.mjs?v=6";
+import { scenePrompt, composeScene, looksLikeCoordinates } from "./scene.mjs?v=6";
 import { TOOLS, TONES, toolById, planDeskTurn, maxWords, wordCount,
          parseChecklist, listFromProse, collapseRepeats,
-         stripPreamble, checkRewrite, leftOut } from "./desk.mjs?v=5";
+         stripPreamble, checkRewrite, leftOut } from "./desk.mjs?v=6";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
 
@@ -1183,6 +1183,7 @@ function syncMode() {
   fitPlaceholder();
   updateCount();
   showIntro();
+  if (outMode() === "sketch") loadArt();
   // Chat settings do nothing in the other modes, so they are not offered there.
   $("settings").hidden = outMode() !== "chat";
 }
@@ -2002,14 +2003,14 @@ $("form").addEventListener("submit", async e => {
     const staged = sketching && sketchPlan.scene ? stageScene(done) : null;
     if (sketching && stopFlag) {
       // Whatever arrived before the stop is still a drawing, if it parses.
-      try { renderSketch(out.body, staged ? staged.raw : done, { rough: await loadRough(ROUGH), spread: !staged }); }
+      try { renderSketch(out.body, staged ? staged.raw : done, { rough: await loadRough(ROUGH), art: await loadArt(), spread: !staged }); }
       catch { out.body.textContent = "Drawing stopped. Try again with fewer details."; }
       conversation.pop();
       setStatus("ready — running locally", "on");
       return;
     }
     if (sketching && staged) {
-      renderSketch(out.body, staged.raw, { rough: await loadRough(ROUGH), spread: false });
+      renderSketch(out.body, staged.raw, { rough: await loadRough(ROUGH), art: await loadArt(), spread: false });
       // Say who did what. The model chose the things; the page placed them.
       const list = staged.plan.c.slice(0, 16).join(", ");
       showNote(out.body, `The model listed: ${list}. The page placed them.` +
@@ -2018,7 +2019,7 @@ $("form").addEventListener("submit", async e => {
       // The conversation keeps the model's LIST, so "add a dog" revises the
       // plan in the language it was written in.
       done = JSON.stringify(staged.plan);
-    } else if (sketching) done = renderSketch(out.body, done, { rough: await loadRough(ROUGH),
+    } else if (sketching) done = renderSketch(out.body, done, { rough: await loadRough(ROUGH), art: await loadArt(),
       // An edit replaces the stored drawing, so a following "make it bigger"
       // builds on what the person drew, not on what the model sent.
       onEdit: edited => { const last = conversation[conversation.length - 1];
@@ -2117,6 +2118,9 @@ function boot() {
   // Fetched now rather than on first use, so switching to Sketch after the
   // model has loaded makes no request the privacy meter would have to list.
   loadRough(ROUGH);
+  // The illustrations too, but only once someone is drawing: Desk and Chat
+  // never pay for them.
+  if (outMode() === "sketch") loadArt();
   init();
   // Keep the page itself available with no signal: the weights persist, but
   // GitHub Pages expires the HTML after ten minutes. Registered here, not on

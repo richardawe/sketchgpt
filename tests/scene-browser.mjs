@@ -13,7 +13,7 @@ export async function CreateMLCEngine() { return { interruptGenerate() {},
  return (async function* () { yield { choices: [{ delta: { content: window.result } }] }; })(); } } } }; }`;
 
 const PLAN = JSON.stringify({ t: 'A cosy cabin in the woods at night',
-  c: ['cabin x1', 'moon x1 sky', 'star x2 back', 'fire x1 front', 'tree x3 green', 'cow'] });
+  c: ['cabin x1', 'moon x1 sky', 'star x2 back', 'fire x1 front', 'tree x3 green', 'llama'] });
 
 const browser = await launch();
 try {
@@ -36,7 +36,7 @@ try {
       const url = new URL(route.request().url());
       if (url.pathname === '/mock.mjs') return route.fulfill({ contentType: 'text/javascript', body: stub });
       const name = url.pathname.replace(/^.*\//, '');
-      const file = /^(sketch|stamps|rough|desk|scene)\.mjs$/.test(name) ? name : 'browser.html';
+      const file = /^(sketch|stamps|rough|desk|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
       await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
         body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
     });
@@ -70,12 +70,15 @@ try {
     assert.match(commands, /^ground \d+/m);
     assert.match(commands, /^house [\d.]+ [\d.]+ [\d.]+/m, 'the cabin was not drawn');
     assert.equal((commands.match(/^tree-deciduous /gm) || []).length, 3, 'three trees were asked for');
-    assert.match(commands, /^label .* cow$/m, 'a thing with no drawing must stay a word');
+    assert.match(commands, /^label .* llama$/m, 'a thing with no drawing must stay a word');
     assert.ok(await msg.locator('svg path').count() > 40, 'the picture is nearly empty');
+    // Drawn with the illustrations, and the CC-BY credit travels inside the
+    // SVG, so a downloaded drawing carries it.
+    assert.match(await msg.locator('svg desc').textContent(), /Twemoji .* CC-BY 4\.0/);
     const note = await msg.locator('.note').last().textContent();
     assert.match(note, /The model listed: cabin x1/);
     assert.match(note, /The page placed them/);
-    assert.match(note, /No drawing for "cow"/);
+    assert.match(note, /No drawing for "llama"/);
 
     // A revision is planned from the model's LIST, not from the page's
     // coordinates: the plan is the language the model wrote in.

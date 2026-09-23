@@ -84,12 +84,45 @@ system already has (Chalkboard, Segoe Print, Bradley Hand — no web font, the
 page works offline). The composer also picks natural colours when the model
 names none: green trees, a yellow sun, a blue sea.
 
+## Illustrations instead of line icons
+
+The next round of feedback was that the scenes were well placed but still
+"basic drawing". They were: Lucide's line icons are pictograms. Three colour
+sets were compared, redrawn through rough.js:
+
+| Set | Licence | Verdict |
+|---|---|---|
+| **Twemoji** | CC-BY 4.0 | **shipped** — small files (0.5–3 KB), flat colour, full coverage (cow, pig, horse, barn-as-house, beach umbrella) |
+| Fluent Emoji (flat) | MIT | good shapes, but the cow and the person turned to mud when roughened |
+| OpenMoji | CC BY-SA 4.0 | not tried: share-alike |
+
+Style: "ink and wash" — each picture's own flat colours laid down with a
+slight wobble and a thin ink line. An outline on every inner shape (tried
+first) turned the detail into scribble; wobbling tiny details smudged faces,
+so shapes under 7 of 36 units are drawn crisp. A colour word from the model
+repaints the picture's main colour ("blue car"). Backdrops became flat washes
+at the same time: beside painted pictures, a hatched night sky read as rain.
+
+`scripts/build-art.mjs` generates `web/art.mjs` (222 pictures, ~330 KB, loaded
+only when Sketch is used) and `web/art-names.mjs` (485 words, loaded up front
+so parsing can resolve a noun before the pictures arrive). Names shared with
+the line icons are the same names, so commands read the same either way; any
+noun without art falls back to the icon, then to a written word. The credit is
+on the page, in the README, and inside every drawn SVG as a `<desc>`.
+
+This applies on phones too — rendering is free — though phones still get the
+coordinate prompt.
+
+A bug the bigger vocabulary exposed: the stamp matcher's prefix rule turned
+"line" into a ship (via "liner"). A known word may now extend the model's word
+only when the model's word is five letters or more.
+
 ## Also shipped
 
 - **Exact duplicate commands are skipped** in the coordinate parser too, and
   the caption says how many. A loop is not a drawing, and nobody means an
   exact duplicate.
-- Six stamps: tractor, palm tree, party popper, shell, snail, floor lamp.
+- Six line-icon stamps: tractor, palm tree, party popper, shell, snail, floor lamp.
 
 ## Open
 

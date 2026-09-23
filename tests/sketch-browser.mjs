@@ -42,7 +42,7 @@ export async function CreateMLCEngine() { return {
     const url = new URL(route.request().url());
     if (url.pathname === '/mock.mjs') return route.fulfill({ contentType: 'text/javascript', body: stub });
     const name = url.pathname.replace(/^.*\//, '');
-    const file = /^(sketch|stamps|rough|desk|scene)\.mjs$/.test(name) ? name : 'browser.html';
+    const file = /^(sketch|stamps|rough|desk|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
     await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
@@ -158,10 +158,19 @@ export async function CreateMLCEngine() { return {
     'house 25 55 40 red', 'tree 78 50 34 green', 'circle 50 18 8 yellow', 'sun 12 12 10'] }); });
   await send('Draw a red house with a green tree');
   const painted = page.locator('.msg.assistant').last();
-  const strokes = await painted.locator('svg g[stroke]').evaluateAll(n => n.map(e => e.getAttribute('stroke')));
-  assert.ok(strokes.includes('#c0392b'), `no red stroke: ${strokes}`);
-  assert.ok(strokes.includes('#2e7d4f'), `no green stroke: ${strokes}`);
-  assert.ok(strokes.includes('#202020'), `the uncoloured sun lost its ink: ${strokes}`);
+  // With the illustrations (web/art.mjs) a colour word repaints the picture's
+  // main colour; with only the line icons it colours the stroke. Either way
+  // the colour must arrive, and only on the things it was asked for.
+  const paint = await painted.locator('svg').evaluate(svg => {
+    const colours = el => [...el.querySelectorAll('*')].flatMap(n => [n.getAttribute('fill'), n.getAttribute('stroke')])
+      .concat([el.getAttribute('fill'), el.getAttribute('stroke')]).filter(Boolean);
+    const groups = [...svg.querySelectorAll('g[transform]')];   // one per stamp, in command order
+    return groups.map(colours);
+  });
+  const [house, tree, sun] = paint;
+  assert.ok(house.includes('#c0392b'), `the house was asked to be red: ${[...new Set(house)]}`);
+  assert.ok(tree.includes('#2e7d4f'), `the tree was asked to be green: ${[...new Set(tree)]}`);
+  assert.ok(!sun.includes('#c0392b') && !sun.includes('#2e7d4f'), 'a colour leaked onto the uncoloured sun');
   assert.match(await painted.locator('details textarea').inputValue(), /house 25 55 40 red/);
   await page.screenshot({ path: '/tmp/sketch-colour.png', fullPage: true });
 

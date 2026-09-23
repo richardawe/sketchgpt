@@ -19,7 +19,12 @@
 // The result is the same format the commands panel shows and edits, so
 // nothing downstream changes, and a person can still move anything by hand.
 
-import { resolveStamp, PALETTE, GRID } from "./sketch.mjs?v=5";
+import { resolveStamp, PALETTE, GRID } from "./sketch.mjs?v=6";
+import { ART_NAMES } from "./art-names.mjs?v=6";
+
+// Names that have a full-colour illustration. Those keep their own colours;
+// the composer only picks a colour for the line icons.
+const ILLUSTRATED = new Set(Object.values(ART_NAMES));
 
 // ---- Prompt ---------------------------------------------------------------
 
@@ -39,7 +44,7 @@ const SCENE_EXAMPLES = [
 export function scenePrompt(maxEntries = 14) {
   return `Plan the user's picture as JSON: {"t":"short title","c":[one entry per kind of thing in it]}
 Each entry: a thing in one or two plain words, then xN if there are several (tree x3), then a colour if it matters, then where if it matters (left, right, sky, back, front, water).
-Things you can use include: tree, pine, palm, house, shop, car, bus, dog, cat, boat, sun, moon, cloud, star, flower, person, mountain, tent, fire, road, tractor, bird, fish, balloon, cake, gift.
+Things you can use include: tree, pine, palm, house, shop, car, bus, tractor, boat, sun, moon, cloud, star, flower, person, child, dog, cat, cow, horse, pig, sheep, chicken, duck, bird, fish, mountain, tent, fire, road, balloon, cake, gift.
 List what the request asks for first, then a few things that belong in that place. Never repeat an entry. Only put a moon or stars in a night picture.
 ${SCENE_EXAMPLES.join("\n")}
 Use ${maxEntries} entries or fewer. No coordinates, no code, no explanation. When changing an earlier picture, list the whole new picture.`;
@@ -128,12 +133,16 @@ export function looksLikeCoordinates(entries) {
 // ---- Composing ---------------------------------------------------------------
 
 const SKY = new Set(["sun", "moon", "cloud", "cloud-rain", "cloud-snow", "star", "bird", "plane",
-  "rainbow", "balloon", "rocket", "snowflake", "zap", "wind"]);
-const WATER = new Set(["sailboat", "ship", "fish", "anchor", "turtle", "shell"]);
-const FAR = new Set(["mountain", "mountain-snow"]);
-const BIG = new Set(["house", "building", "store", "school", "hospital", "church", "castle",
-  "factory", "tent", "tree-pine", "tree-deciduous", "trees", "tree-palm", "bridge", "fuel",
-  "train-front", "bus", "truck", "tractor"]);
+  "rainbow", "balloon", "rocket", "snowflake", "zap", "wind", "helicopter", "ufo", "kite",
+  "parachute", "eagle", "planet", "comet", "satellite", "parrot"]);
+const WATER = new Set(["sailboat", "ship", "fish", "anchor", "turtle", "shell", "whale", "dolphin",
+  "shark", "octopus", "crab", "tropical-fish", "swimmer", "surfer", "canoe", "speedboat", "swan", "wave"]);
+const FAR = new Set(["mountain", "mountain-snow", "volcano"]);
+const BIG = new Set(["house", "house-garden", "hut", "building", "store", "school", "hospital",
+  "church", "castle", "factory", "tent", "circus", "stadium", "fountain", "ferris-wheel",
+  "roller-coaster", "carousel", "statue", "crane", "island", "tree-pine", "tree-deciduous", "trees",
+  "tree-palm", "christmas-tree", "bridge", "fuel", "train-front", "tram", "bus", "truck", "tractor",
+  "fire-engine", "beach-umbrella", "giraffe", "elephant", "dinosaur", "t-rex", "dragon"]);
 const SETTING = new Set(["waves-horizontal", "road"]);   // drawn as backdrop, not as a stamp
 
 // Sizes in grid units. The page owns these for the same reason it owns the
@@ -149,6 +158,19 @@ const SIZE = {
   flower: 7, "flower-2": 7, sprout: 7, wheat: 8, flame: 10, sailboat: 18, ship: 20, fish: 7,
   turtle: 8, shell: 6, "party-popper": 10, gift: 9, cake: 11, balloon2: 9, fence: 14,
   "lamp-floor": 14, signpost: 11, "traffic-cone": 7, snail: 6, bug: 5,
+  // the illustrations' own nouns
+  cow: 15, horse: 16, pig: 12, sheep: 12, goat: 11, chicken: 8, rooster: 8, duck: 8, swan: 10,
+  elephant: 22, giraffe: 26, zebra: 16, lion: 15, tiger: 16, camel: 18, bear: 14, deer: 14,
+  fox: 10, monkey: 11, penguin: 10, kangaroo: 14, dinosaur: 28, "t-rex": 26, dragon: 26, unicorn: 16,
+  owl: 8, eagle: 10, parrot: 8, bee: 5, butterfly: 6, frog: 7, snake: 10, mouse: 6, hedgehog: 7,
+  whale: 24, dolphin: 14, shark: 16, octopus: 10, crab: 7, "tropical-fish": 7,
+  helicopter: 14, ufo: 14, kite: 9, parachute: 12, planet: 12, comet: 10,
+  "house-garden": 28, hut: 20, circus: 28, stadium: 32, fountain: 18, "ferris-wheel": 32,
+  "roller-coaster": 32, carousel: 24, statue: 26, crane: 30, island: 30, volcano: 38,
+  "christmas-tree": 24, "beach-umbrella": 18, "fire-engine": 20, ambulance: 18, taxi: 16,
+  "police-car": 16, motorbike: 12, tram: 20, canoe: 14, speedboat: 16, surfer: 13, swimmer: 12,
+  runner: 12, cyclist: 13, dancer: 12, farmer: 13, cook: 13, astronaut: 13, santa: 14, snowman: 16,
+  family: 16, picnic: 9, "christmas": 24, pumpkin: 9, fireworks: 16, sparkler: 8,
 };
 const sizeOf = s => SIZE[s] || 11;
 
@@ -164,6 +186,10 @@ const NATURAL = {
   mountain: "brown", "mountain-snow": "brown", car: "red", bus: "yellow", house: "brown",
   tent: "orange", dog: "brown", cat: "orange", rabbit: "brown", bird: "blue",
 };
+
+// The model's colour always wins; otherwise a line icon gets a natural colour
+// and an illustration keeps the colours it was drawn with.
+const tint = s => s.colour || (ILLUSTRATED.has(s.stamp) ? null : NATURAL[s.stamp]);
 
 // Deterministic jitter from the title, so a re-render, a download and a
 // screenshot all agree — the same rule renderSketch follows.
@@ -266,21 +292,21 @@ export function composeScene(plan) {
   const floaters = sky.filter(s => !lights.includes(s) && !stars.includes(s) && !skipped.includes(s));
   lights.forEach((s, i) => {
     const x = s.place === "left" ? 14 + i * 16 : 84 - i * 16;
-    out.push(cmd(s.stamp, x, 15, sizeOf(s.stamp), s.colour || NATURAL[s.stamp]));
+    out.push(cmd(s.stamp, x, 15, sizeOf(s.stamp), tint(s)));
   });
   for (const s of stars) {
     out.push(cmd("star", 6 + rand() * 88, 5 + rand() * (horizon - 30),
-      sizeOf("star") * (0.7 + rand() * 0.6), s.colour || NATURAL.star));
+      sizeOf("star") * (0.7 + rand() * 0.6), tint(s)));
   }
   for (const s of row(floaters, lights.length ? 12 : 8, lights.length ? 70 : 92, rand)) {
     out.push(cmd(s.stamp, s.x, 18 + rand() * 12, sizeOf(s.stamp) * (0.85 + rand() * 0.3),
-      s.colour || NATURAL[s.stamp]));
+      tint(s)));
   }
 
   // Far: mountains stand on the horizon, big and behind everything.
   for (const s of row(far, 5, 95, rand)) {
     const size = sizeOf(s.stamp) * (0.9 + rand() * 0.25);
-    out.push(cmd(s.stamp, s.x, horizon - size / 2 + 3, size, s.colour || NATURAL[s.stamp]));
+    out.push(cmd(s.stamp, s.x, horizon - size / 2 + 3, size, tint(s)));
   }
 
   // Back row stands on the horizon; if it is crowded, a second row in front of
@@ -293,7 +319,7 @@ export function composeScene(plan) {
     const scale = r ? 0.85 : 1;
     for (const s of row(items, 4, 96, rand)) {
       const size = sizeOf(s.stamp) * scale * (0.9 + rand() * 0.2);
-      out.push(cmd(s.stamp, s.x, base - size / 2, size, s.colour || NATURAL[s.stamp]));
+      out.push(cmd(s.stamp, s.x, base - size / 2, size, tint(s)));
     }
   });
 
@@ -304,7 +330,7 @@ export function composeScene(plan) {
     const y = s.stamp === "shell" ? shore + 6
       : s.stamp === "fish" || s.stamp === "turtle" ? shore - 5 - rand() * 4
       : horizon + 9 + rand() * 5;
-    out.push(cmd(s.stamp, s.x, y, size, s.colour || NATURAL[s.stamp]));
+    out.push(cmd(s.stamp, s.x, y, size, tint(s)));
   }
 
   // Front row: people, animals, flowers — standing lower on the page, which
@@ -315,7 +341,7 @@ export function composeScene(plan) {
     if (s.label) { out.push(`label ${r1(s.x - 4)} ${r1(frontBase - 2)} ${s.said}`); continue; }
     const size = sizeOf(s.stamp) * (0.9 + rand() * 0.2);
     const base = frontBase - (rand() * 4);
-    out.push(cmd(s.stamp, s.x, Math.min(GRID - size / 2 - 1, base - size / 2), size, s.colour || NATURAL[s.stamp]));
+    out.push(cmd(s.stamp, s.x, Math.min(GRID - size / 2 - 1, base - size / 2), size, tint(s)));
   }
 
   return { t: title, c: out, drawn: entries.filter(e => e.stamp).length, unknown: labels.map(l => l.said) };

@@ -150,7 +150,14 @@ people and animals in front. It then draws the lot by hand: hatched night skies
 and seas, grass tufts, coloured-pencil fills, a slight tilt on everything. The
 coordinate format fell apart on real scenes even at 1.7B — loops, the prompt's
 own example copied back, objects at y=245 on a 100-unit grid — and the list
-format measured clean on 7 of 7 at a fifteenth of the time. Phones keep the
+format measured clean on 7 of 7 at a fifteenth of the time.
+
+Everything is drawn from [Twemoji](https://github.com/jdecked/twemoji)
+illustrations (CC-BY 4.0), redrawn by rough.js in an ink-and-wash style: the
+picture's own colours, a slight hand wobble, a thin ink line. 222 pictures,
+from cows and tractors to ferris wheels, loaded only when you sketch; any noun
+without one falls back to a line icon, then to a handwritten word. This part
+applies on phones too. Phones keep the
 coordinate format, because the phone-sized models loop or copy the list prompt.
 `docs/sketch-scenes.md` has the numbers; `?scene=0` / `?scene=1` override.
 
@@ -332,6 +339,7 @@ node --test tests/retrieval.test.mjs  # the retired Work-mode retrieval, for the
 node tests/sketch-browser.mjs         # needs Playwright + Chromium
 node tests/desk-browser.mjs           # Desk on a touch screen and a mouse
 node --test tests/scene.test.mjs      # scene composer, on real model output
+node --test tests/art.test.mjs        # the illustrations: well-formed, named, credited
 node tests/scene-browser.mjs          # scene mode in the page, desktop and phone
 node --test tests/deploy.test.mjs     # every imported module is deployed and cached
 node tests/stop.mjs                   # Stop stops, and chat survives it
@@ -342,6 +350,7 @@ node scripts/token-budget.mjs         # real tokenizer; needs @lenml/tokenizers
 node scripts/sketch-bench.mjs qwen3:1.7b   # real models; needs Ollama
 node scripts/desk-bench.mjs qwen3:0.6b     # Desk prompts + the page's checks
 node scripts/build-stamps.mjs         # regenerates web/stamps.mjs from Lucide
+node scripts/build-art.mjs            # regenerates web/art.mjs from Twemoji
 ```
 
 Set `PLAYWRIGHT_MODULE` to Playwright's `index.mjs` if it is not installed
@@ -501,8 +510,11 @@ docs/customising.md       how to change what the model does
 
 - **[WebLLM](https://github.com/mlc-ai/web-llm)** (Apache 2.0) — the in-browser
   inference this page is a front end for.
+- **[Twemoji](https://github.com/jdecked/twemoji)** (graphics CC-BY 4.0,
+  © Twitter, Inc and other contributors) — the illustrations sketches are drawn
+  from, vendored as path data in `web/art.mjs` and credited inside every SVG.
 - **[Lucide](https://lucide.dev)** (ISC) — the icon geometry behind sketch
-  stamps, vendored as path data in `web/stamps.mjs`.
+  stamps a noun has no illustration for, vendored as path data in `web/stamps.mjs`.
 - **[rough.js](https://roughjs.com)** (MIT) — the hand-drawn line, vendored
   verbatim in `web/rough.mjs` so sketches keep it offline.
 - **[KaTeX](https://katex.org)** (MIT) — maths in chat answers, loaded from a
