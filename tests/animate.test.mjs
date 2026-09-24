@@ -44,3 +44,41 @@ test("being told to do something is not doing it", () => {
   assert.equal(pageActions("A friendly bird named Fluff helps Lucky by showing him the path to the sea. Fluff tells him to follow the shimmering light of the ocean.", [lucky]).size, 0);
   assert.deepEqual(pageActions("Lucky returns to his house.", [lucky]).get(lucky), ["run"]);
 });
+
+// ---- Reading aloud (web/voice.mjs) ------------------------------------------
+import { sentences, pickVoice, readAloud } from "../web/voice.mjs";
+
+test("a page is read one sentence at a time", () => {
+  assert.deepEqual(sentences("Pip jumps in! He swims. “Look,” said Mum. The end…  "),
+    ["Pip jumps in!", "He swims.", "“Look,” said Mum.", "The end…"]);
+  assert.deepEqual(sentences("‘Look! The ocean is vast.’ He smiled."), ["‘Look!", "The ocean is vast.’", "He smiled."]);
+  // A title is not a full stop.
+  assert.deepEqual(sentences("Mr. Gull flies down. As the sun sets, Pip and Mrs. Gull watch."),
+    ["Mr. Gull flies down.", "As the sun sets, Pip and Mrs. Gull watch."]);
+});
+
+test("the best local voice in the reader's language is chosen", () => {
+  const v = (name, lang, localService = true) => ({ name, lang, localService });
+  const voices = [v("Albert", "en-US"), v("Samantha", "en-US"), v("Ava (Enhanced)", "en-US"), v("Google UK English Male", "en-GB", false),
+    v("Thomas", "fr-FR")];
+  assert.equal(pickVoice(voices, "en").name, "Ava (Enhanced)");
+  assert.equal(pickVoice(voices, "fr").name, "Thomas");
+  assert.equal(pickVoice(voices, "de"), null);
+});
+
+test("every sentence is queued inside the tap, and each one marks itself as it starts", async () => {
+  const queued = [];
+  const synth = { cancel() { queued.length = 0; }, speak(u) { queued.push(u); } };
+  class Utterance { constructor(text) { this.text = text; } }
+  const started = [];
+  const r = readAloud([{ text: "One.", onStart: () => started.push(1) }, { text: "Two.", onStart: () => started.push(2) }],
+    { synth, Utterance, voice: { name: "Ava", lang: "en-US" } });
+  assert.deepEqual(queued.map(u => u.text), ["One.", "Two."], "both queued at once, before anything is awaited");
+  assert.equal(queued[0].voice.name, "Ava");
+  queued[0].onstart(); queued[1].onstart(); queued[1].onend();
+  assert.deepEqual(started, [1, 2]);
+  assert.equal(await r.done, "ended");
+  const s = readAloud([{ text: "Three." }], { synth, Utterance });
+  s.stop();
+  assert.equal(await s.done, "stopped");
+});

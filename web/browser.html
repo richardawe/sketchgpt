@@ -330,6 +330,12 @@
   .book .made p { margin: 4px 0 0; }
   .book-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   .book-status { text-align: center; }
+  /* ?animate=1: the zoom stays inside the picture; the sentence being read is marked. */
+  .book.moving .art { overflow: hidden; border-radius: 4px; }
+  .book .page-text .said { border-radius: 3px; transition: background-color .3s ease; }
+  .book .page-text .said.reading { background: #fff0b8; box-shadow: 0 0 0 2px #fff0b8; }
+  .book .cover h2.reading, .book .end .page-text.reading { background: #fff0b8; border-radius: 4px; }
+  .reader-note { font-size: 13px; color: var(--muted, #7d7369); text-align: center; margin: 6px 0 0; }
   /* Print one book and nothing else. */
   @media print {
     body.printing { background: #fff; height: auto; display: block; }
@@ -581,6 +587,11 @@ const CTX_PARAM = parseInt(new URLSearchParams(location.search).get("ctx"), 10);
 // ?manual=1 shows the model picker instead of downloading the chosen model
 // straight away. The "Choose a different model" link sets it.
 const MANUAL = new URLSearchParams(location.search).has("manual");
+// ?animate=1 — PROTOTYPE, for testing on a real phone before anyone else sees
+// it: pictures move (web/animate.mjs) and the book can be read aloud with the
+// device's own voice (web/voice.mjs). Neither module loads without the flag.
+const ANIMATE = new URLSearchParams(location.search).has("animate");
+const animation = ANIMATE ? Promise.all([import("./animate.mjs?v=9"), import("./voice.mjs?v=9")]).catch(() => null) : null;
 
 // Scene mode: the model lists what is in the picture and the page places it
 // (web/scene.mjs). On for models of 1.5B and up at a 2048+ context, where the
@@ -1311,7 +1322,11 @@ function bookActions(book) {
   print.addEventListener("click", () => {
     document.body.classList.add("printing");
     book.classList.add("print-me");
-    const done = () => { document.body.classList.remove("printing"); book.classList.remove("print-me"); };
+    // A moving picture prints wherever it happens to be: stop them all still.
+    const motions = [...(book.motions || new Map()).values()];
+    motions.forEach(m => m.stop());
+    const done = () => { document.body.classList.remove("printing"); book.classList.remove("print-me");
+      motions.splice(0).forEach(m => m.replay()); };
     addEventListener("afterprint", done, { once: true });
     print.blur();
     window.print();
@@ -1328,7 +1343,49 @@ function bookActions(book) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   row.append(print, save);
+  if (book.voice && "speechSynthesis" in window) row.append(readButton(book));
   return row;
+}
+
+// Read the book aloud with the device's own voice (?animate=1). Each page is
+// scrolled to and its picture replayed as its first sentence starts, and the
+// sentence being spoken is marked.
+function readButton(book) {
+  const read = document.createElement("button");
+  read.type = "button"; read.className = "read"; read.textContent = "Read aloud";
+  // Chrome fills the voice list late; ask now so it is there at the tap.
+  window.speechSynthesis.getVoices();
+  if (!window.speechSynthesis.getVoices().length) window.speechSynthesis.onvoiceschanged = () => {};
+  let reading = null;
+  read.addEventListener("click", async () => {
+    if (reading) { reading.stop(); return; }
+    // Nothing is awaited before speaking: iOS speaks only inside the tap.
+    const voice = book.voice, synth = window.speechSynthesis;
+    const chosen = voice.pickVoice(synth.getVoices(), (navigator.language || "en").slice(0, 2)) ||
+      voice.pickVoice(synth.getVoices(), "en");
+    const mark = el => { book.querySelectorAll(".reading").forEach(n => n.classList.remove("reading")); if (el) el.classList.add("reading"); };
+    const parts = [];
+    const cover = book.querySelector(".cover"), title = cover && cover.querySelector("h2");
+    if (title) parts.push({ text: title.textContent, onStart: () => { mark(title); cover.scrollIntoView({ behavior: "smooth", block: "center" }); } });
+    for (const s of book.querySelectorAll(".sheet:not(.cover):not(.end)")) {
+      [...s.querySelectorAll(".page-text .said")].forEach((span, k) => parts.push({ text: span.textContent.trim(), onStart: () => {
+        if (k === 0) { s.scrollIntoView({ behavior: "smooth", block: "center" }); const m = book.motions.get(s); if (m) m.replay(); }
+        mark(span);
+      } }));
+    }
+    const end = book.querySelector(".end .page-text");
+    if (end) parts.push({ text: end.textContent, onStart: () => { mark(end); end.scrollIntoView({ behavior: "smooth", block: "center" }); } });
+    reading = voice.readAloud(parts, { voice: chosen });
+    read.textContent = "Stop reading";
+    note.textContent = chosen ? `Voice: ${chosen.name}${chosen.localService ? "" : " (online)"}.` : "Using the device's default voice.";
+    const how = await reading.done;
+    mark(null); reading = null; read.textContent = "Read aloud";
+    if (how === "error") note.textContent = "The device's voice stopped with an error. Try again, or check the phone is not on silent.";
+  });
+  const note = document.createElement("p");
+  note.className = "reader-note";
+  queueMicrotask(() => read.parentElement && read.parentElement.after(note));
+  return read;
 }
 
 async function runBook(premise, out) {
@@ -1367,10 +1424,32 @@ async function runBook(premise, out) {
   cover.innerHTML = `<h2>${esc(story.title)}</h2><p class="by">Written by a small language model on this ` +
     `device · illustrated by the page</p>`;
   const coverArt = document.createElement("div"); coverArt.className = "art pending"; cover.appendChild(coverArt);
+  const moving = ANIMATE ? await animation.then(m => m && { animate: m[0], voice: m[1] }) : null;
+  if (moving) { book.classList.add("moving"); book.motions = new Map(); book.voice = moving.voice; }
+  // A picture moves only while it is on screen: a phone's battery is not
+  // spent on page five while page one is being read.
+  const onScreen = moving && "IntersectionObserver" in window ? new IntersectionObserver(seen => {
+    for (const e of seen) { const m = book.motions.get(e.target); if (m) e.isIntersecting ? m.play() : m.pause(); }
+  }, { threshold: 0.25 }) : null;
+  const bringToLife = (s, box, text) => {
+    const svg = moving && box.querySelector("svg");
+    if (!svg) return null;
+    const m = moving.animate.animatePicture(svg, { text, story, camera: svg });
+    book.motions.set(s, m);
+    if (onScreen) onScreen.observe(s);
+    return m;
+  };
   const sheets = story.pages.map((text, i) => {
     const s = sheet(book);
     const art = document.createElement("div"); art.className = "art pending"; art.textContent = "Drawing…";
     const p = document.createElement("p"); p.className = "page-text"; p.textContent = text;
+    if (moving) {
+      // One span per sentence: the unit that is read aloud and highlighted.
+      p.textContent = "";
+      for (const t of moving.voice.sentences(text)) {
+        const span = document.createElement("span"); span.className = "said"; span.textContent = t + " "; p.append(span);
+      }
+    }
     const n = document.createElement("div"); n.className = "page-num"; n.textContent = `— ${i + 1} —`;
     s.append(art, p, n);
     return { s, art, text };
@@ -1398,6 +1477,7 @@ async function runBook(premise, out) {
     const fixed = planning ? fixPagePlan(entries, pg.text, story) : wordsOnlyPlan(pg.text, story);
     pg.art.textContent = ""; pg.art.classList.remove("pending");
     await drawInto(pg.art, pg.text, fixed.entries);
+    const motion = bringToLife(pg.s, pg.art, pg.text);
     if (i === 0) first = fixed.entries;
     // Show the working, one tap away and never printed: what the model listed
     // and what the page changed.
@@ -1408,13 +1488,15 @@ async function runBook(premise, out) {
     body.textContent = (planning ? `The model listed: ${entries.join(", ") || "nothing usable"}. ` :
       "Drawn from the words on this page. ") +
       (fixed.fixes.length ? `The page: ${fixed.fixes.join("; ")}.` : "") +
-      (fixed.unknown.length ? ` No picture for ${fixed.unknown.map(w => `"${w}"`).join(", ")}.` : "");
+      (fixed.unknown.length ? ` No picture for ${fixed.unknown.map(w => `"${w}"`).join(", ")}.` : "") +
+      (motion && motion.said.length ? ` Moving: ${motion.said.join("; ")}.` : "");
     made.append(sum, body);
     pg.s.appendChild(made);
   }
   if (first) {
     coverArt.classList.remove("pending");
     await drawInto(coverArt, story.title + " " + story.pages[0], coverPlan(story, first));
+    bringToLife(cover, coverArt, "");
   } else coverArt.remove();
 
   status.textContent = stopFlag ? "Stopped. The pages drawn so far are kept." :

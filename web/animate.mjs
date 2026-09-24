@@ -14,6 +14,7 @@
 // bob): Twemoji pictures have no separate limbs, so there are no walk cycles.
 // Honours prefers-reduced-motion by doing nothing.
 import { drawAs, nameWords } from "./book.mjs?v=8";
+import { sentences } from "./voice.mjs?v=9";
 
 // What a thing does when nothing in the story tells it to do anything.
 const KINDS = [
@@ -67,7 +68,7 @@ export function pageActions(text, cast = []) {
   const people = cast.map(c => ({ c, words: new Set(nameWords(c.name)) }));
   const acts = new Map();
   let doer = cast[0] || null;
-  for (const sentence of String(text).split(/(?<=[.!?])\s+/)) {
+  for (const sentence of sentences(text)) {
     const named = sentence.split(/[^A-Za-z'.-]+/).map(w => w.toLowerCase().replace(/[.']+$/, ""))
       .map(w => people.find(p => p.words.has(w))).find(Boolean);
     if (named) doer = named.c;
@@ -154,14 +155,20 @@ function act(el, action, last, at) {
 
 /**
  * Bring one rendered picture to life. `svg` is what renderSketch drew; `text`
- * and `story` are the page's words and the book (for its cast). Returns
- * { stop() } and the list of what it decided, for "How this picture was made".
+ * and `story` are the page's words and the book (for its cast). `camera` is
+ * the element the slow zoom moves — the box around the picture, so the zoom
+ * is an ordinary element transform the browser can hand to the GPU, rather
+ * than a redraw of every hand-drawn line inside the SVG.
+ *
+ * Returns { said, play(), pause(), replay(), stop() }: what it decided (for
+ * "How this picture was made"), and controls — a page off screen is paused,
+ * a page being read aloud is replayed, a page being printed is stopped still.
  */
-export function animatePicture(svg, { text = "", story = { cast: [] } } = {}) {
+export function animatePicture(svg, { text = "", story = { cast: [] }, camera = null } = {}) {
   const view = svg.ownerDocument.defaultView;
-  if (view && view.matchMedia && view.matchMedia("(prefers-reduced-motion: reduce)").matches)
-    return { stop() {}, said: ["still: this device asks for reduced motion"] };
-  const running = [], said = [];
+  const nothing = { said: ["still: this device asks for reduced motion"], play() {}, pause() {}, replay() {}, stop() {} };
+  if (view && view.matchMedia && view.matchMedia("(prefers-reduced-motion: reduce)").matches) return nothing;
+  const said = [];
   const things = [...svg.querySelectorAll("[data-thing]")];
 
   // Who is drawn as what: the first picture of each character's word is them.
@@ -173,53 +180,66 @@ export function animatePicture(svg, { text = "", story = { cast: [] } } = {}) {
   }
   const actions = pageActions(text, story.cast || []);
 
-  things.forEach((node, i) => {
+  // The layers are made once; the motions can be started again and again.
+  const parts = things.map((node, i) => {
     const at = (node.dataset.at || "0 0 0").split(" ").map(Number);
     const outer = wrap(node);                        // entrance, then the story's action
     const inner = wrap(outer.firstChild);            // idle loop by kind
-    const kind = kindOf(node.dataset.thing);
     const character = [...who].find(([, n]) => n === node)?.[0];
     const doing = character ? actions.get(character) : null;
-    // Things arrive one by one, the way a page is drawn.
-    const enter = outer.animate([{ opacity: 0, transform: "scale(0.6)" }, { opacity: 1, transform: "scale(1.06)" },
-      { opacity: 1, transform: "scale(1)" }], { duration: 500, delay: 120 * i, fill: "backwards", easing: "ease-out" });
-    running.push(enter);
-    if (doing) {
-      said.push(`${character.name} (${node.dataset.thing}): ${doing.join(", then ")}`);
+    const dive = doing && doing.includes("swim") ? intoWater(svg, at) : 0;
+    const place = dive ? wrap(outer) : null;
+    if (doing) said.push(`${character.name} (${node.dataset.thing}): ${doing.join(", then ")}`);
+    return { node, i, at, outer, inner, doing, dive, place, kind: kindOf(node.dataset.thing) };
+  });
+  const heroNode = who.get((story.cast || [])[0]);
+  const stage = camera || svg;
+
+  let running = [], paused = false, generation = 0;
+  const keep = anim => { if (anim) { running.push(anim); if (paused) anim.pause(); } return anim; };
+
+  function start() {
+    const run = ++generation;                        // an older chain stops at its next step
+    for (const { i, at, outer, inner, doing, dive, place, kind } of parts) {
+      // Things arrive one by one, the way a page is drawn.
+      const enter = keep(outer.animate([{ opacity: 0, transform: "scale(0.6)" }, { opacity: 1, transform: "scale(1.06)" },
+        { opacity: 1, transform: "scale(1)" }], { duration: 500, delay: 120 * i, fill: "backwards", easing: "ease-out" }));
+      if (!doing) { keep(idle(inner, kind, i, at)); continue; }
+      if (!doing.includes("fly") && !doing.includes("swim")) keep(idle(inner, "breathe", i, at));
       // Swimming happens in the water. The page drew the water, so it knows
       // where it is: a hero standing on the shore jumps (or slides) into it
       // first. "Pip jumps into the water … He swims" then reads true.
-      const dive = doing.includes("swim") ? intoWater(svg, at) : 0;
-      const place = dive ? wrap(outer) : null;
       (async () => {
         try { await enter.finished; } catch { return; }
+        if (run !== generation) return;
         if (dive) {
-          const leap = place.animate([{ transform: "translate(0px, 0px)" },
+          const leap = keep(place.animate([{ transform: "translate(0px, 0px)" },
             { transform: `translate(0px, ${dive - 46}px)`, offset: 0.55 }, { transform: `translate(0px, ${dive}px)` }],
-            { duration: 900, fill: "forwards", easing: "ease-in-out" });
-          running.push(leap);
+            { duration: 900, fill: "forwards", easing: "ease-in-out" }));
           try { await leap.finished; } catch { return; }
         }
+        // Chain the actions; the last one keeps going.
         for (const [k, a] of doing.entries()) {
+          if (run !== generation) return;
           if (dive && a === "hop") continue;          // the leap was the jump
-          const anim = act(outer, a, k === doing.length - 1, at);
-          if (!anim) continue;
-          running.push(anim);
-          if (k < doing.length - 1) try { await anim.finished; } catch { return; }
+          const anim = keep(act(outer, a, k === doing.length - 1, at));
+          if (anim && k < doing.length - 1) try { await anim.finished; } catch { return; }
         }
       })();
-      if (!doing.includes("fly") && !doing.includes("swim")) running.push(idle(inner, "breathe", i, at));
-    } else running.push(idle(inner, kind, i, at));
-  });
-
-  // A slow camera: in toward the hero and back, like a picture-book film.
-  const heroNode = who.get((story.cast || [])[0]);
-  const stage = svg.querySelector("svg > g");
-  if (stage) {
+    }
+    // A slow camera: in toward the hero and back, like a picture-book film.
     const [hx, hy] = heroNode ? heroNode.dataset.at.split(" ").map(Number) : [200, 200];
-    stage.style.transformOrigin = `${hx}px ${hy}px`;
-    running.push(stage.animate([{ transform: "scale(1)" }, { transform: "scale(1.08)" }],
+    stage.style.transformOrigin = `${(hx / 4).toFixed(1)}% ${(hy / 4).toFixed(1)}%`;
+    keep(stage.animate([{ transform: "scale(1)" }, { transform: "scale(1.08)" }],
       { duration: 9000, iterations: Infinity, direction: "alternate", easing: "ease-in-out" }));
   }
-  return { said, stop() { running.forEach(a => a.cancel()); } };
+  function stop() { generation++; running.forEach(a => a.cancel()); running = []; }
+  start();
+  return {
+    said,
+    play() { paused = false; running.forEach(a => a.play()); },
+    pause() { paused = true; running.forEach(a => a.pause()); },
+    replay() { stop(); paused = false; start(); },
+    stop,
+  };
 }

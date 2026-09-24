@@ -500,15 +500,22 @@ practical fine-tuning.
 - **Storybook is the use case the owner picked, and it is now Book mode.**
   The spike scripts (`scripts/storybook.mjs` + `storybook-render.mjs`) stay as
   the Ollama harness for story prompts.
-- **Animated pages: prototyped, not wired in.** `web/animate.mjs` moves each
-  picture by what it is (birds fly, fish swim, trees sway, the sun glows) and
-  makes characters act out their page's verbs (`pageActions()`: "jumps … He
-  swims" → hop into the water the page drew, then swim). No tokens, no download,
-  off under reduced motion. `renderSketch` now tags every picture with
-  `data-thing`/`data-at` (the water's lines are `ripple`). One page recorded from
-  real output (`scripts/animate-demo/`); never run on a phone, never in the app.
-  Not researched further: narration (the browser voice cannot be recorded into a
-  video; Kokoro can) and AI video (needs ~8 GB of GPU memory — not a browser).
+- **Animated, read-aloud books: live behind `?animate=1`, for the owner's phone
+  first.** `web/animate.mjs` moves each picture by what it is and makes
+  characters act out their page's verbs (`pageActions()`: "jumps … He swims" →
+  a leap into the water the page drew, then swimming; wishes, dreams,
+  negations and "told to" are not deeds). The zoom moves the `<svg>` element,
+  not its insides; off-screen pages pause; printing stops everything still.
+  `web/voice.mjs` reads the book with the **device's own voice**, one sentence
+  at a time, every utterance queued inside the tap (iOS speaks only what a
+  gesture asked for), the sentence being spoken marked. **Kokoro was measured
+  and rejected**: 11–15 s to make 4–5 s of speech in Chromium (one WASM thread —
+  GitHub Pages cannot be cross-origin isolated) plus 92 MB. `renderSketch` tags
+  every picture with `data-thing`/`data-at` (water lines are `ripple`).
+  `tests/animate-browser.mjs` covers it on a touch screen with a recorded voice;
+  `scripts/animate-demo/` records a whole book. **Never run on a real phone** —
+  unknowns: Safari's smoothness with SVG transforms, which voice an iPhone
+  offers, and whether the silent switch mutes it.
 - **Next idea: product specification manuals with diagrams.** Researched,
   nothing built. The design that follows from the findings above: the model
   fills a JSON plan (blocks, links, labels) and the page lays it out — elkjs
