@@ -65,7 +65,7 @@ try {
       if (url.pathname === '/mock.mjs') return r.fulfill({ contentType: 'text/javascript', body: stub });
       const name = url.pathname.replace(/^.*\//, '');
       fetched.push(name);
-      const file = /^(sketch|stamps|rough|book|scene|art|art-names|animate|voice)\.mjs$/.test(name) ? name : 'browser.html';
+      const file = /^(sketch|stamps|rough|book|scene|art|art-names|animate|voice|share)\.mjs$/.test(name) ? name : 'browser.html';
       await r.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
         body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
     });
@@ -108,7 +108,7 @@ try {
     const select = book.locator('.voice-row select');
     assert.deepEqual(await select.locator('option').allTextContents(),
       ['Best available (Ava (Enhanced))', 'Ava (Enhanced) · en-US', 'Albert · en-US']);
-    assert.match(await book.locator('.reader-note').textContent(), /2 voices on this device/);
+    assert.match(await book.locator('.reader-note:not(.share-note)').textContent(), /2 voices on this device/);
     if (process.env.SHOT) await book.locator('.book-actions').evaluate(n => n.scrollIntoView({ block: 'center' })) ||
       await page.screenshot({ path: process.env.SHOT });
     await select.selectOption({ label: 'Albert · en-US' });

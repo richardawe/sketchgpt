@@ -340,13 +340,23 @@
                font: 14px var(--font, sans-serif); }
   /* 16px: iOS zooms the page on a focused control smaller than that. */
   .voice-row select { font-size: 16px; max-width: 72vw; }
+  /* Editing a book (?animate=1): small, plain, out of the way of the page. */
+  .book .edit-page { display: block; margin: 8px auto 0; font-size: 13px; padding: 4px 12px; }
+  .book .editor { margin-top: 12px; display: grid; gap: 10px; font: 14px/1.4 var(--font, sans-serif); }
+  .book .ed-field { display: grid; gap: 4px; color: var(--book-muted); }
+  /* 16px: iOS zooms the page on a focused control smaller than that. */
+  .book .editor textarea, .book .editor input { font: 16px/1.45 Georgia, serif; color: var(--book-ink); width: 100%;
+    box-sizing: border-box; padding: 8px; border: 1px solid #d9cfbd; border-radius: 6px; background: #fffdf7; }
+  .book .ed-person { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .book .ed-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   /* Print one book and nothing else. */
   @media print {
     body.printing { background: #fff; height: auto; display: block; }
     body.printing header, body.printing footer, body.printing #menu,
     body.printing .msg:not(:has(.print-me)), body.printing .msg .who, body.printing .msg .body > :not(.print-me),
     body.printing .book .made, body.printing .book-actions,
-    body.printing .book .voice-row, body.printing .book .reader-note { display: none !important; }
+    body.printing .book .voice-row, body.printing .book .reader-note,
+    body.printing .book .edit-page, body.printing .book .editor { display: none !important; }
     body.printing #log { overflow: visible; padding: 0; }
     body.printing .wrap { max-width: none; }
     body.printing .msg { margin: 0; }
@@ -597,6 +607,11 @@ const MANUAL = new URLSearchParams(location.search).has("manual");
 // device's own voice (web/voice.mjs). Neither module loads without the flag.
 const ANIMATE = new URLSearchParams(location.search).has("animate");
 const animation = ANIMATE ? Promise.all([import("./animate.mjs?v=10"), import("./voice.mjs?v=10")]).catch(() => null) : null;
+// A book in a link (web/share.mjs), and editing: with ?animate=1 while this is
+// a prototype — and for anyone opening a shared link, wherever it came from.
+const SHARED_HASH = /^#book=/.test(location.hash);
+const SHARING = ANIMATE || SHARED_HASH;
+const sharing = SHARING ? import("./share.mjs?v=10").catch(() => null) : null;
 
 // Scene mode: the model lists what is in the picture and the page places it
 // (web/scene.mjs). On for models of 1.5B and up at a 2048+ context, where the
@@ -841,7 +856,13 @@ async function init() {
   let cached = false;
   try { cached = await webllm.hasModelInCache($("model").value, APP); } catch {}
   const saveData = !!(navigator.connection && navigator.connection.saveData);
-  if (cached || (!MANUAL && !saveData)) {
+  if (SHARED_HASH) {
+    // Someone sent a book. Showing it needs no model, so nothing downloads —
+    // on a phone that is hundreds of MB and GPU memory the book does not use.
+    $("autonote").hidden = false;
+    $("autonote").textContent = "You opened a shared book, so nothing was downloaded. Press the button to get the model " +
+      "and write your own.";
+  } else if (cached || (!MANUAL && !saveData)) {
     const m = modelOf($("model").value);
     if (!cached) $("autonote").innerHTML =
       `<b>${esc(m ? m.label.split(" — ")[0] : $("model").value)}</b> was picked for this ` +
@@ -1309,7 +1330,8 @@ async function drawInto(box, title, entries) {
 function bookFile(book) {
   const css = $("bookcss").textContent;
   const clone = book.cloneNode(true);
-  clone.querySelectorAll(".book-actions, .voice-row, .reader-note, .made, details, .art button, .art p").forEach(n => n.remove());
+  clone.querySelectorAll(".book-actions, .voice-row, .reader-note, .edit-page, .editor, .made, details, .art button, .art p")
+    .forEach(n => n.remove());
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<title>${esc(book.dataset.title || "A picture book")}</title><style>${css}\n` +
@@ -1398,7 +1420,14 @@ function readButton(book) {
   let options = [];
   const fill = () => {
     options = book.voice.voiceOptions(synth.getVoices(), lang);
-    const keep = select.value || saved;
+    // A shared book asks for the voice it was made with; this device may not
+    // have it, so take the same voice by another quality ("Ava (Premium)" for
+    // "Ava (Enhanced)"), or say what it gets instead.
+    const asked = book.sharedVoice || "";
+    const base = asked.replace(/\s*\(.*\)\s*$/, "").toLowerCase();
+    const match = asked && (options.find(o => o.voice.name === asked) ||
+      options.find(o => o.voice.name.replace(/\s*\(.*\)\s*$/, "").toLowerCase() === base));
+    const keep = select.value || (match && match.id) || saved;
     select.textContent = "";
     const auto = document.createElement("option"); auto.value = "";
     const best = book.voice.pickVoice(synth.getVoices(), lang) || book.voice.pickVoice(synth.getVoices(), "en");
@@ -1406,12 +1435,17 @@ function readButton(book) {
     select.append(auto);
     for (const o of options) { const opt = document.createElement("option"); opt.value = o.id; opt.textContent = o.label; select.append(opt); }
     select.value = options.some(o => o.id === keep) ? keep : "";
-    if (!reading) note.textContent = options.length ? `${options.length} voice${options.length > 1 ? "s" : ""} on this device.` :
-      "This browser lists no voices; it will use its default.";
+    if (!reading) note.textContent = (options.length ? `${options.length} voice${options.length > 1 ? "s" : ""} on this device.` :
+      "This browser lists no voices; it will use its default.") +
+      (asked ? (match ? ` This book asked for ${asked}: using ${match.voice.name}.` : ` This book asked for ${asked}, which this device does not have.`) : "");
   };
   const picked = () => (options.find(o => o.id === select.value) || {}).voice ||
     book.voice.pickVoice(synth.getVoices(), lang) || book.voice.pickVoice(synth.getVoices(), "en");
-  select.addEventListener("change", () => { try { localStorage.setItem("sketchgpt.voice", select.value); } catch {} });
+  select.addEventListener("change", () => {
+    try { localStorage.setItem("sketchgpt.voice", select.value); } catch {}
+    if (book.refreshLink) book.refreshLink();         // the link carries the voice's name
+  });
+  book.voiceName = () => { const v = picked(); return v ? v.name : ""; };
   tryIt.addEventListener("click", () => {
     if (reading) reading.stop();
     const v = picked();
@@ -1451,16 +1485,49 @@ async function runBook(premise, out) {
     return;
   }
 
+  // The book as data: what a share link carries and what an edit changes.
+  const state = { title: story.title, cast: story.cast, pages: story.pages.map(text => ({ text, things: null })),
+    cover: null, voice: "" };
+  const planning = sceneMode();
+  await showBook(state, out, { status, truncated: story.truncated, plan: async text => {
+    let entries = [];
+    if (planning) {
+      try { entries = readDrawing(await complete(pageMessages(state, text),
+        { maxTokens: PAGE_TOKENS, temperature: 0.3, schema: SKETCH_SCHEMA })).c; } catch {}
+    }
+    const fixed = planning ? fixPagePlan(entries, text, state) : wordsOnlyPlan(text, state);
+    // Show the working, one tap away and never printed: what the model listed
+    // and what the page changed.
+    const how = (planning ? `The model listed: ${entries.join(", ") || "nothing usable"}. ` :
+      "Drawn from the words on this page. ") +
+      (fixed.fixes.length ? `The page: ${fixed.fixes.join("; ")}.` : "") +
+      (fixed.unknown.length ? ` No picture for ${fixed.unknown.map(w => `"${w}"`).join(", ")}.` : "");
+    return { things: fixed.entries, how };
+  } });
+}
+
+/**
+ * Lay a book out and draw it. `state` is the book as data ({ title, cast,
+ * pages: [{ text, things }], cover, voice }); a page with no things yet is
+ * planned by `plan(text)` — the model's writing path — and a shared or edited
+ * book already has them, so it needs no model at all.
+ */
+async function showBook(state, out, { plan = null, status = null, truncated = false, shared = false } = {}) {
   const book = document.createElement("div");
   book.className = "book";
-  book.dataset.title = story.title;
+  book.dataset.title = state.title;
   out.body.appendChild(book);
+  const share = SHARING ? await sharing : null;
+  book.sharedVoice = shared ? state.voice : "";
+  const how = state.pages.map(() => shared ? "Drawn from the list this book came with." : "");
 
   // The cover first, drawn once page 1 is known; the pages with their text
   // straight away, pictures as they arrive.
   const cover = sheet(book, "cover");
-  cover.innerHTML = `<h2>${esc(story.title)}</h2><p class="by">Written by a small language model on this ` +
-    `device · illustrated by the page</p>`;
+  cover.innerHTML = `<h2></h2><p class="by">${shared ? "Shared with you · rebuilt on this device from the link, " +
+    "with nothing downloaded or uploaded" : "Written by a small language model on this device · illustrated by the page"}</p>`;
+  const titleEl = cover.querySelector("h2");
+  titleEl.textContent = state.title;
   const coverArt = document.createElement("div"); coverArt.className = "art pending"; cover.appendChild(coverArt);
   const moving = ANIMATE ? await animation.then(m => m && { animate: m[0], voice: m[1] }) : null;
   if (moving) { book.classList.add("moving"); book.motions = new Map(); book.voice = moving.voice; }
@@ -1472,74 +1539,239 @@ async function runBook(premise, out) {
   const bringToLife = (s, box, text) => {
     const svg = moving && box.querySelector("svg");
     if (!svg) return null;
-    const m = moving.animate.animatePicture(svg, { text, story, camera: svg });
+    const old = book.motions.get(s);
+    if (old) old.stop();
+    const m = moving.animate.animatePicture(svg, { text, story: state, camera: svg });
     book.motions.set(s, m);
     if (onScreen) onScreen.observe(s);
     return m;
   };
-  const sheets = story.pages.map((text, i) => {
+  // One span per sentence when reading aloud is on: the unit that is spoken
+  // and highlighted. The model's words (or a person's) are always text.
+  const setText = (p, text) => {
+    p.textContent = moving ? "" : text;
+    if (moving) for (const t of moving.voice.sentences(text)) {
+      const span = document.createElement("span"); span.className = "said"; span.textContent = t + " "; p.append(span);
+    }
+  };
+  const sheets = state.pages.map((page, i) => {
     const s = sheet(book);
     const art = document.createElement("div"); art.className = "art pending"; art.textContent = "Drawing…";
-    const p = document.createElement("p"); p.className = "page-text"; p.textContent = text;
-    if (moving) {
-      // One span per sentence: the unit that is read aloud and highlighted.
-      p.textContent = "";
-      for (const t of moving.voice.sentences(text)) {
-        const span = document.createElement("span"); span.className = "said"; span.textContent = t + " "; p.append(span);
-      }
-    }
+    const p = document.createElement("p"); p.className = "page-text"; setText(p, page.text);
     const n = document.createElement("div"); n.className = "page-num"; n.textContent = `— ${i + 1} —`;
+    const made = document.createElement("details");
+    made.className = "made";
+    const sum = document.createElement("summary"); sum.textContent = "How this picture was made";
+    const body = document.createElement("p");
+    made.append(sum, body);
     s.append(art, p, n);
-    return { s, art, text };
+    return { s, art, p, made, madeText: body };
   });
   const end = sheet(book, "end");
   end.innerHTML = `<p class="page-text">The End</p><p class="credit">Story by a language model running in ` +
     `this browser · pictures placed and drawn by sketchgpt · illustrations from Twemoji (CC-BY 4.0) · ` +
     `inference by WebLLM</p>`;
-  if (story.truncated) {
+  if (truncated) {
     const t = document.createElement("p"); t.className = "note";
-    t.textContent = `The model ran out of room after ${story.pages.length} pages, so the story is short.`;
+    t.textContent = `The model ran out of room after ${state.pages.length} pages, so the story is short.`;
     out.body.insertBefore(t, book);
   }
 
-  const planning = sceneMode();
-  let first = null;
-  for (const [i, pg] of sheets.entries()) {
-    if (stopFlag) { pg.art.textContent = "Stopped before this page was drawn."; continue; }
-    status.textContent = `Drawing page ${i + 1} of ${sheets.length}…`;
-    let entries = [];
-    if (planning) {
-      try { entries = readDrawing(await complete(pageMessages(story, pg.text),
-        { maxTokens: PAGE_TOKENS, temperature: 0.3, schema: SKETCH_SCHEMA })).c; } catch {}
-    }
-    const fixed = planning ? fixPagePlan(entries, pg.text, story) : wordsOnlyPlan(pg.text, story);
-    pg.art.textContent = ""; pg.art.classList.remove("pending");
-    await drawInto(pg.art, pg.text, fixed.entries);
-    const motion = bringToLife(pg.s, pg.art, pg.text);
-    if (i === 0) first = fixed.entries;
-    // Show the working, one tap away and never printed: what the model listed
-    // and what the page changed.
-    const made = document.createElement("details");
-    made.className = "made";
-    const sum = document.createElement("summary"); sum.textContent = "How this picture was made";
-    const body = document.createElement("p");
-    body.textContent = (planning ? `The model listed: ${entries.join(", ") || "nothing usable"}. ` :
-      "Drawn from the words on this page. ") +
-      (fixed.fixes.length ? `The page: ${fixed.fixes.join("; ")}.` : "") +
-      (fixed.unknown.length ? ` No picture for ${fixed.unknown.map(w => `"${w}"`).join(", ")}.` : "") +
-      (motion && motion.said.length ? ` Moving: ${motion.said.join("; ")}.` : "");
-    made.append(sum, body);
-    pg.s.appendChild(made);
+  async function drawPage(i) {
+    const pg = sheets[i], page = state.pages[i];
+    pg.art.textContent = ""; pg.art.className = "art";
+    setText(pg.p, page.text);
+    await drawInto(pg.art, page.text, page.things);
+    const motion = bringToLife(pg.s, pg.art, page.text);
+    pg.madeText.textContent = how[i] + (motion && motion.said.length ? ` Moving: ${motion.said.join("; ")}.` : "");
+    if (!pg.made.isConnected) pg.s.appendChild(pg.made);
   }
-  if (first) {
-    coverArt.classList.remove("pending");
-    await drawInto(coverArt, story.title + " " + story.pages[0], coverPlan(story, first));
+  async function drawCover() {
+    if (!state.cover) { coverArt.remove(); return; }
+    if (!coverArt.isConnected) cover.appendChild(coverArt);
+    coverArt.textContent = ""; coverArt.className = "art";
+    await drawInto(coverArt, state.title + " " + state.pages[0].text, state.cover);
     bringToLife(cover, coverArt, "");
-  } else coverArt.remove();
+  }
 
-  status.textContent = stopFlag ? "Stopped. The pages drawn so far are kept." :
-    `${story.pages.length} pages, written and drawn on this device.`;
+  for (const [i, page] of state.pages.entries()) {
+    if (stopFlag) { sheets[i].art.textContent = "Stopped before this page was drawn."; continue; }
+    if (status) status.textContent = `Drawing page ${i + 1} of ${state.pages.length}…`;
+    if (!page.things && plan) { const planned = await plan(page.text); page.things = planned.things; how[i] = planned.how; }
+    await drawPage(i);
+  }
+  if (!state.cover && state.pages[0].things) state.cover = coverPlan(state, state.pages[0].things);
+  await drawCover();
+
+  if (status) status.textContent = stopFlag ? "Stopped. The pages drawn so far are kept." :
+    `${state.pages.length} pages, written and drawn on this device.`;
   book.appendChild(bookActions(book));
+  if (!share) return book;
+
+  // ---- Sharing and editing (?animate=1, or any shared link) -------------------
+  const undo = [];
+  const snapshot = () => JSON.stringify({ state, how });
+  const actions = book.querySelector(".book-actions");
+  const note = document.createElement("p"); note.className = "reader-note share-note";
+  const undoBtn = document.createElement("button"); undoBtn.type = "button"; undoBtn.className = "undo";
+  undoBtn.textContent = "Undo"; undoBtn.disabled = true;
+  const shareBtn = document.createElement("button"); shareBtn.type = "button"; shareBtn.className = "share";
+  shareBtn.textContent = "Share";
+  actions.prepend(shareBtn);
+  actions.append(undoBtn);
+
+  // The link is made ahead of the tap: iOS opens the share sheet only from
+  // inside a tap, and compressing the book is asynchronous.
+  let link = "";
+  const refreshLink = async () => {
+    // A page stopped before it was drawn still travels: from its own words.
+    for (const p of state.pages) if (!p.things) p.things = wordsOnlyPlan(p.text, state).entries;
+    state.voice = book.voiceName ? book.voiceName() : state.voice;
+    const url = new URL(location.href);
+    url.hash = await share.encodeBook(state);
+    link = url.href;
+  };
+  book.refreshLink = refreshLink;
+  await refreshLink();
+  shareBtn.addEventListener("click", () => {
+    if (!link) return;
+    const kb = (link.length / 1024).toFixed(1);
+    const said = `The whole book is in the link (${kb} KB). Nothing is uploaded: whoever opens it gets the book ` +
+      `redrawn on their own device, with no model to download.`;
+    if (navigator.share) {
+      navigator.share({ title: state.title, text: `“${state.title}” — a picture book`, url: link })
+        .then(() => { note.textContent = said; }, () => {});
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(link).then(() => { note.textContent = "Link copied. " + said; },
+        () => { note.textContent = "Copy this link: " + link; });
+    } else note.textContent = "Copy this link: " + link;
+  });
+
+  // Every change goes through here: remember how it was, change, redraw, re-link.
+  async function change(apply, pagesToDraw) {
+    undo.push(snapshot());
+    undoBtn.disabled = false;
+    apply();
+    titleEl.textContent = state.title; book.dataset.title = state.title;
+    for (const i of pagesToDraw) await drawPage(i);
+    await refreshLink();
+  }
+  undoBtn.addEventListener("click", async () => {
+    if (!undo.length) return;
+    const was = JSON.parse(undo.pop());
+    Object.assign(state, was.state); how.splice(0, how.length, ...was.how);
+    titleEl.textContent = state.title; book.dataset.title = state.title;
+    for (const i of state.pages.keys()) await drawPage(i);
+    await drawCover();
+    await refreshLink();
+    undoBtn.disabled = !undo.length;
+    note.textContent = "Undone.";
+  });
+
+  const field = (labelText, el) => { const l = document.createElement("label"); l.className = "ed-field";
+    const t = document.createElement("span"); t.textContent = labelText; l.append(t, el); return l; };
+  const button = (text, cls) => { const b = document.createElement("button"); b.type = "button"; b.textContent = text;
+    if (cls) b.className = cls; return b; };
+
+  // A page's editor: its words and its picture's list. The page takes what
+  // the person types as typed — it corrects the model, never the person.
+  sheets.forEach((pg, i) => {
+    const open = button("Edit this page", "edit-page");
+    pg.s.appendChild(open);
+    open.addEventListener("click", () => {
+      if (pg.s.querySelector(".editor")) return;
+      const page = state.pages[i];
+      const ed = document.createElement("div"); ed.className = "editor";
+      const words = document.createElement("textarea"); words.className = "ed-text"; words.rows = 4; words.value = page.text;
+      const things = document.createElement("textarea"); things.className = "ed-things"; things.rows = 4;
+      things.value = (page.things || []).join("\n");
+      const save = button("Save", "primary ed-save"), cancel = button("Cancel", "ed-cancel");
+      const rewrite = button("Rewrite with the model", "ed-rewrite");
+      const edNote = document.createElement("p"); edNote.className = "reader-note";
+      if (!engine) { rewrite.disabled = true; rewrite.title = "Load the model first"; }
+      const row = document.createElement("div"); row.className = "ed-actions"; row.append(save, cancel, rewrite);
+      ed.append(field("Words", words), field("In the picture — one thing per line (e.g. boat, big dog front)", things), row, edNote);
+      open.hidden = true;
+      pg.s.appendChild(ed);
+      words.focus();
+      const close = () => { ed.remove(); open.hidden = false; };
+      cancel.addEventListener("click", close);
+      save.addEventListener("click", async () => {
+        const text = words.value.replace(/\s+/g, " ").trim().slice(0, share.LIMITS.text);
+        if (!text) { edNote.textContent = "A page needs some words."; return; }
+        const typed = share.thingsFrom(things.value);
+        const listChanged = typed.join("\n") !== (page.things || []).join("\n");
+        if (text === page.text && !listChanged) { close(); return; }
+        close();
+        await change(() => {
+          page.text = text;
+          // A list the person wrote is drawn as written. New words with the
+          // old list: the picture is rebuilt from the new words.
+          if (listChanged) { page.things = typed; how[i] = "Drawn from your list."; }
+          else { page.things = wordsOnlyPlan(text, state).entries; how[i] = "Redrawn from your words."; }
+        }, [i]);
+        note.textContent = `Page ${i + 1} changed. Undo puts it back.`;
+      });
+      rewrite.addEventListener("click", async () => {
+        if (!engine || generating) return;
+        generating = true; rewrite.disabled = true; save.disabled = true;
+        edNote.textContent = "The model is rewriting this page…";
+        setStatus("writing…", "busy");
+        try {
+          const raw = await complete(share.rewriteMessages(state, i, words.value.trim() || page.text),
+            { maxTokens: 220, temperature: 0.7, schema: share.REWRITE_SCHEMA });
+          const text = share.readRewrite(raw);
+          if (text) { words.value = text; edNote.textContent = "The model's version. Save keeps it; Cancel keeps yours."; }
+          else edNote.textContent = "The model did not write a page this time. Try again, or write it yourself.";
+        } catch (e) {
+          edNote.textContent = "The model could not rewrite the page: " + (e && e.message || e);
+        } finally {
+          generating = false; rewrite.disabled = false; save.disabled = false;
+          setStatus("ready — running locally", "on");
+        }
+      });
+    });
+  });
+
+  // The cover's editor: the title, and who is in the book. A new name reaches
+  // every page; a new kind of character (dog → cat) redraws every picture.
+  const openCover = button("Edit title and characters", "edit-page edit-cover");
+  cover.appendChild(openCover);
+  openCover.addEventListener("click", () => {
+    if (cover.querySelector(".editor")) return;
+    const ed = document.createElement("div"); ed.className = "editor";
+    const title = document.createElement("input"); title.className = "ed-title"; title.value = state.title;
+    ed.append(field("Title", title));
+    const people = state.cast.map((c, k) => {
+      const name = document.createElement("input"); name.className = "ed-name"; name.value = c.name;
+      const is = document.createElement("input"); is.className = "ed-is"; is.value = c.is;
+      const row = document.createElement("div"); row.className = "ed-person";
+      row.append(field(k === 0 ? "Hero" : "Character", name), field("is a", is));
+      ed.append(row);
+      return { name, is };
+    });
+    const save = button("Save", "primary ed-save"), cancel = button("Cancel", "ed-cancel");
+    const row = document.createElement("div"); row.className = "ed-actions"; row.append(save, cancel);
+    ed.append(row);
+    openCover.hidden = true;
+    cover.appendChild(ed);
+    const close = () => { ed.remove(); openCover.hidden = false; };
+    cancel.addEventListener("click", close);
+    save.addEventListener("click", async () => {
+      close();
+      await change(() => {
+        people.forEach((p, k) => { Object.assign(state, share.changeCharacter(state, k, { name: p.name.value, is: p.is.value })); });
+        const t = title.value.replace(/\s+/g, " ").trim().slice(0, share.LIMITS.title);
+        if (t) state.title = t;
+      }, [...state.pages.keys()]);
+      await drawCover();
+      await refreshLink();
+      note.textContent = "Title and characters changed on every page. Undo puts them back.";
+    });
+  });
+
+  queueMicrotask(() => actions.after(note));
+  return book;
 }
 
 // ---- When generation fails ------------------------------------------------
@@ -1804,7 +2036,9 @@ function boot() {
   loadRough(ROUGH);
   // The illustrations too: every book and every scene draws with them.
   loadArt();
-  init();
+  // A shared book opens whatever init() decides about the model — even on a
+  // device with no WebGPU, which can show a book but never write one.
+  Promise.resolve().then(init).catch(e => console.warn("init:", e)).finally(openShared);
   // Keep the page itself available with no signal: the weights persist, but
   // GitHub Pages expires the HTML after ten minutes. Registered here, not on
   // "load": this module top-level awaits the WebLLM import, so "load" fires
@@ -1822,6 +2056,21 @@ function boot() {
     navigator.serviceWorker.register("./sw.js").catch(e =>
       console.warn("offline support unavailable:", e.message));
   }
+}
+
+// A book from a link: decoded, checked, drawn. No model is involved.
+async function openShared() {
+  if (!SHARED_HASH) return;
+  const share = await sharing;
+  const out = addMsg("assistant", "");
+  let state;
+  try {
+    if (!share) throw new Error("The page could not load what it needs to open shared books. Reload to try again.");
+    state = await share.decodeBook(location.hash);
+  } catch (e) { showNote(out.body, e.message); return; }
+  if ($("intro")) $("intro").remove();
+  await showBook(state, out, { shared: true });
+  scrollToAnswer(out.body);
 }
 
 function warmWorker() {

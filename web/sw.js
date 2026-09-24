@@ -18,7 +18,7 @@
 const VERSION = "sketchgpt-v8";
 const SHELL = ["./", "./index.html", "./browser.html", "./sketch.mjs",
                "./stamps.mjs", "./rough.mjs", "./book.mjs", "./scene.mjs",
-               "./art.mjs", "./art-names.mjs", "./animate.mjs", "./voice.mjs"];
+               "./art.mjs", "./art-names.mjs", "./animate.mjs", "./voice.mjs", "./share.mjs"];
 
 self.addEventListener("install", event => {
   // Never let one missing file fail the whole install — a page that is

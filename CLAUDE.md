@@ -529,6 +529,24 @@ practical fine-tuning.
   offers, and whether the silent switch mutes it. A voice picker lists what the
   device gives the page (Safari may hide downloaded Enhanced/Premium voices;
   Siri voices are never available), with Try, remembered in `sketchgpt.voice`.
+- **Share links and editing: live behind `?animate=1`; any shared link opens
+  anywhere.** `web/share.mjs` puts the whole book after the `#` (title, cast,
+  each page's words and its picture's things list, the cover's list, the
+  voice's name; deflate-raw + base64url, ~1–1.5 KB for six pages). The
+  fragment never reaches GitHub. Opening a link draws the same pictures
+  (seeded) with **no model and no download** — `init()` skips the auto-download
+  when the hash holds a book — and works on a phone with no WebGPU at all.
+  Decoded input is capped and type-checked (`cleanBook`) and shown as text.
+  The voice travels by name; the recipient gets it, the same voice at another
+  quality ("Ava (Premium)" for "(Enhanced)"), or is told. Editing: a page's
+  words (picture rebuilt from them), its things list (drawn as typed — the
+  page's rules do not tidy a person's list), the title, and characters (a
+  rename reaches every page, a new kind redraws every picture); Undo; and
+  "Rewrite with the model", whose answer waits in the editor until saved.
+  Book mode was split: `runBook` writes, `showBook(state)` lays out and draws
+  from data. `tests/share-browser.mjs` covers it, including a second device
+  with no GPU opening the link — mutation-checked on the autoload skip, the
+  typed list, the rename and the voice. Never tried on a real phone.
 - **Next idea: product specification manuals with diagrams.** Researched,
   nothing built. The design that follows from the findings above: the model
   fills a JSON plan (blocks, links, labels) and the page lays it out — elkjs

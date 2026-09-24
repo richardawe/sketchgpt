@@ -45,6 +45,7 @@ jobs:
           cp web/art-names.mjs _site/art-names.mjs
           cp web/animate.mjs _site/animate.mjs   # ?animate=1 only
           cp web/voice.mjs  _site/voice.mjs     # ?animate=1 only
+          cp web/share.mjs  _site/share.mjs     # ?animate=1 and shared links
           cp web/sw.js      _site/sw.js
           cp web/browser.html _site/index.html   # the page that works for visitors
           cp web/index.html   _site/ollama.html  # needs a local Ollama
