@@ -19,14 +19,15 @@ const port = server.address().port;
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE);
 const browser = await chromium.launch({ executablePath: process.env.SKETCH_CHROME });
 const [book = "dog", page = "4", secs = "12"] = process.argv.slice(2);
+const whole = page === "all";          // the whole book, cover to The End (book.html)
 const ctx = await browser.newContext({ viewport: { width: 480, height: 760 }, deviceScaleFactor: 1,
   recordVideo: { dir: join(HERE, "video"), size: { width: 480, height: 760 } } });
 const p = await ctx.newPage();
 const errors = []; p.on("pageerror", e => errors.push(e.message)); p.on("console", m => m.type() === "error" && errors.push(m.text()));
-await p.goto(`http://localhost:${port}/page.html?book=${book}&page=${page}`);
-await p.waitForFunction(() => window.__ready, null, { timeout: 30000 });
+await p.goto(`http://localhost:${port}/${whole ? "book" : "page"}.html?book=${book}&page=${page}`);
+if (whole) await p.waitForFunction(() => window.__done, null, { timeout: 180000 });
+else { await p.waitForFunction(() => window.__ready, null, { timeout: 30000 }); await p.waitForTimeout(Number(secs) * 1000); }
 console.log(JSON.stringify(await p.evaluate(() => window.__said), null, 1));
-await p.waitForTimeout(Number(secs) * 1000);
 await p.screenshot({ path: join(HERE, `frame-${book}-${page}.png`) });
 const video = p.video(); await ctx.close(); console.log("video:", await video.path());
 console.log("errors:", errors);

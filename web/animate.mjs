@@ -34,12 +34,26 @@ const ACTIONS = [
   ["hop", /\b(jump(s|ed|ing)?|hop(s|ped|ping)?|leap(s|t|ed)?|bounce[sd]?)\b/i],
   ["fly", /\b(fl(y|ies|ew|ying)|soar(s|ed|ing)?|glide[sd]?)\b/i],
   ["swim", /\b(swim(s|ming)?|swam|splash(es|ed)?|dive[sd]?|paddle[sd]?)\b/i],
-  ["run", /\b(run(s|ning)?|ran|race[sd]?|dash(es|ed)?|hurr(y|ies|ied)|walk(s|ed)?|went|chas(e|es|ed|ing))\b/i],
+  ["run", /\b(run(s|ning)?|ran|race[sd]?|dash(es|ed)?|hurr(y|ies|ied)|walk(s|ed)?|went|chas(e|es|ed|ing)|follow(s|ed)?|return(s|ed)?|reach(es|ed)?)\b/i],
   ["sleep", /\b(sleep(s|ing)?|slept|asleep|nap(s|ped)?|rest(s|ed)?)\b/i],
   ["dance", /\b(danc(e|es|ed|ing)|spin(s|ning)?|spun|twirl(s|ed)?|play(s|ed|ing)?)\b/i],
   ["look", /\b(look(s|ed)?|sees?|saw|watch(es|ed)?|peek(s|ed)?|finds?|found|discover(s|ed)?)\b/i],
   ["cheer", /\b(smil(e|es|ed)|laugh(s|ed)?|cheer(s|ed)?|celebrat(e|es|ed)|hug(s|ged)?)\b/i],
 ];
+
+// A wish is not a deed. "He dreams of swimming", "Lucky wants to see the sea"
+// and "he can't find it" happen nowhere on the page — in the first recorded
+// book the dog dived into the sea on the page where he had never left the woods.
+const NOT_DONE = /\b(wants?|wanted|dreams?|dreamed|dreamt|wish(es|ed)?|hopes?|hoped|loves?|likes?|can't|cannot|couldn't|never|not|don't|doesn't|didn't|won't)\b/i;
+function done(sentence, re) {
+  for (const m of sentence.matchAll(new RegExp(re.source, "gi"))) {
+    const words = sentence.slice(0, m.index).trim().split(/\s+/);
+    // "tells him to follow" is an instruction, not a deed; "tries to find" is a deed.
+    const told = words.at(-1)?.toLowerCase() === "to" && !/^(tr(y|ies|ied)|starts?|started|begins?|began)$/i.test(words.at(-2) || "");
+    if (!NOT_DONE.test(words.slice(-4).join(" ")) && !told) return m.index;
+  }
+  return -1;
+}
 
 const LASTING = new Set(["fly", "swim", "sleep", "dance"]);
 
@@ -58,7 +72,7 @@ export function pageActions(text, cast = []) {
       .map(w => people.find(p => p.words.has(w))).find(Boolean);
     if (named) doer = named.c;
     if (!doer) continue;
-    const found = ACTIONS.map(([act, re]) => [act, sentence.search(re)]).filter(([, at]) => at >= 0)
+    const found = ACTIONS.map(([act, re]) => [act, done(sentence, re)]).filter(([, at]) => at >= 0)
       .sort((a, b) => a[1] - b[1]).map(([act]) => act);
     const list = acts.get(doer) || [];
     // An action that can go on (swim, fly, sleep, dance) is where a picture
