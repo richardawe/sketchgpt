@@ -72,7 +72,7 @@ docs/sketch-scenes.md     why desktop sketches stopped asking for coordinates
 docs/storybook.md         a story written by the model, illustrated by the page — what broke
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
-docs/selfie.md            plan: a selfie drawn as an animated cartoon on-device (MediaPipe measures, the page draws) — not built
+docs/selfie.md            plan: a selfie drawn as an animated hand-drawn caricature on-device, with GIF/sticker export — not built
 scripts/rhyme-bench.mjs   can a small model rhyme? (no: 0-2/16, judged by CMUdict) — parked
 ```
 
