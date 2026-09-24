@@ -35,7 +35,11 @@ scripts/build-stamps.mjs  regenerate web/stamps.mjs from Lucide
 scripts/build-art.mjs     regenerate web/art.mjs + art-names.mjs from Twemoji (needs svg-path-bbox)
 scripts/token-budget.mjs  measure sketch cost against Qwen3's real tokenizer
 scripts/sketch-bench.mjs  run the real prompt through real models, judged by the real parser
-scripts/record-demo.mjs   record clips of sketch mode, one per claim (Playwright + ffmpeg)
+scripts/record-demo.mjs   record clips of Book and Sketch mode, one per claim (Playwright + ffmpeg;
+                          FFMPEG=<ffmpeg-static binary> works — captions are drawn in the page)
+scripts/capture-book.mjs  capture a real model's story + page plans into scripts/demo-books/ for the clips
+scripts/demo-books/       real Qwen3 book output the clips replay — never hand-written
+media/tweets/             the Book-mode X thread (thread.md) and its five GIFs
 scripts/grounding-bench.mjs  does a small model invent answers about a document? (it does)
 scripts/retrieval-bench.mjs  BM25 (Work mode's) vs an embedder, same document, same queries
 scripts/lib/retrieval.mjs    the retired Work-mode BM25, kept for that bench
@@ -116,7 +120,7 @@ serves **4-bit**, and that gap explains most surprises.
 | **A bigger vocabulary makes a loose matcher wrong** | With 485 words, the prefix rule drew a ship for "line" (via "liner") and a building for "sky" (via "skyscraper"). A known word may extend the model's word only when that word is at least five letters. |
 | **A story breaks continuity in ways a sketch never shows** | Across three model-written books: the prompt's example copied onto 5 of 18 vague pages, a dog named Ducky drawn as a duck, "he" drawn as a boy, the hero missing when the text used a pronoun. All fixed on the page — the cast is drawn on every page as the same picture, names are not nouns, stand-ins are dropped, and a near-empty plan is rebuilt from the page's own words. **The page owns continuity; the model is never trusted with it.** `docs/storybook.md`. |
 | **One picture must never cost the book** | First phone run of Book mode (Qwen3-0.6B, iPhone, 1024 ctx): the story came back, then page one's picture held only sky and ground, the renderer refused it ("did not return a drawing in the expected format"), and the error replaced the whole book. Causes found with `scripts/book-bench.mjs`: a hero with no illustration (fairy, witch, knight, grandma… — 0 of 96 bench pages, so rare but real), and the prefix matcher drawing "fairy" as a **ferris wheel** (fair + y). Fixed: heroes without a picture get a stand-in person, said under the picture; a word extends a known one only by a suffix or a known word; a scenery-only page is drawn; a picture that still fails leaves its page's words and a note. The bench also showed "happy", "love" and "friend" drawn as an emoji face, a heart and a child — feelings are no longer drawn. |
-| **The page must pick a model the browser can store** | "Models not downloading on desktop": a desktop with fp16 gets Qwen3-1.7B, a 990 MB download; a browser offering less room (nearly full disk, private window) ran it to 89% and then refused to store it, although the card already knew the quota and warned. Reproduced on the live site with real WebLLM. The auto-pick now skips a preferred model whose download will not fit in the browser's free storage (unless already cached) and says so: "Qwen3 1.7B would not fit: this browser has room for ~952 MB". Whether this was the owner's desktop is **not confirmed**. |
+| **The page must pick a model the browser can store** | "Models not downloading on desktop": a desktop with fp16 gets Qwen3-1.7B, a 990 MB download; a browser offering less room (nearly full disk, private window) ran it to 89% and then refused to store it, although the card already knew the quota and warned. Reproduced on the live site with real WebLLM. The auto-pick now skips a preferred model whose download will not fit in the browser's free storage (unless already cached) and says so: "Qwen3 1.7B would not fit: this browser has room for ~952 MB". **Confirmed by the owner on their desktop: models now download and it works.** |
 
 ### Browser gotchas already fixed
 
@@ -433,6 +437,11 @@ practical fine-tuning.
   CPU in this sandbox means capability-table work no longer needs a GPU or a
   round trip to a phone. `sketch-bench.mjs` is the harness and takes any Ollama
   tag; extending it to non-Qwen models is an afternoon.
+- **A fourth X thread is drafted: Book mode, 11 tweets** in
+  `media/tweets/thread.md` — intro as a one-person AI lab, what was built and
+  cut (mood tagger, open chat, document Q&A, Desk), five tweets with GIFs, and
+  use cases. The GIFs replay real captured model output at camera pace, so the
+  thread makes no speed claim; keep it that way.
 - **Three X threads are drafted and none are posted.** The two older ones (a
   measurement-led one, and a user-benefit one covering device detection,
   privacy, formula rendering and storage control) are in session history. The
@@ -445,23 +454,23 @@ practical fine-tuning.
   still entirely unwritten: **a visitor draws, sees what their hardware
   managed, and the lab learns nothing.** The page already computes the answer
   per device and throws it away. No datapoint, no public matrix.
-- **Desk and Chat are gone; Book is the default mode.** Book mode: the model
-  writes a six-page story (JSON schema: title, cast, pages); on desktop each
-  page is planned in scene mode and fixed by `fixPagePlan()`; on phones each
-  picture comes from the page's own words (`wordsOnlyPlan()`). Print (this book
-  only) and Download (one HTML file). Chromium touch emulation is covered
-  (`tests/book-browser.mjs`); **no real GPU has written a book yet** — the
-  story quality numbers are Ollama on CPU. Phones now default to Qwen3-0.6B
-  at 1024 context (Qwen2.5-0.5B could not write a story); the "map async"
-  failure has never been seen on it. The 1024 rung leaves the story ~900
-  tokens after a ~100-token prompt, which fits; a longer premise is not capped.
+- **Book mode works on the owner's real devices.** Phone (Qwen3-0.6B, iPhone,
+  Safari, 1024 ctx): the first run died on an empty picture, fixed, then
+  "Works now". Desktop: models did not download until the storage-aware pick;
+  now tested and working. The model writes a six-page story (JSON schema:
+  title, cast, pages); on desktop each page is planned in scene mode and fixed
+  by `fixPagePlan()`; on phones each picture comes from the page's own words
+  (`wordsOnlyPlan()`). Print (this book only) and Download (one HTML file).
+  Still unmeasured: how long a book takes on a real GPU, and story quality on
+  the browser's q4f16 build (the numbers are Ollama on CPU).
 - **The model now downloads without a button press** — the owner's decision,
   reversing "silently pulling hundreds of MB is not ours to do". What is left
   of that rule: the card names model and size while it downloads, `?manual=1`
   is one tap away, and `navigator.connection.saveData` still means ask first
   (iOS Safari does not expose it). Desktop gets Qwen3-1.7B where it fits at
-  ≥2048 context, phones Qwen3-0.6B (for Book). Neither choice has run on a real device
-  yet; both come from the Ollama bench and the allocation formula.
+  ≥2048 context **and** in the browser's free storage, else Qwen3-0.6B;
+  phones Qwen3-0.6B (for Book). Both now confirmed downloading on the owner's
+  devices.
 - **The token estimator still charges prose double.** Measured 2.0× on the
   repo's docs; a trial rule measured 1.31–1.35× and never read low on any
   paragraph. Not shipped: sketch budgets depend on it and would need
@@ -479,6 +488,17 @@ practical fine-tuning.
 - **Storybook is the use case the owner picked, and it is now Book mode.**
   The spike scripts (`scripts/storybook.mjs` + `storybook-render.mjs`) stay as
   the Ollama harness for story prompts.
+- **Next idea: product specification manuals with diagrams.** Researched,
+  nothing built. The design that follows from the findings above: the model
+  fills a JSON plan (blocks, links, labels) and the page lays it out — elkjs
+  (EPL-2.0, orthogonal routing with ports) or dagre (MIT) — with Tabler /
+  Material Symbols or chris-pikul/electronic-symbols (MIT, has a manifest) as
+  the stamps; WaveDrom for timing diagrams; dimension drawings built from the
+  person's numbers, never the model's. Do not have a small model write Mermaid:
+  MermaidSeqBench (NeurIPS 2025) measured 59% valid syntax at Qwen2.5-0.5B.
+  A spec has correct answers, so every number in a diagram must come from the
+  person's input (the `checkRewrite` idea). First step, not yet run: a bench
+  of ~10 product descriptions through Qwen3-0.6B/1.7B for the block/link JSON.
 - **The two-engine gate is still untested — and no longer blocking.** "Can two
   WebLLM engines be resident in one tab?" was the reason not to write Work mode
   UI. Retrieving lexically removed the dependency: there is no second engine, so
