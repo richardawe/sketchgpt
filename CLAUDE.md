@@ -526,7 +526,9 @@ practical fine-tuning.
   `tests/animate-browser.mjs` covers it on a touch screen with a recorded voice;
   `scripts/animate-demo/` records a whole book. **Never run on a real phone** —
   unknowns: Safari's smoothness with SVG transforms, which voice an iPhone
-  offers, and whether the silent switch mutes it.
+  offers, and whether the silent switch mutes it. A voice picker lists what the
+  device gives the page (Safari may hide downloaded Enhanced/Premium voices;
+  Siri voices are never available), with Try, remembered in `sketchgpt.voice`.
 - **Next idea: product specification manuals with diagrams.** Researched,
   nothing built. The design that follows from the findings above: the model
   fills a JSON plan (blocks, links, labels) and the page lays it out — elkjs

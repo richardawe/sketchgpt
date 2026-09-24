@@ -336,12 +336,17 @@
   .book .page-text .said.reading { background: #fff0b8; box-shadow: 0 0 0 2px #fff0b8; }
   .book .cover h2.reading, .book .end .page-text.reading { background: #fff0b8; border-radius: 4px; }
   .reader-note { font-size: 13px; color: var(--muted, #7d7369); text-align: center; margin: 6px 0 0; }
+  .voice-row { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 8px;
+               font: 14px var(--font, sans-serif); }
+  /* 16px: iOS zooms the page on a focused control smaller than that. */
+  .voice-row select { font-size: 16px; max-width: 72vw; }
   /* Print one book and nothing else. */
   @media print {
     body.printing { background: #fff; height: auto; display: block; }
     body.printing header, body.printing footer, body.printing #menu,
     body.printing .msg:not(:has(.print-me)), body.printing .msg .who, body.printing .msg .body > :not(.print-me),
-    body.printing .book .made, body.printing .book-actions { display: none !important; }
+    body.printing .book .made, body.printing .book-actions,
+    body.printing .book .voice-row, body.printing .book .reader-note { display: none !important; }
     body.printing #log { overflow: visible; padding: 0; }
     body.printing .wrap { max-width: none; }
     body.printing .msg { margin: 0; }
@@ -591,7 +596,7 @@ const MANUAL = new URLSearchParams(location.search).has("manual");
 // it: pictures move (web/animate.mjs) and the book can be read aloud with the
 // device's own voice (web/voice.mjs). Neither module loads without the flag.
 const ANIMATE = new URLSearchParams(location.search).has("animate");
-const animation = ANIMATE ? Promise.all([import("./animate.mjs?v=9"), import("./voice.mjs?v=9")]).catch(() => null) : null;
+const animation = ANIMATE ? Promise.all([import("./animate.mjs?v=10"), import("./voice.mjs?v=10")]).catch(() => null) : null;
 
 // Scene mode: the model lists what is in the picture and the page places it
 // (web/scene.mjs). On for models of 1.5B and up at a 2048+ context, where the
@@ -1304,7 +1309,7 @@ async function drawInto(box, title, entries) {
 function bookFile(book) {
   const css = $("bookcss").textContent;
   const clone = book.cloneNode(true);
-  clone.querySelectorAll(".book-actions, .made, details, .art button, .art p").forEach(n => n.remove());
+  clone.querySelectorAll(".book-actions, .voice-row, .reader-note, .made, details, .art button, .art p").forEach(n => n.remove());
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<title>${esc(book.dataset.title || "A picture book")}</title><style>${css}\n` +
@@ -1353,16 +1358,12 @@ function bookActions(book) {
 function readButton(book) {
   const read = document.createElement("button");
   read.type = "button"; read.className = "read"; read.textContent = "Read aloud";
-  // Chrome fills the voice list late; ask now so it is there at the tap.
-  window.speechSynthesis.getVoices();
-  if (!window.speechSynthesis.getVoices().length) window.speechSynthesis.onvoiceschanged = () => {};
   let reading = null;
   read.addEventListener("click", async () => {
     if (reading) { reading.stop(); return; }
     // Nothing is awaited before speaking: iOS speaks only inside the tap.
     const voice = book.voice, synth = window.speechSynthesis;
-    const chosen = voice.pickVoice(synth.getVoices(), (navigator.language || "en").slice(0, 2)) ||
-      voice.pickVoice(synth.getVoices(), "en");
+    const chosen = picked();
     const mark = el => { book.querySelectorAll(".reading").forEach(n => n.classList.remove("reading")); if (el) el.classList.add("reading"); };
     const parts = [];
     const cover = book.querySelector(".cover"), title = cover && cover.querySelector("h2");
@@ -1384,7 +1385,44 @@ function readButton(book) {
   });
   const note = document.createElement("p");
   note.className = "reader-note";
-  queueMicrotask(() => read.parentElement && read.parentElement.after(note));
+
+  // The voice picker: every voice this device gives the page (Safari may not
+  // give them all), the nicest first, a Try button, and the choice remembered.
+  const synth = window.speechSynthesis, lang = (navigator.language || "en").slice(0, 2);
+  const row = document.createElement("div"); row.className = "voice-row";
+  const label = document.createElement("label"); label.textContent = "Voice ";
+  const select = document.createElement("select"); select.className = "voice";
+  const tryIt = document.createElement("button"); tryIt.type = "button"; tryIt.textContent = "Try";
+  label.append(select); row.append(label, tryIt);
+  let saved = ""; try { saved = localStorage.getItem("sketchgpt.voice") || ""; } catch {}
+  let options = [];
+  const fill = () => {
+    options = book.voice.voiceOptions(synth.getVoices(), lang);
+    const keep = select.value || saved;
+    select.textContent = "";
+    const auto = document.createElement("option"); auto.value = "";
+    const best = book.voice.pickVoice(synth.getVoices(), lang) || book.voice.pickVoice(synth.getVoices(), "en");
+    auto.textContent = best ? `Best available (${best.name})` : "The device's default";
+    select.append(auto);
+    for (const o of options) { const opt = document.createElement("option"); opt.value = o.id; opt.textContent = o.label; select.append(opt); }
+    select.value = options.some(o => o.id === keep) ? keep : "";
+    if (!reading) note.textContent = options.length ? `${options.length} voice${options.length > 1 ? "s" : ""} on this device.` :
+      "This browser lists no voices; it will use its default.";
+  };
+  const picked = () => (options.find(o => o.id === select.value) || {}).voice ||
+    book.voice.pickVoice(synth.getVoices(), lang) || book.voice.pickVoice(synth.getVoices(), "en");
+  select.addEventListener("change", () => { try { localStorage.setItem("sketchgpt.voice", select.value); } catch {} });
+  tryIt.addEventListener("click", () => {
+    if (reading) reading.stop();
+    const v = picked();
+    book.voice.readAloud([{ text: "Once upon a time, a little dog went to see the sea." }], { voice: v });
+    note.textContent = v ? `Trying ${v.name}.` : "Trying the device's default voice.";
+  });
+  fill();
+  // Voices can arrive late (Chrome), and Safari has no addEventListener here.
+  synth.onvoiceschanged = fill;
+
+  queueMicrotask(() => { if (read.parentElement) read.parentElement.after(row, note); });
   return read;
 }
 

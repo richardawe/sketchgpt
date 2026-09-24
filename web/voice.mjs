@@ -25,18 +25,29 @@ export function sentences(text) {
   return out.map(s => s.trim()).filter(Boolean);
 }
 
-/**
- * The nicest voice on offer for a language: the device's own enhanced or
- * natural voices first, then any local voice, then anything in the language.
- * Local voices work offline; network voices (some of Chrome's) do not.
- */
+// How much nicer a voice is likely to sound: the device's own enhanced or
+// natural voices first, then the well-known good ones, then any local voice.
+// Local voices work offline; network voices (some of Chrome's) do not.
+const score = v => (/(premium|enhanced|natural|neural)/i.test(v.name) ? 4 : 0) +
+  (/^(samantha|daniel|karen|moira|serena|ava|allison|susan|google uk english female)/i.test(v.name) ? 2 : 0) +
+  (v.localService ? 1 : 0) + (v.default ? 0.5 : 0);
+const speaks = (v, lang) => (v.lang || "").toLowerCase().startsWith(lang.toLowerCase());
+
+/** The nicest voice on offer for a language, or null. */
 export function pickVoice(voices, lang = "en") {
-  const inLang = voices.filter(v => (v.lang || "").toLowerCase().startsWith(lang.toLowerCase()));
-  if (!inLang.length) return null;
-  const score = v => (/(premium|enhanced|natural|neural)/i.test(v.name) ? 4 : 0) +
-    (/^(samantha|daniel|karen|moira|serena|ava|allison|susan|google uk english female)/i.test(v.name) ? 2 : 0) +
-    (v.localService ? 1 : 0) + (v.default ? 0.5 : 0);
-  return [...inLang].sort((a, b) => score(b) - score(a))[0];
+  return voices.filter(v => speaks(v, lang)).sort((a, b) => score(b) - score(a))[0] || null;
+}
+
+/**
+ * The device's voices, for a picker: the reader's language first, then other
+ * English, then the rest; the nicer-sounding first within each. Voices that
+ * need the network say so, because they fail offline.
+ */
+export function voiceOptions(voices, lang = "en") {
+  const group = v => speaks(v, lang) ? 0 : speaks(v, "en") ? 1 : 2;
+  return [...voices].sort((a, b) => group(a) - group(b) || score(b) - score(a) || a.name.localeCompare(b.name))
+    .map(v => ({ voice: v, id: v.voiceURI || v.name,
+      label: `${v.name} · ${v.lang}${v.localService === false ? " · online" : ""}` }));
 }
 
 /**

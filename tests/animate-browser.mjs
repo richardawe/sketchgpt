@@ -50,11 +50,11 @@ try {
       window.requests = []; window.story = story;
       // The device's voice, recorded rather than heard.
       window.spoken = [];
-      const voices = [{ name: 'Albert', lang: 'en-US', localService: true },
-        { name: 'Ava (Enhanced)', lang: 'en-US', localService: true }];
+      const voices = [{ name: 'Albert', lang: 'en-US', localService: true, voiceURI: 'Albert' },
+        { name: 'Ava (Enhanced)', lang: 'en-US', localService: true, voiceURI: 'Ava' }];
       Object.defineProperty(window, 'speechSynthesis', { value: {
-        getVoices: () => voices, cancel() { window.cancelled = (window.cancelled || 0) + 1; },
-        speak(u) { window.spoken.push(u); }, onvoiceschanged: null } });
+        getVoices: () => voices, speak(u) { window.spoken.push(u); },
+        cancel() { window.spoken = []; }, onvoiceschanged: null } });
       window.SpeechSynthesisUtterance = class { constructor(t) { this.text = t; } };
       // The book's own animations only: the page's interface has some of its own.
       window.print = () => { window.animsWhilePrinting = [...document.querySelectorAll('.book .art svg')]
@@ -104,6 +104,20 @@ try {
     const states = await page.evaluate(() => document.querySelector('.book .sheet:nth-of-type(6) svg').getAnimations().map(a => a.playState));
     assert.ok(states.length && states.every(s => s === 'paused'), `page 5, off screen, should be paused: ${states}`);
 
+    // ---- The voice picker ------------------------------------------------------
+    const select = book.locator('.voice-row select');
+    assert.deepEqual(await select.locator('option').allTextContents(),
+      ['Best available (Ava (Enhanced))', 'Ava (Enhanced) · en-US', 'Albert · en-US']);
+    assert.match(await book.locator('.reader-note').textContent(), /2 voices on this device/);
+    if (process.env.SHOT) await book.locator('.book-actions').evaluate(n => n.scrollIntoView({ block: 'center' })) ||
+      await page.screenshot({ path: process.env.SHOT });
+    await select.selectOption({ label: 'Albert · en-US' });
+    assert.equal(await page.evaluate(() => localStorage.getItem('sketchgpt.voice')), 'Albert', 'the choice is not remembered');
+    await book.locator('.voice-row button', { hasText: 'Try' }).click();
+    assert.deepEqual(await page.evaluate(() => window.spoken.map(u => [u.text, u.voice.name])),
+      [['Once upon a time, a little dog went to see the sea.', 'Albert']]);
+    assert.equal(await select.evaluate(s => getComputedStyle(s).fontSize), '16px', 'under 16px, iOS zooms the page');
+
     // ---- Read aloud ------------------------------------------------------------
     const read = book.locator('.book-actions button.read');
     await read.click();
@@ -114,7 +128,7 @@ try {
       'pages are read a sentence at a time');
     assert.equal(spoken.length, 1 + 8 + 1, 'every sentence queued at once, inside the tap');
     assert.ok(spoken.includes('Mr. Gull flies down and shows Pip the way to the beach.'), 'a title split a sentence');
-    assert.equal(await page.evaluate(() => window.spoken[0].voice.name), 'Ava (Enhanced)');
+    assert.equal(await page.evaluate(() => window.spoken[0].voice.name), 'Albert', 'the picked voice reads the book');
     assert.equal(await read.textContent(), 'Stop reading');
     // As a sentence starts it is marked, and its page's picture plays again.
     await page.evaluate(() => window.spoken[1].onstart());
@@ -137,7 +151,7 @@ try {
   }
   console.log('Animate checks passed on a touch screen: pictures move and say how, a dream is not a deed, the zoom is on the ' +
     'picture box, off-screen pages pause, the book is read a sentence at a time with the best voice and marked as it goes, ' +
-    'printing is still, and without ?animate=1 nothing loads or moves.');
+    'a voice picker lists the device\'s voices and remembers the choice, printing is still, and without ?animate=1 nothing loads or moves.');
 } finally {
   await browser.close();
 }

@@ -46,7 +46,7 @@ test("being told to do something is not doing it", () => {
 });
 
 // ---- Reading aloud (web/voice.mjs) ------------------------------------------
-import { sentences, pickVoice, readAloud } from "../web/voice.mjs";
+import { sentences, pickVoice, voiceOptions, readAloud } from "../web/voice.mjs";
 
 test("a page is read one sentence at a time", () => {
   assert.deepEqual(sentences("Pip jumps in! He swims. “Look,” said Mum. The end…  "),
@@ -81,4 +81,16 @@ test("every sentence is queued inside the tap, and each one marks itself as it s
   const s = readAloud([{ text: "Three." }], { synth, Utterance });
   s.stop();
   assert.equal(await s.done, "stopped");
+});
+
+test("the picker lists the reader's language first, nicest first, and says which need the network", () => {
+  const v = (name, lang, localService = true) => ({ name, lang, localService, voiceURI: "id:" + name });
+  const voices = [v("Thomas", "fr-FR"), v("Albert", "en-US"), v("Google UK English Male", "en-GB", false),
+    v("Ava (Enhanced)", "en-US"), v("Amélie", "fr-CA"), v("Samantha", "en-US")];
+  const en = voiceOptions(voices, "en");
+  assert.deepEqual(en.map(o => o.voice.name), ["Ava (Enhanced)", "Samantha", "Albert", "Google UK English Male", "Amélie", "Thomas"]);
+  assert.equal(en[3].label, "Google UK English Male · en-GB · online");
+  assert.equal(en[0].id, "id:Ava (Enhanced)");
+  assert.deepEqual(voiceOptions(voices, "fr").slice(0, 2).map(o => o.voice.name), ["Amélie", "Thomas"]);
+  assert.equal(pickVoice(voices, "en").name, voiceOptions(voices, "en")[0].voice.name, "picker and default agree");
 });

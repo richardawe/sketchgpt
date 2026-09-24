@@ -14,7 +14,7 @@
 // bob): Twemoji pictures have no separate limbs, so there are no walk cycles.
 // Honours prefers-reduced-motion by doing nothing.
 import { drawAs, nameWords } from "./book.mjs?v=8";
-import { sentences } from "./voice.mjs?v=9";
+import { sentences } from "./voice.mjs?v=10";
 
 // What a thing does when nothing in the story tells it to do anything.
 const KINDS = [
