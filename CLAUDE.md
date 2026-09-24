@@ -486,6 +486,13 @@ practical fine-tuning.
   privacy meter counted 11 of the page's own files when the offline worker took
   control after a stub model's instant load (warmWorker) — a harness race, not
   a visitor's, so the recorder now waits for the worker first.
+- **A sixth thread is drafted: `media/tweets/thread-3.md`, 9 tweets, GIFs
+  10–14** (Draw me, the caricature slider, Say hello, Save GIF, Star in a
+  book), recorded by `scripts/record-selfie.mjs` from the real page on a
+  public-domain NASA portrait. **Re-record with the owner's own selfie before
+  posting** (`PHOTO=me.jpg`): a recognisable person's caricature in a promotion
+  reads as their endorsement. The book clip replays `demo-books/seed.json`
+  (real Qwen3-1.7B output) at camera pace — no speed claim.
 - **Three X threads are drafted and none are posted.** The two older ones (a
   measurement-led one, and a user-benefit one covering device detection,
   privacy, formula rendering and storage control) are in session history. The
