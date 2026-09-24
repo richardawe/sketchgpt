@@ -32,8 +32,8 @@ await page.route('**/*', async route => {
 });
 await page.goto('http://localhost:8080/book.html');
 await page.evaluate(async story => {
-  const sk = await import('./sketch.mjs?v=8');
-  const sc = await import('./scene.mjs?v=8');
+  const sk = await import('./sketch.mjs?v=9');
+  const sc = await import('./scene.mjs?v=9');
   const rough = await sk.loadRough('./rough.mjs');
   const art = await sk.loadArt('./art.mjs?v=8');
   const book = document.getElementById('book');
