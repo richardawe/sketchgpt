@@ -1,171 +1,237 @@
 # Selfie mode — a plan
 
-**Status: researched, nothing built.** The idea: someone uploads a selfie and the
-page animates their face. The first version of the idea also wrote them a
-rhyme. That part was measured, failed, and is parked (see the end).
+**Status: researched, nothing built. Direction decided by the owner:** someone
+picks a photo of themselves, and the page draws them as an **animated cartoon**
+in the book's own ink-and-wash style. Nothing is uploaded; everything runs on
+the device. The rhyme from the first version of the idea is parked (see the
+end).
 
 ---
 
 ## The one-line design
 
-**Find the face with MediaPipe, then move the photo's own pixels with a mesh
-the page controls.** No generative model makes the animation. The page computes
-every motion (blink, smile, eyebrow raise, head tilt, mouth moving while the
-book is read aloud) from 478 landmark points, the same way `animate.mjs` moves
-a book's pictures. This follows the project's usual rule: *if the page can
-compute it, don't ask a model for it.*
+**Measure the face, then draw a cartoon from the measurements.** MediaPipe
+finds 478 points on the face. The page reads a few dozen numbers from them
+(face shape, eye size and spacing, nose, mouth) and samples a few colours from
+the photo (skin, hair, eyes, lips, clothes). It then draws a character from
+those numbers and colours, the way it already draws a book's pictures from a
+list of nouns.
 
-## Three ways to "animate a face", and which one to build
+No generative model draws anything, and there is no LLM in this mode at all.
+The page owns the drawing, so it owns the animation too: every part (eyelids,
+irises, brows, mouth) is a separate piece it can move.
 
-| Approach | What it is | Verdict |
+This follows the rule that keeps paying here: *if the page can compute it,
+don't ask a model for it.* Naming a noun was the easy half of a sketch;
+drawing it was the page's job. Here the measuring is MediaPipe's job, and the
+drawing is again the page's.
+
+## Why this option, of the three researched
+
+| Option | Verdict |
+|---|---|
+| **Drawn cartoon from landmarks** | **Build this.** It needs a ~5 MB detector and no LLM, and it runs on a phone with no WebGPU. Its output is plainly a drawing, so it cannot be mistaken for real footage of anyone. That removes most of the misuse question the photo-warp version had. It also lets you be the hero of your book. |
+| Neural "cartoonize" filter (AnimeGANv2 8 MB, White-box Cartoonization 1.5–6 MB) | Rejected: both are **non-commercial only** (White-box is CC BY-NC-SA; AnimeGANv2 needs a letter from the authors), and they take 5–10 s per image without a GPU. |
+| Warp the real photo (blink, smile, talk) | Rejected by the owner in favour of the cartoon. The first draft of this plan was built around it, and its privacy and failure notes are kept below where they still apply. |
+
+A classic non-AI "toon filter" (flat colours plus ink edges, WebGL, zero
+download) survives as a **fallback** when there is no face to measure: a pet,
+a landscape, the back of a head.
+
+---
+
+## Pipeline, all in the tab
+
+### 1. Photo in
+Use `<input type="file" accept="image/*">`. On phones this already offers the
+camera, so there is no `getUserMedia` and no permission prompt. Decode with
+`createImageBitmap`, which applies EXIF rotation, so a phone photo is not
+sideways. Downscale to ~512 px on the long edge **before** anything else. A
+12 MP photo decoded at full size is ~48 MB of pixels, and exceeding memory
+kills a tab on an iPhone with no catchable error.
+
+### 2. Measure (MediaPipe, Apache-2.0, vendored into `web/vendor/`)
+- **Face Landmarker**, `IMAGE` mode, CPU delegate. It runs once, so the GPU
+  gains nothing and would compete with WebLLM for the device. It returns 478
+  3-D points including the irises, 52 expression scores and the head pose.
+  **3.76 MB**.
+- **Hair segmenter**: a mask of which pixels are hair. **0.78 MB.** Landmarks
+  stop at the hairline, and hair is the most recognisable thing about most
+  people in a cartoon. Without it every character would be bald or wear a
+  guessed wig.
+- **Selfie segmenter**: person vs background. **0.25 MB.** It tells the page
+  where the clothes are (person, below the chin) without guessing.
+- One shared runtime: `@mediapipe/tasks-vision`, SIMD wasm **11.8 MB**
+  uncompressed (a no-SIMD build, 11.0 MB, ships in the same package), plus
+  ~0.3 MB of JS. Measure the gzip transfer before quoting it.
+
+All of this loads by dynamic `import()` only when someone picks a photo.
+Nobody else downloads it.
+
+### 3. Turn measurements into a character (`web/face.mjs`, pure functions)
+All numbers are normalised by the distance between the eyes, so photo size
+and distance from the camera drop out. The head pose is used to un-tilt the
+points first.
+
+| Part | From | Drawn as |
 |---|---|---|
-| **Neural talking head** (LivePortrait, SadTalker, first-order-motion) | A network re-renders the face from a driving video or audio | **Reject.** Hundreds of MB of weights, slow on a phone, and LivePortrait's face detector is InsightFace, whose models are **non-commercial research only**. The output is photoreal, which makes it deepfake-shaped: a page that makes anyone's photo talk convincingly is not something a one-person lab should ship. |
-| **Mesh warp of the real photo** | Landmarks → triangle mesh over the photo → move chosen points, redraw each triangle with an affine warp | **Build this.** It needs a ~3.8 MB model and no LLM. It runs on a phone with no WebGPU, and every motion is a few numbers the page chooses. The limit is also a safety property: it can blink, smile, tilt and flap a mouth, but it cannot make someone say a sentence convincingly. |
-| **Cartoon from landmarks** | Build a drawn character in the book's ink-and-wash style from the face's proportions and colours sampled from the photo | **Stage 2.** The strongest product fit: *you are the hero of your book*. It shares the detection step with the mesh warp, so it comes second at little extra cost. |
+| Head shape | jaw outline: width at cheekbones vs jaw vs chin, face length | a rounded outline through ~8 jaw points, smoothed |
+| Eyes | eye-corner and lid points; iris points 468–477 | whites, an iris in the sampled eye colour, a lid line |
+| Brows | brow points; darkness sampled above them | a brush stroke with thickness taken from the photo |
+| Nose | bridge length, nostril width | one or two ink strokes, never a full outline |
+| Mouth | corners and lip points; lip colour | resting mouth, plus a set of mouth shapes for animation |
+| Hair | hair mask → outline → simplified to ~30 points | a filled shape behind and in front of the head, in the sampled hair colour |
+| Skin, clothes | median colour of cheek pixels (away from highlights) and below the chin | head fill, and a simple shirt shape |
+| Glasses, beard | **not in version 1** | See failures below. Named honestly rather than guessed. |
 
-## Pieces, all on-device
+**Likeness comes from exaggeration, not accuracy.** This is the classic
+caricature method (Brennan's caricature generator, 1985): compare each
+measurement to an average face and push it a little further from average
+(×1.3–1.5). MediaPipe ships a canonical average face with the model, so the
+average is free. A cartoon drawn at exactly average proportions looks like
+nobody. The exaggeration is what makes it look like *you*.
 
-1. **Input.** Use `<input type="file" accept="image/*">`. On phones this already
-   offers the camera, so there is no `getUserMedia` and no permission prompt.
-   Decode with `createImageBitmap` (it applies EXIF orientation, so a phone
-   photo is not sideways) and downscale to ~512 px on the long edge before
-   anything else. A 12 MP photo decoded at full size is ~48 MB of RGBA, and
-   memory is exactly what kills tabs on iPhones (see "Exceeding device memory
-   kills the tab").
-2. **Detection.** Use **MediaPipe Face Landmarker** (`@mediapipe/tasks-vision`,
-   Apache-2.0), in `IMAGE` mode on the **CPU delegate**. It runs once per
-   photo, so the GPU delegate gains nothing and would compete with WebLLM for
-   the device. Output: 478 3-D landmarks, 52 blendshape scores (smile, blink,
-   jaw open…) and a head-pose matrix. Measured sizes: `face_landmarker.task`
-   **3.76 MB**; the SIMD wasm **11.8 MB** uncompressed, plus ~0.3 MB of JS.
-3. **Mesh.** Use MediaPipe's own face tessellation (its triangle list is
-   published with the model), plus a ring of fixed points around the face and
-   at the image corners. The warp then fades out into the background instead of
-   tearing the edge of the face.
-4. **Rendering.** WebGL2 with the photo as one texture: each frame uploads
-   moved vertex positions, and texture coordinates never change. Keep a
-   Canvas 2D fallback (clip each triangle, `setTransform`, `drawImage`) for
-   browsers where WebGL is refused. The 2D path is slower but simple to reason
-   about, and it gives the tests something to check pixel by pixel.
-5. **Motions** (`web/face.mjs`, pure functions of landmarks and time; unit
-   tests need no browser):
-   - *blink*: upper-lid points move toward the lower-lid points, every
-     3–6 s at random, 150 ms.
-   - *smile*: mouth corners go up and out. Scale by the photo's own smile
-     blendshape, so an already-grinning face is not stretched into a grimace.
-   - *eyebrows*: a small raise on "surprise" beats.
-   - *head*: a gentle tilt and bob. Rotate the face mesh about the
-     nose-bridge, with a falloff so the ring stays still.
-   - *breathing*: a ~1% scale loop.
-   - *talking*: the jaw and lower lip drop, and a dark, softly edged polygon
-     fills the mouth gap behind the lips. It is driven by `voice.mjs`: the
-     mouth moves while a sentence is being spoken and rests between
-     sentences. There are **no visemes**, because Safari's word boundaries
-     are unreliable (already found in `voice.mjs`), and approximate flapping
-     reads as cartoon rather than fake. That is the right side of the line.
-   - Every amplitude has a hard cap. It is a design limit, not a tunable.
-6. **Where it lives.** Put it behind a flag first (`?selfie=1`), as Animate
-   was. `face.mjs` and MediaPipe load by dynamic `import()` only when someone
-   picks a photo, so nobody else downloads 15 MB. The deploy workflow copies
-   files by name: add `face.mjs` there, and `tests/deploy.test.mjs` already
-   reads dynamic imports. Bump `?v=N` and the worker's `VERSION`. The worker
-   only deletes `sketchgpt-*` caches, so the model weights survive.
-7. **Hosting the detector.** Vendor the wasm and the `.task` into `web/vendor/`
-   instead of loading them from jsdelivr + storage.googleapis. That gives one
-   origin, works offline with the existing worker, and pins the version (the
-   same reasoning that vendored rough.js). GitHub Pages gzips wasm. Measure
-   the transfer size before claiming one.
+**Colours are snapped to a palette the page owns**, the same way sketch
+colours are. That applies to skin, hair and eyes. It keeps the cartoon in the
+book's style, and a dark photo cannot produce a muddy grey person. The skin
+palette must span the full range of real skin tones, and the snap must never
+lighten or darken a tone to reach a "nicer" swatch. This is a test, not a
+hope: see the fixtures below.
+
+### 4. Draw
+The character is SVG, drawn with the vendored rough.js and the book's ink
+settings, so it sits on a page next to Twemoji-based pictures without looking
+pasted in. Each part is its own group with a `data-part` attribute, the same
+way `renderSketch` tags things with `data-thing`.
+
+The output is also a **small data object**: ~25 numbers, 6 palette names and
+one ~30-point hair outline. It is not an image. That matters twice:
+- `tests/face.test.mjs` can check it without a browser.
+- It is small enough for a share link (see privacy).
+
+### 5. Animate
+`animate.mjs` already moves pictures by what they are. The cartoon adds a
+character that can move its face:
+- **Idle loop:** blinks every 3–6 s at random, eyes glance around (the irises
+  move), slight head bob, breathing.
+- **Expressions:** smile, surprise (brows up, mouth round), sleepy, laughing.
+  These are drawn mouth and eye shapes the page swaps between, not warps.
+- **Talking while the book is read aloud:** the mouth cycles through 3–4
+  open shapes while `voice.mjs` is speaking a sentence, and rests between
+  sentences. There are no visemes, because Safari's word timing is
+  unreliable. That was already found in `voice.mjs`, and cartoon flapping
+  reads fine anyway.
+- **Book actions:** once the cartoon is the hero, `pageActions()`
+  ("jumps", "swims") moves the whole figure as it moves the stand-in today.
+
+### 6. Where it lives
+- **Start standalone behind `?selfie=1`**: pick a photo, see yourself drawn
+  and moving, then try "Redraw" (same measurements, new wobble seed) or "Try
+  another photo". It can be measured alone and has no model download.
+- **Then as Book's hero:** "Use my cartoon as the hero". `cast[0]` is drawn
+  as the cartoon (head on a simple body in the clothes colour) on every page,
+  replacing the stand-in person. The page already owns continuity ("the hero
+  on every page as the same picture"), so this is a drop-in at exactly that
+  point.
+
+### 7. Deploying it (lessons already paid for)
+- Add `face.mjs` and the `web/vendor/` files to the workflow's copy list.
+  `tests/deploy.test.mjs` reads dynamic imports, so it will catch a missing
+  file.
+- Bump `?v=N` and the worker's `VERSION`. The worker deletes only
+  `sketchgpt-*` caches, so visitors' model weights survive.
+- Check that offline works after one visit, with the vendored wasm and models
+  in the worker's cache (`tests/offline.mjs` pattern).
+
+---
 
 ## Privacy: the whole point, so the page must say it and keep it
 
-- The photo is **never uploaded**. MediaPipe runs in the tab, like WebLLM.
-  Say so next to the button, and let the privacy meter prove it (it already
-  counts requests).
-- The photo is **never stored**: no localStorage, no Cache API, no IndexedDB.
-  Closing the tab forgets it. Add a "Forget this photo" button that clears the
-  canvas and drops the bitmap.
-- The photo is **never in a share link.** `share.mjs` puts the book after the
-  `#`, and a face does not belong there. It would also make the link enormous.
-  A shared book with a selfie hero opens with the stand-in hero instead, and
-  says so.
-- Landmarks are computed in memory and discarded. The page never compares
-  faces or identifies anyone. It stays that way, which keeps it on the simple
-  side of biometric-data law (BIPA, GDPR special-category data). **This is a
-  design note, not legal advice.** Check before promoting the feature to any
-  audience that includes children.
-
-## Misuse, and the limits that answer it
-
-It is possible to animate a photo of someone else. The answer is to limit what
-the page can do, not to verify who is in the photo:
-
-- Motions are small, capped and cartoonish.
-- There is no lip-sync to arbitrary audio and no text-to-mouth for anything
-  except the book's own words.
-- **No video or GIF export in the first version.** Exporting is the obvious
-  next request, and it is the step that turns a toy into a clip that can be
-  posted. Decide it on purpose, later.
+- **The photo is never uploaded.** Say so next to the button. The privacy
+  meter already counts requests, so it can prove it.
+- **The photo is never stored**: no localStorage, Cache API or IndexedDB. The
+  bitmap is dropped as soon as the character is made, and "Forget" clears the
+  character too.
+- **The share link never carries the photo.** It can carry the *cartoon*
+  (the small data object above, <1 KB), but only when the person chooses to
+  include it; the default link uses the stand-in hero. A cartoon is not a
+  photo, but it was made from someone's face, so including it is their call.
+- Measurements live in memory, and the page never compares faces or
+  identifies anyone. That keeps it on the simple side of biometric-data law
+  (BIPA; GDPR special-category data). **This is a design note, not legal
+  advice.** Check before promoting it to an audience of children, and the
+  book is a children's format.
 
 ## Failures the page must show, not hide
 
 | Case | What the page does |
 |---|---|
-| No face found | "No face found. Try a photo facing the camera, in good light". The photo stays on screen so the person can see why. |
-| Several faces | Animate the largest face and outline it, so it is visible which face was picked. |
-| Face turned or tilted past ~30° | Animate anyway with smaller motions, and say that the result works best facing forward. |
-| Very small face in a big photo | Crop to the face box plus margin before the warp. |
-| Detector fails to load (old Safari, no SIMD) | Use the no-SIMD wasm (11.0 MB, shipped in the same package), then a copyable error block, as every other failure has. |
-| Hand over mouth, mask, heavy beard | Unknown until tried. Add to the fixture set. |
+| No face found | Say "No face found. Try one facing the camera, in good light". Offer the toon-filter picture as a consolation, labelled as such. |
+| Several faces | Draw the largest face and outline it on the photo, so it is visible which one was picked. |
+| Head turned past ~30° | Draw it anyway (the pose is un-tilted), and say the result works best facing forward. |
+| Glasses, beard, hat, headscarf | Version 1 does not draw them. Say "Glasses aren't drawn yet" rather than silently dropping them. Glasses are the first addition, because the landmarks already locate them and the fixtures will show how often it matters. |
+| Hair mask empty or noisy (bald, hat, busy background) | Draw no hair, or a short default, and say which. Never invent a hairstyle. |
+| Detector fails to load (old Safari, no SIMD) | Try the no-SIMD wasm, then show a copyable error block like every other failure. |
+
+Every failure keeps the photo on screen until the person leaves or presses
+Forget. Seeing the photo is how they understand why it failed.
 
 ## Stages
 
-0. **Spike (half a day, measurable here).** Headless Chromium runs MediaPipe
-   on CPU/WASM with no GPU, so this sandbox *can* test it, unlike generation.
-   On a set of openly licensed portraits (Wikimedia Commons public-domain or
-   CC0 photos, varied skin tones, ages, glasses, beards, angles), record: face
-   found?, landmark sanity (eyes above mouth, inside box), and detection time.
-   Save the fixtures and numbers as `scripts/face-bench.mjs`, in the style of
-   the other benches.
-1. **Mesh warp, blink and breathe only.** Test the 2D path first. The owner
-   runs it on the iPhone: frame rate, heat, and whether Safari keeps up.
-   *This is the round trip that decides the renderer.*
-2. **Smile, brows, head tilt, then talk-while-reading** with `voice.mjs`.
-3. **Selfie as the book's hero** (cartoon from landmarks). Needs its own
-   plan once 1–2 are real.
-4. Only then consider export, and only as a deliberate decision.
+0. **Spike, measurable in this sandbox.** MediaPipe runs on CPU/WASM, so
+   headless Chromium here can run it, unlike LLM generation. Build
+   `scripts/face-bench.mjs` over ~20 openly licensed portraits (Wikimedia
+   Commons public domain / CC0). Pick them deliberately across **skin tone,
+   age, hair type (including tightly curled and covered hair), glasses and
+   beards, and head angle**. Record for each: face found?, hair mask
+   plausible?, sampled skin colour vs the palette swatch it snapped to, and
+   time. Save the cartoons as SVG next to the photos for a side-by-side
+   review. *This is where the palette and the hair outline either work or
+   don't. Nothing else should be built until it looks right.*
+1. **Standalone `?selfie=1`**: photo → cartoon → idle animation → Forget.
+   The owner tries it on the iPhone with real front-camera selfies. That is
+   the round trip that decides whether the likeness is good enough.
+2. **Expressions and talking** (tied to `voice.mjs`).
+3. **Cartoon as Book's hero**, including the opt-in share-link field.
+4. **Glasses**, then whatever the fixture review says is missing most often.
+5. **Toon-filter fallback** for photos with no face.
 
 ### Tests to write with it
-- `tests/face.test.mjs`: motion maths (caps hold, the ring never moves, blink
-  closes and reopens, a pre-existing smile scales the smile motion down). Pure
-  functions, fast.
-- `tests/face-browser.mjs`: load a fixture photo on a touch screen and check
-  that a face is found, that the canvas changes between frames, and that
-  **no network request carries image bytes**. Mutation-check it: turn the
-  motions off and the frame-difference check must fail. Point the privacy
-  check at a page that POSTs the photo and it must fail.
+- `tests/face.test.mjs`: measurement maths (scale and tilt invariance: the
+  same face rotated or resized gives the same numbers), exaggeration caps,
+  palette snapping (every fixture skin colour lands on its nearest swatch,
+  and none crosses more than one step lighter or darker), and animation
+  states (blink closes and reopens; the mouth rests when speech stops).
+- `tests/face-browser.mjs`: on a touch screen with a fixture photo, check
+  that a cartoon appears and moves (frames differ). Check that **no request
+  carries image bytes**, and that nothing lands in any storage.
+  Mutation-check it: turn off the animation and the frame check must fail;
+  add a test-only POST of the photo and the privacy check must fail.
 
 ### What cannot be tested here
-iPhone frame rate and memory with WebLLM resident at the same time,
-Safari's wasm behaviour, and how real selfies (front-camera distortion, bad
-light) differ from portrait fixtures. The owner's phone is the test for all of
-these, as before.
+- Whether the cartoon *looks like* the person. Only people can judge that:
+  the owner first, then friends' honest reactions.
+- iPhone speed and memory with WebLLM resident at the same time.
+- Real front-camera selfies (wide-angle distortion, bad light) vs portrait
+  fixtures.
 
-## Questions for the owner
-
-1. Standalone Selfie mode, or straight into Book as "make me the hero"? This
-   plan builds the standalone warp first because it can be measured alone.
-2. Is a real-photo animation acceptable at all, or only the cartoon version?
-   The cartoon removes most of the misuse question.
-3. Export (GIF/video): never, later, or yes?
+## Open questions for the owner
+1. **Style:** should the cartoon match Twemoji's round, simple faces (it sits
+   naturally in the book), or be closer to a hand-drawn caricature (more
+   likeness, more work)? The plan assumes the first, with mild exaggeration.
+2. **Export as a GIF or sticker:** far less risky than with a real photo,
+   because it is plainly a drawing. Yes in stage 1, or later?
+3. **Children:** is the audience grown-ups making books *for* kids, or kids
+   uploading themselves? The second needs more care before promotion.
 
 ---
 
 ## Parked: the rhyme
 
-The measurement is in `scripts/rhyme-bench.mjs`. It runs 8 seeds × 2 runs
-through Ollama on CPU, and every poem is judged with the CMU Pronouncing
-Dictionary, the way the page would judge it. As with every Ollama number here,
-the quantisation differs from the browser build.
+The measurement is in `scripts/rhyme-bench.mjs`. It ran 8 seeds × 2 runs
+through Ollama on CPU and judged every poem with the CMU Pronouncing
+Dictionary. As with every Ollama number here, the quantisation differs from
+the browser build.
 
 | Model | "Write a four-line rhyming poem" | Page picks the end words | …plus one worked example |
 |---|---|---|---|
@@ -173,14 +239,11 @@ the quantisation differs from the browser build.
 | Qwen3-1.7B | **1/16** rhymed | 0/16, 10/64 | 2/16, 28/64 |
 
 The poems scan and mention the person's name and the thing they love. They
-almost never rhyme: the 1.7B rhymed "paw" with "paw". This matches the
-literature. Subword tokens hide how words sound (PhonologyBench, ACL 2024).
-Handing the model the end words did not rescue it, because it ignores them.
+almost never rhyme (the 1.7B rhymed "paw" with "paw"). Subword tokens hide how
+words sound (PhonologyBench, ACL 2024).
 
-**This first run has a bug.** The end-word picker used secondary stress and
-paired "tea" with "pony", so the middle columns are slightly pessimistic. The
-free-verse column is unaffected. A fix is in the script, along with a
-one-line-at-a-time mode where the page checks each line's last word and asks
-again. **Neither the fix nor that mode has been run.** If the rhyme comes back,
-that mode is the next thing to measure, and the page owns the rhyme
-(CMUdict is BSD-style licensed; subset it to the vocabulary the page uses).
+That run's end-word picker had a stress bug (it paired "tea" with "pony"),
+which slightly understates the middle columns. The fix, and a
+one-line-at-a-time mode where the page checks every line, are in the script
+and **have not been run**. If the rhyme ever comes back, the page must own it:
+CMUdict is BSD-style licensed and can be subset to the page's vocabulary.
