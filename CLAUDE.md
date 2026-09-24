@@ -136,6 +136,17 @@ serves **4-bit**, and that gap explains most surprises.
 
 ### Browser gotchas already fixed
 
+- **The service worker deleted the model on every update.** Its `activate`
+  deleted every cache on the origin except its own VERSION — and
+  `caches.keys()` includes WebLLM's weight caches (`webllm/model`, …). So any
+  change to `sw.js` made every visitor download hundreds of MB again. Found
+  while adding `?animate=1`'s modules; now it deletes only `sketchgpt-*` caches,
+  and `tests/deploy.test.mjs` runs the handler against fake caches (fails on the
+  old code). Whether past sw.js changes wiped real visitors' weights is unknown.
+- **A module loaded with `import()` was never deployed.** The workflow copies
+  files by name and `tests/deploy.test.mjs` read only `from "./x.mjs"`, so
+  `?animate=1` went live with `animate.mjs` and `voice.mjs` 404ing. The test now
+  reads dynamic imports too.
 - **A `const` read before its declaration killed every phone.** The page
   called setup functions part-way down a 1,700-line module; on a touch screen
   in Chat mode one of them read `PLACEHOLDER_SHORT`, declared ~700 lines

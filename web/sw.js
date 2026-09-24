@@ -18,7 +18,7 @@
 const VERSION = "sketchgpt-v8";
 const SHELL = ["./", "./index.html", "./browser.html", "./sketch.mjs",
                "./stamps.mjs", "./rough.mjs", "./book.mjs", "./scene.mjs",
-               "./art.mjs", "./art-names.mjs"];
+               "./art.mjs", "./art-names.mjs", "./animate.mjs", "./voice.mjs"];
 
 self.addEventListener("install", event => {
   // Never let one missing file fail the whole install — a page that is
@@ -32,8 +32,12 @@ self.addEventListener("install", event => {
 
 self.addEventListener("activate", event => {
   event.waitUntil((async () => {
+    // Only this worker's own old caches. caches.keys() is every cache on the
+    // origin — WebLLM keeps the model weights in its own ("webllm/model" and
+    // friends), and deleting "everything but VERSION" made every visitor
+    // download hundreds of MB again whenever this file changed.
     for (const key of await caches.keys()) {
-      if (key !== VERSION) await caches.delete(key);
+      if (key.startsWith("sketchgpt-") && key !== VERSION) await caches.delete(key);
     }
     await self.clients.claim();
   })());
