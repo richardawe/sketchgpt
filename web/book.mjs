@@ -75,7 +75,8 @@ export function parseStory(raw) {
   if (!data || !Array.isArray(data.pages)) throw new Error("The model did not write a story. Try again.");
   const pages = data.pages.filter(p => typeof p === "string")
     // "page 1: Emily plants a seed" — the number is the page's job, not the text's.
-    .map(p => p.trim().replace(/^page\s*\d+\s*[:.\-–—]\s*/i, "").trim())
+    // So is "1. Luna and Milo…", which Qwen3-0.6B wrote in 2 of 3 phone books.
+    .map(p => p.trim().replace(/^page\s*\d+\s*[:.\-–—]\s*/i, "").replace(/^\d{1,2}\s*[.):\-–—]\s+/, "").trim())
     // A placeholder copied from a template is not a page.
     .filter(p => p && !/^(page\s*\d+\s*(text)?|\.\.\.|…|text)$/i.test(p))
     .slice(0, 8);
@@ -148,7 +149,8 @@ const ABSTRACT = new Set(["happy", "happiness", "love", "loves", "loved", "frien
   "heart", "light", "world", "game", "games", "family", "fun", "joy", "smile", "sad", "angry",
   "idea", "dream", "dreams", "magic", "time", "day", "way", "place", "thing", "things",
   "help", "hope", "kind", "brave", "proud", "scared", "afraid", "adventure", "story", "end",
-  "problem", "surprise", "wish", "wishes", "map", "new", "best", "lot", "lots", "top", "back"]);
+  "problem", "surprise", "wish", "wishes", "map", "new", "best", "lot", "lots", "top", "back",
+  "drop", "drops", "dropped", "note", "fair", "slice", "cycle", "die"]);
 
 /** Picture names that appear in the text itself — exact words only, never a loose prefix. */
 export function planFromWords(text, story = { cast: [] }) {
@@ -160,7 +162,9 @@ export function planFromWords(text, story = { cast: [] }) {
     if (raw.length < 3) continue;
     const w = raw.replace(/(ies)$/, "y").replace(/s$/, "");
     if (ABSTRACT.has(raw) || ABSTRACT.has(w)) continue;
-    const entry = SETTING_WORDS[raw] || SETTING_WORDS[w] || (ART_NAMES[raw] || ART_NAMES[w] ? w : null);
+    // The word as written when it has a picture: "grass" minus its s was
+    // "gras", which has none, and was printed on the page as a label.
+    const entry = SETTING_WORDS[raw] || SETTING_WORDS[w] || (ART_NAMES[raw] ? raw : ART_NAMES[w] ? w : null);
     if (!entry || names.some(n => n.startsWith(w))) continue;
     const st = stampOf(entry);
     if (st && (seen.has(st) || cast.has(st))) continue;

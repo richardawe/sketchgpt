@@ -1,5 +1,5 @@
-// Records short clips of sketch mode, one per thing you might want to say
-// about it.
+// Records short clips of Book and Sketch mode, one per thing you might want
+// to say about them.
 //
 // No video framework needed: Playwright records the page natively, and one
 // ffmpeg call turns each recording into an mp4 and a gif.
@@ -9,6 +9,10 @@
 //   node scripts/record-demo.mjs --out /tmp
 //
 // Clips:
+//   book        an idea in, a six-page picture book out (desktop, Qwen3-1.7B)
+//   bookphone   the same on a phone (Qwen3-0.6B, pictures from each page's words)
+//   bookprivate a book written with the network cut
+//   bookmade    "How this picture was made", then the print view
 //   intro    type a request, get a drawing            — "no app, no account"
 //   private  the same, with the network truly cut     — "nothing leaves your phone"
 //   offline  reload with no network at all, then draw — "aeroplane mode"
@@ -19,7 +23,9 @@
 // HONESTY, two parts, and both matter if you post these.
 //
 // 1. Every drawing is real output from a real model, lifted verbatim from
-//    scripts/sketch-bench.mjs. None of it was drawn by hand for the camera.
+//    scripts/sketch-bench.mjs, and every book is a real model's story and
+//    page plans, captured by scripts/capture-book.mjs into scripts/demo-books/.
+//    None of it was written or drawn by hand for the camera.
 // 2. The waiting is NOT real. A stub engine stands in for WebLLM so the
 //    recording is deterministic, so a clip shows what the model produced and
 //    never how long it took. Measured, if you need it: Qwen3-1.7B took 4.0s
@@ -30,11 +36,11 @@
 // and the local server is answering nothing — because that is a claim worth
 // being able to defend. They carry a burnt-in caption saying so.
 import { mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
-const FONT = process.env.FONT || "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 const args = process.argv.slice(2);
 const outAt = args.indexOf("--out");
 const out = (outAt === -1 ? "." : args[outAt + 1]).replace(/\/$/, "");
@@ -56,12 +62,26 @@ const PARTY = { t: "A house with a tree and a car", c: [
 // A real service worker needs a real origin: page.route() interception
 // disables it, which is exactly the thing the offline clips are showing.
 const TYPES = { ".html": "text/html", ".mjs": "text/javascript", ".js": "text/javascript" };
+// Replies come from window.results in order when it is set (a book is one
+// story then one plan per page), else window.result. A long reply streams in
+// pieces so the page's own progress line moves as it does live — at a pace
+// chosen for the camera, not measured.
 const MOCK = `export const prebuiltAppConfig = { model_list: [] };
 export const hasModelInCache = async () => false;
 export async function CreateMLCEngine() { return { interruptGenerate() {},
- chat: { completions: { async create() { return (async function* () {
+ chat: { completions: { async create() {
+ const out = window.results && window.results.length ? window.results.shift() : window.result;
+ return (async function* () {
  await new Promise(r => setTimeout(r, 420));
- yield { choices: [{ delta: { content: window.result } }] }; })(); } } } }; }`;
+ const n = out.length > 400 ? 36 : 1;
+ for (let i = 0; i < n; i++) {
+   await new Promise(r => setTimeout(r, n > 1 ? 55 : 0));
+   yield { choices: [{ delta: { content: out.slice(Math.floor(i * out.length / n), Math.floor((i + 1) * out.length / n)) } }] };
+ } })(); } } } }; }`;
+const BOOK = name => {
+  const b = JSON.parse(readFileSync(new URL(`./demo-books/${name}.json`, import.meta.url), "utf8"));
+  return { premise: b.premise, results: [b.story, ...b.plans] };
+};
 const server = createServer(async (req, res) => {
   const path = req.url.split("?")[0];
   const name = path === "/" || path === "/browser.html" ? "browser.html" : path.slice(1);
@@ -89,11 +109,71 @@ const ask = async (page, text, drawing) => {
   await page.waitForFunction(() => !document.querySelector("#send").disabled);
   await page.evaluate(() => document.querySelector("#log").scrollTo(0, 1e6));
 };
+// Write a book, then turn its pages: scroll the log a sheet at a time.
+const writeBook = async (page, book) => {
+  await page.evaluate(r => { window.results = r; }, book.results);
+  await type(page, book.premise);
+  await page.waitForTimeout(250);
+  await page.click("#send");
+  await page.waitForFunction(() => document.querySelector(".book .sheet"), { timeout: 20000 });
+  await page.waitForFunction(() => !document.querySelector("#send").disabled, { timeout: 60000 });
+};
+const turnPages = async (page, pause = 1300) => {
+  const sheets = await page.locator(".book .sheet").count();
+  for (let i = 0; i < sheets; i++) {
+    await page.locator(".book .sheet").nth(i).evaluate(s => s.scrollIntoView({ behavior: "smooth", block: "start" }));
+    await page.waitForTimeout(pause);
+  }
+};
 const settled = async page => {
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null, { timeout: 20000 });
 };
 
 const CLIPS = {
+  book: { caption: null, mode: "book", size: { width: 600, height: 820 }, async run(page) {
+    await writeBook(page, BOOK("dog"));
+    await turnPages(page);
+  } },
+
+  bookphone: { caption: null, mode: "book", mobile: true, size: { width: 390, height: 760 }, async run(page) {
+    await writeBook(page, BOOK("dragon"));
+    await turnPages(page, 1200);
+  } },
+
+  bookprivate: { caption: "network off — nothing is being sent anywhere", mode: "book",
+    size: { width: 600, height: 820 }, async run(page, context) {
+    await settled(page);
+    await context.setOffline(true);
+    await page.waitForTimeout(600);
+    await writeBook(page, BOOK("seed"));
+    await turnPages(page, 900);
+  } },
+
+  // The working under each picture, then what Print puts on paper (the page's
+  // own print stylesheet; the browser's print dialog cannot be recorded).
+  bookmade: { caption: null, mode: "book", size: { width: 600, height: 820 }, async run(page) {
+    await writeBook(page, BOOK("dog-copied"));
+    const i = await page.evaluate(() => {
+      const m = [...document.querySelectorAll(".book .made")];
+      const k = m.findIndex(d => /copied example removed/.test(d.textContent));
+      return k === -1 ? 0 : k;
+    });
+    const made = page.locator(".book .made").nth(i);
+    await made.evaluate(d => d.closest(".sheet").scrollIntoView({ behavior: "smooth", block: "start" }));
+    await page.waitForTimeout(1200);
+    await made.locator("summary").click();
+    await made.evaluate(d => d.scrollIntoView({ behavior: "smooth", block: "end" }));
+    await page.waitForTimeout(3200);
+    await page.evaluate(() => {
+      document.body.classList.add("printing");
+      document.querySelector(".book").classList.add("print-me");
+    });
+    await page.emulateMedia({ media: "print" });
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.waitForTimeout(800);
+    for (let y = 0; y < 5; y++) { await page.mouse.wheel(0, 700); await page.waitForTimeout(700); }
+  } },
+
   intro: { caption: null, async run(page) {
     await ask(page, "a boat on the sea with two birds", BOAT);
     await page.waitForTimeout(2200);
@@ -183,9 +263,13 @@ for (const name of names) {
   await rm(dir, { recursive: true, force: true });
   await mkdir(dir, { recursive: true });
 
-  const browser = await chromium.launch({ headless: true });
+  const exe = process.env.SKETCH_CHROME;
+  const browser = await chromium.launch({ headless: true,
+    ...(exe ? { executablePath: exe, args: ["--no-sandbox"] } : {}) });
   const size = clip.size || { width: 700, height: 700 };
-  const context = await browser.newContext({ viewport: size, recordVideo: { dir, size } });
+  const context = await browser.newContext({ viewport: size, recordVideo: { dir, size },
+    ...(clip.mobile ? { isMobile: true, hasTouch: true, deviceScaleFactor: 1,
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148" } : {}) });
   try {
     const page = await context.newPage();
     await page.addInitScript(() => {
@@ -193,11 +277,22 @@ for (const name of names) {
         features: new Set(["shader-f16"]), limits: { maxBufferSize: 1e9 } }) } });
       window.result = "{}";
     });
-    await page.goto(`${origin}/browser.html?lib=${origin}/mock.mjs&rough=${origin}/rough.mjs`);
+    // manual=1: the page would otherwise start its model download by itself.
+    await page.goto(`${origin}/browser.html?lib=${origin}/mock.mjs&rough=${origin}/rough.mjs&manual=1`);
     await page.waitForFunction(() => document.querySelector("#status").textContent === "ready to load");
     await page.click("#load");
-    await page.click(`#output [data-mode="sketch"]`);
+    await page.waitForFunction(() => !document.querySelector("#send").disabled);
+    await page.click(`#output [data-mode="${clip.mode || "sketch"}"]`);
     await page.waitForTimeout(500);
+    // The caption is drawn in the page, so any ffmpeg will do — the static
+    // builds on npm have no drawtext filter.
+    if (clip.caption) await page.evaluate(text => {
+      const b = document.createElement("div");
+      b.textContent = text;
+      b.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:99;padding:12px 10px;pointer-events:none;" +
+        "background:rgb(0 0 0 / .84);color:#fff;font:600 17px system-ui,sans-serif;text-align:center";
+      document.body.appendChild(b);
+    }, clip.caption);
     await clip.run(page, context);
   } finally {
     await context.close();   // the video is only written when the context closes
@@ -207,12 +302,9 @@ for (const name of names) {
   const webm = (await readdir(dir)).find(f => f.endsWith(".webm"));
   if (!webm) throw new Error(`playwright wrote no video for ${name}`);
   const src = `${dir}/${webm}`;
-  // A burnt-in caption, only where the clip is demonstrating something the
-  // picture alone cannot show.
-  const band = clip.caption
-    ? `,drawbox=x=0:y=ih-46:w=iw:h=46:color=black@0.82:t=fill,` +
-      `drawtext=fontfile='${FONT}':text='${clip.caption}':fontcolor=white:fontsize=21:x=(w-tw)/2:y=h-32`
-    : "";
+  // Captions are already in the frames (see above), only where the clip is
+  // demonstrating something the picture alone cannot show.
+  const band = "";
   await run(["-y", "-i", src, "-vf", `scale=${size.width}:-2:flags=lanczos,fps=25${band}`,
     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23", "-movflags", "+faststart",
     `${out}/sketchgpt-${name}.mp4`]);

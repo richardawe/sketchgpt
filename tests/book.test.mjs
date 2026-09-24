@@ -49,6 +49,10 @@ test("what a character is comes down to one lowercase word", () => {
 
 test("'page 3:' prefixes go, and a book of placeholders is not a book (Qwen2.5-0.5B)", () => {
   assert.equal(parseStory(story(["page 1: Pip woke up early.", ...six.slice(1)])).pages[0], "Pip woke up early.");
+  // Qwen3-0.6B on the phone's prompt, verbatim: the pages numbered themselves.
+  assert.equal(parseStory(story(["1. Luna and Milo start their journey to find the light.", ...six.slice(1)])).pages[0],
+    "Luna and Milo start their journey to find the light.");
+  assert.equal(parseStory(story(["3 little pigs went to town.", ...six.slice(1)])).pages[0], "3 little pigs went to town.");
   assert.throws(() => parseStory(story(["page 1 text", "page 2 text", "page 3 text", "...", "text", "page 6"])),
     /did not write a story/);
 });
@@ -154,6 +158,12 @@ test("'fairy' is not a ferris wheel: a word extends a known one only by a suffix
   assert.equal(resolveStamp("sailboats"), "sailboat");
   assert.equal(resolveStamp("boating"), "sailboat");
   assert.equal(resolveStamp("pinetree"), "tree-pine");
+});
+
+test("'grass' is grass, not a label reading 'gras' (Qwen3-1.7B book, page 1)", () => {
+  const out = planFromWords("the smell of the grass", pip);
+  assert.deepEqual(out, ["grass"]);
+  assert.deepEqual(planFromWords("He drops a feather.", pip), [], "a verb drew a water droplet");
 });
 
 test("feelings are not drawn (Qwen3-0.6B pages drew a grinning face for 'happy')", () => {

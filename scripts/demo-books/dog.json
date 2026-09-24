@@ -1,0 +1,14 @@
+{
+ "model": "qwen3:1.7b",
+ "device": "desktop",
+ "premise": "a little dog who has never seen the sea",
+ "story": "{\n  \"title\": \"Pip the Ocean Explorer\",\n  \"cast\": [\n    {\n      \"name\": \"Pip\",\n      \"is\": \"dog\"\n    },\n    {\n      \"name\": \"Mr. Bay\",\n      \"is\": \"bird\"\n    },\n    {\n      \"name\": \"Mum\",\n      \"is\": \"human\"\n    }\n  ],\n  \"pages\": [\n    \"Pip is a curious little dog who has never seen the sea. He’s always dreamed of exploring the ocean, but his world is filled with the sounds of the forest and the smell of the grass.\",\n    \"One day, Mum takes Pip to the edge of the beach. The sky is blue, and the wind is light. Pip’s eyes are wide with wonder.\",\n    \"Mr. Bay flies past them, singing songs of the sea. He drops a feather and says, ‘Look! The ocean is vast and full of secrets.’\",\n    \"Pip jumps into the water, and the cool, salty breeze fills him. He swims and plays, chasing fish and waves.\",\n    \"As the sun sets, Pip rests on the shore, looking at the stars. He feels joy and peace, knowing he’s seen the ocean for the first time.\",\n    \"Mum smiles and says, ‘You’ve discovered something special, Pip. The ocean is a wonderful place to explore.’\"\n  ]\n}",
+ "plans": [
+  "{\"t\":\"A curious little dog\",\"c\":[\"dog\"]}",
+  "{\"t\":\"A day at the beach\",\"c\":[\"sun\",\"boat x2\",\"bird x4 sky\",\"fish water\",\"crane back\"]}",
+  "{\"t\":\"A quiet harbour\",\"c\":[\"boat x2\",\"lighthouse\",\"bird x4 sky\",\"fish water\",\"crane back\"]}",
+  "{\"t\":\"A child playing in the water\",\"c\":[\"dog x1\",\"fish x2 water\",\"balloon sky\",\"wave front\"]}",
+  "{\"t\":\"A quiet harbour\",\"c\":[\"boat x2\",\"lighthouse\",\"bird x4 sky\",\"fish water\",\"crane back\"]}",
+  "{\"t\":\"A quiet harbour\",\"c\":[\"boat x2\",\"lighthouse\",\"bird x4 sky\",\"fish water\",\"crane back\"]}"
+ ]
+}
