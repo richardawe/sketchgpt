@@ -54,6 +54,8 @@
   .errbox pre { white-space: pre-wrap; font: 12px/1.4 var(--mono); color: var(--ink); background: var(--panel);
     padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; }
   .small { font-size: 13px; color: var(--muted); }
+  .star input { flex: 1; min-width: 0; font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--ink); }
   @media (pointer: coarse) { button, .btn, input { font-size: 16px; } }
 </style>
 </head>
@@ -89,6 +91,11 @@
       <button id="svg">SVG</button>
     </div>
     <label class="small"><input type="checkbox" id="credit" checked> Show "drawn on-device · sketchgpt" in the corner</label>
+    <div class="row star">
+      <input type="text" id="name" maxlength="40" placeholder="Your name in the story (optional)" autocomplete="off" aria-label="Your name in the story">
+      <button class="primary" id="star">Star in a book</button>
+    </div>
+    <p class="small">Opens the book page with this drawing as the hero. Only the drawing goes — never the photo — and it stays in this tab.</p>
   </div>
 
   <div class="errbox" id="errbox"><div id="errmsg"></div><pre id="report"></pre><button id="copy">Copy report</button></div>
@@ -96,8 +103,8 @@
 </main>
 
 <script type="module">
-import { alignFace, measure, medianColour, dominantColour, skinTone, LIPS, hex, rgbToLab, outlines, simplify, hairStrokes, shadeCells,
-  renderPortrait, setPose, idleLoop, poseAt, LOOP_MS, OVAL, EYE, BROW, insidePolygon } from "./face.mjs?v=1";
+import { encodeMe, alignFace, measure, medianColour, dominantColour, skinTone, LIPS, hex, rgbToLab, outlines, simplify, hairStrokes, shadeCells,
+  renderPortrait, setPose, idleLoop, poseAt, LOOP_MS, OVAL, EYE, BROW, insidePolygon } from "./face.mjs?v=2";
 
 const $ = id => document.getElementById(id);
 const MAX_SIDE = 640;
@@ -400,6 +407,10 @@ function boot() {
     deliver(await new Promise(r => c.toBlob(r, "image/png")), "me-sticker.png");
   }));
   $("svg").addEventListener("click", () => deliver(new Blob([portraitSvg(null, { credit: $("credit").checked })], { type: "image/svg+xml" }), "me-drawn.svg"));
+  $("star").addEventListener("click", async () => {
+    if (!data) return;
+    location.href = "./#" + await encodeMe(data, $("name").value.trim());
+  });
   $("copy").addEventListener("click", () => navigator.clipboard?.writeText($("report").textContent));
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
   window.__selfie = { portraitData, makeGif, get data() { return data; }, get report() { return report; } };

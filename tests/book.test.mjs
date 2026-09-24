@@ -10,9 +10,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PAGES, STORY_SCHEMA, SHAPE, storyMessages, parseStory, unshape, pageMessages, nameWords,
-         planFromWords, fixPagePlan, wordsOnlyPlan, coverPlan, drawAs } from "../web/book.mjs?v=8";
-import { resolveStamp, parseSketch } from "../web/sketch.mjs?v=8";
-import { composeScene } from "../web/scene.mjs?v=8";
+         planFromWords, fixPagePlan, wordsOnlyPlan, coverPlan, drawAs } from "../web/book.mjs?v=9";
+import { resolveStamp, parseSketch } from "../web/sketch.mjs?v=9";
+import { composeScene } from "../web/scene.mjs?v=9";
 
 const story = (pages, extra = {}) => JSON.stringify({ title: "Pip and the Sea",
   cast: [{ name: "Pip", is: "dog" }], pages, ...extra });
@@ -246,4 +246,16 @@ test("a page with nothing drawable is still a picture: its scenery", () => {
   const raw = JSON.stringify({ t: "p", c: scene.c });
   assert.throws(() => parseSketch(raw), /expected format/, "a sketch of nothing but backdrop is still a failed sketch");
   assert.ok(parseSketch(raw, { scenery: true }).commands.length > 0);
+});
+
+test("castAsMe: the reader replaces the first person, or joins a story with none", async () => {
+  const { castAsMe } = await import("../web/book.mjs?v=9");
+  assert.deepEqual(castAsMe([{ name: "Lila", is: "girl" }, { name: "Spark", is: "dragon" }]),
+    [{ name: "Lila", is: "me" }, { name: "Spark", is: "dragon" }]);
+  // A witch is a person as far as the pictures go (her stand-in is a girl).
+  assert.deepEqual(castAsMe([{ name: "Pip", is: "dog" }, { name: "Wanda", is: "witch" }]),
+    [{ name: "Wanda", is: "me" }, { name: "Pip", is: "dog" }]);
+  assert.deepEqual(castAsMe([{ name: "Pip", is: "dog" }], "Kate"), [{ name: "Kate", is: "me" }, { name: "Pip", is: "dog" }]);
+  // Nobody else has the reader's drawing: "me" is a child wherever it is not registered.
+  assert.equal(drawAs({ name: "Kate", is: "me" }), "child");
 });

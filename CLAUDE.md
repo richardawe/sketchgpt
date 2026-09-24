@@ -591,8 +591,12 @@ practical fine-tuning.
   CPU, nothing sent or stored (`tests/selfie-browser.mjs`, touch screen,
   mutation-checked). Owed: the owner's phone (Safari will likely load
   LiteRT's compat wasm), real selfies instead of studio portraits, and a
-  stereotype review on ~20 faces. The caricature as Book's hero is stage 3.
-  The main page does not link to it yet.
+  stereotype review on ~20 faces (the owner: "it's just a caricature" —
+  lower priority). **Stage 3 is built too:** "Star in a book" hands the
+  drawing (never the photo) to the main page for that tab only; the next book
+  has the reader on every page, blinking; shared links carry only "me" and
+  show a stand-in child (`tests/me-browser.mjs`). The Book intro links to
+  selfie.html.
 - **Next idea: product specification manuals with diagrams.** Researched,
   nothing built. The design that follows from the findings above: the model
   fills a JSON plan (blocks, links, labels) and the page lays it out — elkjs

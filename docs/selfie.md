@@ -374,7 +374,27 @@ main page is untouched and loads none of it.
 - **Speed (headless Chromium, CPU):** the four models load in ~0.4 s and a
   photo takes 0.2–1.0 s. That is not a phone.
 
-### What was not tested
+### Stage 3, built: the caricature as Book's hero ("Star in a book")
+- `selfie.html` → **Star in a book** (optional name) opens the main page with
+  `#me=…`: the drawing's data only, about 5–10 KB compressed. The main page
+  clears it from the address bar at once and keeps it in `sessionStorage`,
+  so it lasts for that tab and nowhere else.
+- The next book written in that tab has the reader as its hero:
+  - `castAsMe()` turns the story's first person into `me`. If the story has
+    no person (a dog's story), the reader joins as the first character.
+  - The name goes to the model ("The hero is called Kate."). The face never
+    does.
+  - `renderPortrait(..., { figure: true })` draws a standing figure (big
+    head, small body, thicker ink, no hatching). `renderSketch` draws it
+    wherever the plan says `me`, so the page's continuity rules put the
+    reader on the cover and on every page.
+  - The figure blinks now and then.
+- **A face never travels in a share link.** The link says `me`, and whoever
+  opens it, the reader included, sees a stand-in child (`STAND_IN.me`).
+  `tests/me-browser.mjs` holds all of this, mutation-checked. Checking the
+  shared-book case found an ordering race: books now wait for the drawing to
+  load before they are drawn.
+
 - **Everything on a real phone.** Safari's WebAssembly (it will likely get
   LiteRT's "compat" build), memory, the share sheet with files, and how
   fast the GIF is made.

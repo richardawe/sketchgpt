@@ -182,3 +182,24 @@ test("export reads the drawing's data, never the photo", () => {
   assert.doesNotMatch(exporter, /\$\("photo"\)|getImageData\(0, 0, w, h\)|canvas\.toDataURL|portraitData/);
   assert.match(exporter, /renderPortrait\(data/);
 });
+
+test("the drawing handed to a book survives the trip, and a bad link is refused", async () => {
+  const { encodeMe, decodeMe } = await import("../web/face.mjs");
+  const data = { pts: person(), hair: [[[0, -1], [1, -1], [1, 0]]], fringe: [], skinTop: [], strokes: [[[0, -1], [0.1, -0.9], [0.2, -0.8]]],
+    shade: [[0.5, 0.5, 2]], colours: { skin: "#8a5a3c", hair: "#1d1611", lip: "#7b4934", iris: "#241a12", cloth: "#035791" },
+    light: -1, ears: { right: true, left: false } };
+  const frag = await encodeMe(data, "Kate <b>");
+  assert.ok(frag.length < 6000, `short enough for a link: ${frag.length}`);
+  const back = await decodeMe("#" + frag);
+  assert.equal(back.name, "Kate b");
+  assert.equal(back.data.pts.length, data.pts.length);
+  back.data.pts.forEach((p, i) => { close(p[0], data.pts[i][0], 0.0051, "x"); close(p[1], data.pts[i][1], 0.0051, "y"); });
+  assert.equal(back.data.light, -1); assert.equal(back.data.ears.left, false);
+  await assert.rejects(decodeMe("#me=zAAAA"), /damaged|drawing/);
+  await assert.rejects(decodeMe("#book=zAAAA"), /does not hold a drawing/);
+  const b64 = o => "#me=j" + Buffer.from(JSON.stringify(o)).toString("base64url");
+  await assert.rejects(decodeMe(b64({ v: 1, p: [1, 2, 3] })), /does not hold a drawing/);
+  const ok = { v: 1, n: "", p: data.pts.flat(), h: [], f: [], k: [], s: [], d: [], c: data.colours };
+  await decodeMe(b64(ok));
+  await assert.rejects(decodeMe(b64({ ...ok, c: { ...ok.c, skin: "red;background:url(x)" } })), /damaged/);
+});

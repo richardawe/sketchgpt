@@ -426,7 +426,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;",
  * everything the page kept — never the photo). Returns SVG text whose moving
  * parts are groups with data-part and data-state, for setPose().
  */
-export function renderPortrait(data, { amount = 1, seed = 1, credit = true } = {}) {
+export function renderPortrait(data, { amount = 1, seed = 1, credit = true, figure = false, idPrefix = "" } = {}) {
   const gen = rough.generator();
   const rand = rng(seed * 7919 + 13);
   const P = caricature(data.pts, amount);
@@ -441,8 +441,11 @@ export function renderPortrait(data, { amount = 1, seed = 1, credit = true } = {
   const headPts = [...pick(P, OVAL), ...hair.flat()];
   const minX = Math.min(...headPts.map(p => p[0])), maxX = Math.max(...headPts.map(p => p[0]));
   const minY = Math.min(...headPts.map(p => p[1])), chinY = P[152][1];
-  const S = Math.min(330 / (chinY - minY), 330 / (maxX - minX), 95);
-  const ox = W / 2 - S * (minX + maxX) / 2, oy = 24 - S * minY;
+  const S = figure ? Math.min(300 / (chinY - minY), 300 / (maxX - minX), 95) : Math.min(330 / (chinY - minY), 330 / (maxX - minX), 95);
+  const ox = W / 2 - S * (minX + maxX) / 2, oy = (figure ? 12 : 24) - S * minY;
+  // A figure (a book's hero) stands: big head, small body, feet at the bottom.
+  const FEET = 3.3;
+  const HH = figure ? Math.ceil(oy + S * (chinY + FEET) + 14) : H;
   const T = ([x, y]) => [ox + S * x, oy + S * y];
   const TT = pts => pts.map(T);
 
@@ -456,26 +459,57 @@ export function renderPortrait(data, { amount = 1, seed = 1, credit = true } = {
   const sd = () => (seed * 101 + (n++) * 7) % 2147483647 || 1;
   const ink = (d, o = {}) => gen.toPaths(d).map(p =>
     `<path d="${p.d}" fill="${p.fill}" stroke="${p.stroke}" stroke-width="${p.strokeWidth}"${o.op ? ` opacity="${o.op}"` : ""} stroke-linecap="round"/>`).join("");
-  const curve = (pts, o = {}) => ink(gen.curve(TT(pts), { stroke: o.stroke || INK, strokeWidth: o.w || 1.4,
+  // A figure is drawn small in a book's picture: its ink is thicker so the
+  // face still reads, and its hatching is left out (at that size it is noise).
+  const inkK = figure ? 2.4 : 1;
+  const curve = (pts, o = {}) => ink(gen.curve(TT(pts), { stroke: o.stroke || INK, strokeWidth: (o.w || 1.4) * inkK,
     roughness: o.r ?? 0.7, bowing: 0.6, seed: sd(), disableMultiStroke: !!o.single }), o);
-  const wash = (d, fill, o = {}) => `<path d="${d}" fill="${fill}"${o.op ? ` opacity="${o.op}"` : ""} filter="url(#wash)"/>`;
+  const wash = (d, fill, o = {}) => `<path d="${d}" fill="${fill}"${o.op ? ` opacity="${o.op}"` : ""} filter="url(#${idPrefix}wash)"/>`;
 
   const out = [];
-  out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" data-portrait="1" data-scale="${f1(S)}">`);
-  out.push(`<defs><filter id="wash" x="-5%" y="-5%" width="110%" height="110%">` +
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${HH}" width="${W}" height="${HH}" data-portrait="1" data-scale="${f1(S)}">`);
+  out.push(`<defs><filter id="${idPrefix}wash" x="-5%" y="-5%" width="110%" height="110%">` +
     `<feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="${seed % 97}"/>` +
     `<feDisplacementMap in="SourceGraphic" scale="5" xChannelSelector="R" yChannelSelector="G"/></filter></defs>`);
 
   // --- body: neck and shoulders, small under a big head, as caricatures go
   const jawL = P[OVAL[25]], jawR = P[OVAL[11]];
   const neckW = Math.abs(jawR[0] - jawL[0]) * 0.3, cx = P[152][0];
-  const neckTop = chinY - 0.35, shoulderY = chinY + 0.55, bottom = (H - oy) / S;
+  const neckTop = chinY - 0.35, shoulderY = chinY + (figure ? 0.42 : 0.55), bottom = (HH - oy) / S;
   const neck = [[cx - neckW, neckTop], [cx + neckW, neckTop], [cx + neckW * 1.05, shoulderY + 0.1], [cx - neckW * 1.05, shoulderY + 0.1]];
   const sw = Math.max(1.55, (maxX - minX) * 0.62);
   const body = [[cx - neckW * 1.1, shoulderY - 0.02], [cx - sw * 0.55, shoulderY + 0.08], [cx - sw * 0.92, shoulderY + 0.35],
     [cx - sw, bottom + 0.2], [cx + sw, bottom + 0.2], [cx + sw * 0.92, shoulderY + 0.35], [cx + sw * 0.55, shoulderY + 0.08],
     [cx + neckW * 1.1, shoulderY - 0.02]];
   out.push(`<g data-part="body">`);
+  if (figure) {
+    // Legs, then the body over them, then arms; the neck and head go on top.
+    const hipY = shoulderY + 1.3, footY = chinY + FEET - 0.08, sw2 = 0.78, hw = 0.6;
+    const trousers = lightness(cloth) > 35 ? shade(cloth, -30) : "#3f4a5c";
+    for (const sx of [-1, 1]) {
+      const x0 = cx + sx * 0.06, x1 = cx + sx * 0.5;
+      const leg = [[x0, hipY - 0.1], [x1, hipY - 0.1], [x1 - sx * 0.04, footY - 0.12], [x0 + sx * 0.04, footY - 0.12]];
+      out.push(wash(smoothPath(TT(leg)), trousers));
+      out.push(curve([leg[0], leg[3]], { w: 1.2 })); out.push(curve([leg[1], leg[2]], { w: 1.2 }));
+      const shoe = [[x0, footY - 0.14], [x1 + sx * 0.12, footY - 0.12], [x1 + sx * 0.14, footY + 0.04], [x0, footY + 0.04]];
+      out.push(wash(smoothPath(TT(shoe)), "#2b2521"));
+    }
+    const torso = [[cx - neckW * 1.1, shoulderY - 0.02], [cx - sw2, shoulderY + 0.12], [cx - hw, hipY], [cx + hw, hipY],
+      [cx + sw2, shoulderY + 0.12], [cx + neckW * 1.1, shoulderY - 0.02]];
+    out.push(wash(smoothPath(TT(torso)), cloth));
+    out.push(curve([...torso.slice(0, 3)], { w: 1.5 })); out.push(curve([...torso.slice(3)], { w: 1.5 }));
+    out.push(curve([torso[2], torso[3]], { w: 1.3 }));
+    for (const sx of [-1, 1]) {
+      const top = [cx + sx * sw2, shoulderY + 0.14], hand = [cx + sx * (sw2 + 0.28), hipY - 0.05];
+      const arm = [add(top, [-sx * 0.02, -0.02]), add(top, [sx * 0.26, 0.04]), add(hand, [sx * 0.12, 0]), add(hand, [-sx * 0.14, 0])];
+      out.push(wash(smoothPath(TT(arm)), cloth));
+      out.push(curve([arm[1], arm[2]], { w: 1.3 })); out.push(curve([arm[0], arm[3]], { w: 1.1, op: 0.8 }));
+      const h = T(add(hand, [0, 0.1]));
+      out.push(`<circle cx="${f1(h[0])}" cy="${f1(h[1])}" r="${f1(0.15 * S)}" fill="${skin}" stroke="${INK}" stroke-width="1.2"/>`);
+    }
+    out.push(wash(smoothPath(TT(neck)), skin));
+    out.push(curve([[cx - neckW * 1.2, shoulderY - 0.03], [cx, shoulderY + 0.16], [cx + neckW * 1.2, shoulderY - 0.03]], { w: 1.2 }));
+  } else {
   out.push(wash(smoothPath(TT(neck)), skin));
   out.push(wash(smoothPath(TT([[cx - neckW, chinY - 0.05], [cx, chinY + 0.08], [cx + neckW, chinY - 0.05], [cx, chinY + 0.22]])), skinShadow, { op: 0.45 }));
   out.push(curve([[cx - neckW, neckTop + 0.1], [cx - neckW * 1.02, shoulderY - 0.1], [cx - neckW * 1.08, shoulderY]], { w: 1.2 }));
@@ -484,6 +518,7 @@ export function renderPortrait(data, { amount = 1, seed = 1, credit = true } = {
   out.push(curve(body.slice(0, 4), { w: 1.6 }));
   out.push(curve(body.slice(4), { w: 1.6 }));
   out.push(curve([[cx - neckW * 1.25, shoulderY - 0.03], [cx, shoulderY + 0.2], [cx + neckW * 1.25, shoulderY - 0.03]], { w: 1.3 }));
+  }
   out.push(`</g>`);
 
   // --- head
@@ -507,7 +542,7 @@ export function renderPortrait(data, { amount = 1, seed = 1, credit = true } = {
   const skinTop = (data.skinTop || []).map(l => l.map(growHair));
   for (const l of skinTop) out.push(wash(smoothPath(TT(l)), skin));
   if (!hair.length) for (const l of skinTop) out.push(curve(l.concat([l[0]]).filter((_, i) => i % 2 === 0), { w: 1.4 }));
-  out.push(`<clipPath id="faceclip-${seed}"><path d="${smoothPath(TT(oval))}"/></clipPath>`);
+  out.push(`<clipPath id="${idPrefix}faceclip-${seed}"><path d="${smoothPath(TT(oval))}"/></clipPath>`);
   out.push(wash(smoothPath(TT(oval)), skin));
   // The jaw is inked; the forehead is left soft (hair usually meets it).
   const jaw = [...OVAL.slice(5, 32)].map(i => P[i]);
@@ -517,7 +552,7 @@ export function renderPortrait(data, { amount = 1, seed = 1, credit = true } = {
   // Hatching by hand is loose: strokes wander off the grid, vary in length
   // and angle, and a second direction only where it is darkest.
   const hatch = [];
-  for (const [x0, y0, level] of data.shade || []) {
+  for (const [x0, y0, level] of figure ? [] : data.shade || []) {
     for (let k = 0; k < level + 1; k++) {
       const x = x0 + (rand() - 0.5) * 0.11, y = y0 + (rand() - 0.5) * 0.11;
       const a = (k < 2 ? -0.8 : 0.75) + (rand() - 0.5) * 0.35, l = 0.035 + rand() * 0.04;
@@ -525,7 +560,7 @@ export function renderPortrait(data, { amount = 1, seed = 1, credit = true } = {
       hatch.push([[x - Math.cos(a) * l, y - Math.sin(a) * l], [x + Math.cos(a) * l, y + Math.sin(a) * l]]);
     }
   }
-  if (hatch.length) out.push(`<g data-part="shade" opacity="0.5" clip-path="url(#faceclip-${seed})">` + hatch.map(([a, b]) => {
+  if (hatch.length) out.push(`<g data-part="shade" opacity="0.5" clip-path="url(#${idPrefix}faceclip-${seed})">` + hatch.map(([a, b]) => {
     const [A, B] = [T(a), T(b)];
     return `<path d="M${f1(A[0])} ${f1(A[1])} L${f1(B[0])} ${f1(B[1])}" stroke="${shade(skin, -26)}" stroke-width="0.9" stroke-linecap="round"/>`;
   }).join("") + `</g>`);
@@ -533,7 +568,7 @@ export function renderPortrait(data, { amount = 1, seed = 1, credit = true } = {
   // cheeks: a faint warm wash
   for (const i of [205, 425]) if (P[i]) {
     const c = T(P[i]);
-    out.push(`<ellipse cx="${f1(c[0])}" cy="${f1(c[1])}" rx="${f1(0.2 * S)}" ry="${f1(0.13 * S)}" fill="${shade(lip, 6)}" opacity="0.18" clip-path="url(#faceclip-${seed})"/>`);
+    out.push(`<ellipse cx="${f1(c[0])}" cy="${f1(c[1])}" rx="${f1(0.2 * S)}" ry="${f1(0.13 * S)}" fill="${shade(lip, 6)}" opacity="0.18" clip-path="url(#${idPrefix}faceclip-${seed})"/>`);
   }
 
   // nose: the wings and a shadow down one side — how illustrators draw noses
@@ -553,7 +588,7 @@ export function renderPortrait(data, { amount = 1, seed = 1, credit = true } = {
     for (const [state, t] of [["open", 1], ["half", 0.45], ["closed", 0.02]]) {
       const upT = up.map((p, i) => lerp(lo[i], p, t));
       const poly = [...upT, ...lo.slice(1, -1).reverse()];
-      const id = `clip-${sideName}-${state}-${seed}`;
+      const id = `${idPrefix}clip-${sideName}-${state}-${seed}`;
       out.push(`<g data-state="${state}"${state === "open" ? "" : ' style="display:none"'}>`);
       if (t > 0.1) {
         out.push(`<clipPath id="${id}"><path d="${smoothPath(TT(poly))}"/></clipPath>`);
@@ -590,7 +625,7 @@ export function renderPortrait(data, { amount = 1, seed = 1, credit = true } = {
       const dir = [ux * Math.cos(rot) - uy * Math.sin(rot), ux * Math.sin(rot) + uy * Math.cos(rot)];
       const tip = add(base, mul(dir, l * (0.8 + rb() * 0.5)));
       const [A, C] = [T(base), T(tip)];
-      lines += `<path d="M${f1(A[0])} ${f1(A[1])} L${f1(C[0])} ${f1(C[1])}" stroke="${brow}" stroke-width="${f1(1 + rb() * 0.6)}" stroke-linecap="round"/>`;
+      lines += `<path d="M${f1(A[0])} ${f1(A[1])} L${f1(C[0])} ${f1(C[1])}" stroke="${brow}" stroke-width="${f1((1 + rb() * 0.6) * inkK)}" stroke-linecap="round"/>`;
     }
     out.push(`<g data-part="brow-${sideName}">` +
       `<g data-state="rest">${lines}</g>` +
@@ -605,7 +640,7 @@ export function renderPortrait(data, { amount = 1, seed = 1, credit = true } = {
     out.push(wash(smoothPath(TT([...m.ou, ...m.ol.slice(1, -1).reverse()])), lip, { op: 0.85 }));
     if (m.open > 0) {
       const inner = [...m.iu, ...m.il.slice(1, -1).reverse()];
-      const id = `mclip-${state}-${seed}`;
+      const id = `${idPrefix}mclip-${state}-${seed}`;
       out.push(`<clipPath id="${id}"><path d="${smoothPath(TT(inner))}"/></clipPath>`);
       out.push(`<path d="${smoothPath(TT(inner))}" fill="#3b1c1a"/>`);
       const teeth = [...m.iu, ...m.iu.slice().reverse().map(p => add(p, [0, Math.max(0.07, gapOf(m) * 0.55)]))];
@@ -624,12 +659,12 @@ export function renderPortrait(data, { amount = 1, seed = 1, credit = true } = {
   // hair on top: the fringe over the forehead, then every stroke
   for (const l of fringe) out.push(wash(smoothPath(TT(l)), hairC));
   for (const l of hair) out.push(curve(l.concat([l[0]]).filter((_, i) => i % 2 === 0), { w: 1.3, op: 0.9 }));
-  const hs = strokes.map(l => TT(l)).filter(l => l.length > 2)
-    .map((l, i) => `<path d="${smoothPath(l, false)}" fill="none" stroke="${i % 5 === 0 ? INK : hairInk}" stroke-width="${i % 5 === 0 ? 0.9 : 0.75}" stroke-linecap="round" opacity="0.85"/>`);
+  const hs = strokes.filter((_, i) => !figure || i % 2 === 0).map(l => TT(l)).filter(l => l.length > 2)
+    .map((l, i) => `<path d="${smoothPath(l, false)}" fill="none" stroke="${i % 5 === 0 ? INK : hairInk}" stroke-width="${f1((i % 5 === 0 ? 0.9 : 0.75) * inkK)}" stroke-linecap="round" opacity="0.85"/>`);
   out.push(`<g data-part="hair-strokes">${hs.join("")}</g>`);
   out.push(`</g>`);
 
-  if (credit) out.push(`<text data-part="credit" x="${W - 10}" y="${H - 10}" text-anchor="end" font-family="Georgia, serif" font-size="11" fill="#8a7f76">drawn on-device · sketchgpt</text>`);
+  if (credit && !figure) out.push(`<text data-part="credit" x="${W - 10}" y="${H - 10}" text-anchor="end" font-family="Georgia, serif" font-size="11" fill="#8a7f76">drawn on-device · sketchgpt</text>`);
   out.push(`</svg>`);
   return out.join("");
 }
@@ -725,4 +760,65 @@ export function idleLoop(svg, { talking = () => false, seed = 3, reduced = false
   };
   raf = requestAnimationFrame(frame);
   return () => cancelAnimationFrame(raf);
+}
+
+// ---------------------------------------------------------------------------
+// Handing a drawing to the book (browser.html): only the drawing's data, after
+// the "#" of a link, which browsers never send to a server. Never the photo.
+
+const r2 = v => Math.round(v * 100) / 100;
+const HEX = /^#[0-9a-f]{6}$/;
+const nums = (a, max) => Array.isArray(a) && a.length <= max && a.every(v => typeof v === "number" && Number.isFinite(v) && Math.abs(v) < 20);
+const pointList = (a, max) => Array.isArray(a) && a.length <= max && a.every(p => nums(p, 2) && p.length === 2);
+
+/** Only what a drawing needs, rounded to 1/100 of the eye distance. */
+export function packMe(data, name = "") {
+  const pl = l => l.map(p => [r2(p[0]), r2(p[1])]);
+  return { v: 1, n: String(name).slice(0, 40), p: data.pts.flatMap(p => [r2(p[0]), r2(p[1])]),
+    h: data.hair.map(pl), f: data.fringe.map(pl), k: (data.skinTop || []).map(pl), s: data.strokes.map(pl),
+    d: data.shade.map(c => [r2(c[0]), r2(c[1]), c[2]]), c: data.colours, l: data.light, e: data.ears };
+}
+
+/** A packed drawing back into data, checked: a link can say anything. */
+export function unpackMe(o) {
+  if (!o || o.v !== 1 || !nums(o.p, 478 * 2) || o.p.length < 468 * 2) throw new Error("This link does not hold a drawing.");
+  const loops = (a, n, max) => { if (!Array.isArray(a) || a.length > n || !a.every(l => pointList(l, max))) throw new Error("This drawing is damaged."); return a; };
+  const colours = {};
+  for (const k of ["skin", "hair", "lip", "iris", "cloth", "brow"]) {
+    const v = o.c && o.c[k];
+    if (v != null && !HEX.test(v)) throw new Error("This drawing is damaged.");
+    if (v) colours[k] = v;
+  }
+  if (!colours.skin || !colours.hair || !colours.lip || !colours.iris || !colours.cloth) throw new Error("This drawing is damaged.");
+  const pts = [];
+  for (let i = 0; i < o.p.length; i += 2) pts.push([o.p[i], o.p[i + 1]]);
+  const shadeOk = Array.isArray(o.d) && o.d.length <= 600 && o.d.every(c => nums(c, 3) && c.length === 3);
+  return {
+    name: typeof o.n === "string" ? o.n.replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, 40) : "",
+    data: { v: 1, pts, hair: loops(o.h, 4, 400), fringe: loops(o.f, 4, 400), skinTop: loops(o.k || [], 2, 400),
+      strokes: loops(o.s, 200, 400), shade: shadeOk ? o.d : [], colours, light: o.l === -1 ? -1 : 1,
+      ears: { right: !(o.e && o.e.right === false), left: !(o.e && o.e.left === false) } },
+  };
+}
+
+const b64 = bytes => { let t = ""; for (const x of bytes) t += String.fromCharCode(x); return btoa(t).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+const unb64 = t => Uint8Array.from(atob(t.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+const pipe = async (stream, bytes) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+
+/** The fragment "me=z…" for a drawing (deflate-raw), or "me=j…" where compression is missing. */
+export async function encodeMe(data, name = "") {
+  const bytes = new TextEncoder().encode(JSON.stringify(packMe(data, name)));
+  if (typeof CompressionStream === "function") return "me=z" + b64(await pipe(new CompressionStream("deflate-raw"), bytes));
+  return "me=j" + b64(bytes);
+}
+/** A drawing back from "#me=…" / "me=…"; throws on anything else. */
+export async function decodeMe(fragment) {
+  const m = String(fragment || "").match(/^#?me=([zj])([A-Za-z0-9_-]+)$/);
+  if (!m) throw new Error("This link does not hold a drawing.");
+  let bytes;
+  try {
+    bytes = unb64(m[2]);
+    if (m[1] === "z") bytes = await pipe(new DecompressionStream("deflate-raw"), bytes);
+    return unpackMe(JSON.parse(new TextDecoder().decode(bytes)));
+  } catch (e) { throw /drawing/.test(e.message) ? e : new Error("This drawing is damaged."); }
 }

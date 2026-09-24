@@ -330,6 +330,11 @@
   .book .made p { margin: 4px 0 0; }
   .book-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   .book-status { text-align: center; }
+  .me-note { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;
+    margin: 18px auto 0; font-size: 14px; color: var(--muted); }
+  .me-thumb svg { width: 40px; height: 48px; border-radius: 8px; background: #fbf8f2; display: block; }
+  .me-note button { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 8px;
+    border: 1px solid var(--line-2); background: var(--panel); color: var(--ink); cursor: pointer; }
   /* Moving books: the zoom stays inside the picture; the sentence being read is marked. */
   .book.moving .art { overflow: hidden; border-radius: 4px; }
   .book .page-text .said { border-radius: 3px; transition: background-color .3s ease; }
@@ -456,10 +461,10 @@
 // kills the whole page. Bump it whenever a module's exports change. The
 // service worker falls back with ignoreSearch, so offline still finds them.
 import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, loadArt, estimateTokens,
-         readDrawing } from "./sketch.mjs?v=8";
-import { scenePrompt, composeScene, looksLikeCoordinates } from "./scene.mjs?v=8";
+         readDrawing, registerFigure } from "./sketch.mjs?v=9";
+import { scenePrompt, composeScene, looksLikeCoordinates } from "./scene.mjs?v=9";
 import { STORY_SCHEMA, STORY_TOKENS, PAGE_TOKENS, storyMessages, parseStory, pageMessages,
-         fixPagePlan, wordsOnlyPlan, coverPlan } from "./book.mjs?v=8";
+         fixPagePlan, wordsOnlyPlan, coverPlan, castAsMe } from "./book.mjs?v=9";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
 
@@ -629,12 +634,74 @@ const MANUAL = new URLSearchParams(location.search).has("manual");
 // ?animate=0 is the way back to the plain book — for a phone that struggles —
 // and loads none of the three. Old ?animate=1 links still mean "on".
 const ANIMATE = new URLSearchParams(location.search).get("animate") !== "0";
-const animation = ANIMATE ? Promise.all([import("./animate.mjs?v=10"), import("./voice.mjs?v=10")]).catch(() => null) : null;
+const animation = ANIMATE ? Promise.all([import("./animate.mjs?v=11"), import("./voice.mjs?v=10")]).catch(() => null) : null;
 // A book in a link (web/share.mjs), and editing — and a shared link opens
 // even with ?animate=0 in it.
 const SHARED_HASH = /^#book=/.test(location.hash);
+
+// ---- Me: the reader's own caricature as the hero ----------------------------
+// selfie.html ("Draw me") hands over the drawing's data — never the photo —
+// after the "#", which no server sees. It is kept for this tab only
+// (sessionStorage), and the next book written here has the reader as its
+// hero. A shared link carries only the word "me": whoever opens it, the
+// reader included, sees a stand-in child, because a face does not travel.
+const ME_KEY = "sketchgpt.me";
+let me = null;     // { name, figure: { svg }, thumb }
+// Settled once the drawing (if any) is ready. Books wait for it, so which book
+// gets the reader never depends on how fast face.mjs loaded.
+let meReady = Promise.resolve();
+async function loadMe() {
+  let frag = null;
+  if (/^#me=/.test(location.hash)) {
+    frag = location.hash.slice(1);
+    history.replaceState(null, "", location.pathname + location.search);
+    try { sessionStorage.setItem(ME_KEY, frag); } catch {}
+  } else { try { frag = sessionStorage.getItem(ME_KEY); } catch {} }
+  if (!frag) return;
+  const face = await import("./face.mjs?v=2");
+  let got;
+  try { got = await face.decodeMe(frag); }
+  catch (e) { try { sessionStorage.removeItem(ME_KEY); } catch {} console.warn("me:", e.message); return; }
+  registerFigure("me");
+  me = { name: got.name,
+    figure: { svg: face.renderPortrait(got.data, { figure: true, seed: 3, idPrefix: "me-" }) },
+    thumb: face.renderPortrait(got.data, { seed: 3, credit: false, idPrefix: "thumb-" }) };
+  showIntro();
+}
+// The reader's figure blinks now and then in every book on the page: one
+// timer for all of them, none with reduced motion, eyes open for printing.
+let blinker = 0;
+const eyes = state => { for (const g of document.querySelectorAll('[data-figure] [data-part^="eye-"] > [data-state]'))
+  g.style.display = g.getAttribute("data-state") === state ? "" : "none"; };
+function startBlinking() {
+  if (blinker || !ANIMATE || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  blinker = setInterval(() => { eyes("half"); setTimeout(() => eyes("closed"), 70);
+    setTimeout(() => eyes("half"), 170); setTimeout(() => eyes("open"), 250); }, 4200);
+  addEventListener("beforeprint", () => eyes("open"));
+}
+function forgetMe() {
+  me = null;
+  try { sessionStorage.removeItem(ME_KEY); } catch {}
+  showIntro();
+}
+function meNote() {
+  const d = document.createElement("div");
+  d.className = "me-note";
+  if (me) {
+    const t = document.createElement("span");
+    t.className = "me-thumb"; t.innerHTML = me.thumb;           // our own drawing, from checked numbers
+    const p = document.createElement("span");
+    p.textContent = `You're the hero of your next book${me.name ? `, as ${me.name}` : ""}.`;
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = "Not me"; b.addEventListener("click", forgetMe);
+    d.append(t, p, b);
+  } else {
+    d.innerHTML = `<span>Put yourself in the story: <a href="./selfie.html">draw yourself from a photo</a>.</span>`;
+  }
+  return d;
+}
 const SHARING = ANIMATE || SHARED_HASH;
-const sharing = SHARING ? import("./share.mjs?v=10").catch(() => null) : null;
+const sharing = SHARING ? import("./share.mjs?v=11").catch(() => null) : null;
 
 // Scene mode: the model lists what is in the picture and the page places it
 // (web/scene.mjs). On for models of 1.5B and up at a 2048+ context, where the
@@ -1208,6 +1275,7 @@ function showIntro() {
     row.appendChild(b);
   }
   el.appendChild(row);
+  if (book) el.appendChild(meNote());
 }
 
 // ---- The privacy meter -------------------------------------------------------
@@ -1335,11 +1403,18 @@ function sheet(book, cls) {
 // it, and the error ended the whole book with five pages of text unshown.
 // A page with only scenery now shows its scenery, and a picture that cannot
 // be drawn at all leaves its page's words in place and says so.
-async function drawInto(box, title, entries) {
+async function drawInto(box, title, entries, { withMe = true } = {}) {
   try {
+    // The reader's figure only in books written in this tab; anywhere else
+    // "me" is the stand-in child.
+    const useMe = withMe && me;
+    if (!useMe) entries = entries.map(e => e.replace(/\bme\b/g, "child"));
+    const a = await loadArt();
+    const art = useMe ? { ART: a.ART, ART_BOX: a.ART_BOX, FIGURES: { me: me.figure } } : a;
     const composed = composeScene({ t: title, c: entries });
     renderSketch(box, JSON.stringify({ t: composed.t, c: composed.c }),
-      { rough: await loadRough(ROUGH), art: await loadArt(), spread: false, scenery: true });
+      { rough: await loadRough(ROUGH), art, spread: false, scenery: true });
+    if (useMe) startBlinking();
     return true;
   } catch (e) {
     box.classList.add("pending");
@@ -1532,11 +1607,14 @@ function readButton(book, status) {
 }
 
 async function runBook(premise, out) {
+  await meReady;
   const status = document.createElement("p");
   status.className = "note book-status";
   status.textContent = "Writing the story…";
   out.body.appendChild(status);
 
+  // Starring the reader: their name goes to the model; their face never does.
+  if (me && me.name) premise = `${premise.trim().replace(/[.!?]?$/, ".")} The hero is called ${me.name}.`;
   const raw = await complete(storyMessages(premise), { maxTokens: STORY_TOKENS, temperature: 0.8,
     schema: STORY_SCHEMA, onText: t => { status.textContent = `Writing the story… ${t.length} characters`; } });
   if (stopFlag && !raw.includes('"pages"')) { status.textContent = "Stopped."; return; }
@@ -1557,7 +1635,8 @@ async function runBook(premise, out) {
   }
 
   // The book as data: what a share link carries and what an edit changes.
-  const state = { title: story.title, cast: story.cast, pages: story.pages.map(text => ({ text, things: null })),
+  const state = { title: story.title, cast: me ? castAsMe(story.cast, me.name) : story.cast,
+    pages: story.pages.map(text => ({ text, things: null })),
     cover: null, voice: "" };
   const planning = sceneMode();
   await showBook(state, out, { status, truncated: story.truncated, plan: async text => {
@@ -1652,7 +1731,7 @@ async function showBook(state, out, { plan = null, status = null, truncated = fa
     const pg = sheets[i], page = state.pages[i];
     pg.art.textContent = ""; pg.art.className = "art";
     setText(pg.p, page.text);
-    await drawInto(pg.art, page.text, page.things);
+    await drawInto(pg.art, page.text, page.things, { withMe: !shared });
     const motion = bringToLife(pg.s, pg.art, page.text);
     pg.madeText.textContent = how[i] + (motion && motion.said.length ? ` Moving: ${motion.said.join("; ")}.` : "");
     if (!pg.made.isConnected) pg.s.appendChild(pg.made);
@@ -1661,7 +1740,7 @@ async function showBook(state, out, { plan = null, status = null, truncated = fa
     if (!state.cover) { coverArt.remove(); return; }
     if (!coverArt.isConnected) cover.appendChild(coverArt);
     coverArt.textContent = ""; coverArt.className = "art";
-    await drawInto(coverArt, state.title + " " + state.pages[0].text, state.cover);
+    await drawInto(coverArt, state.title + " " + state.pages[0].text, state.cover, { withMe: !shared });
     bringToLife(cover, coverArt, "");
   }
 
@@ -2117,6 +2196,7 @@ function fitPlaceholder() {
 function boot() {
   restore();
   syncMode();
+  meReady = loadMe().catch(e => console.warn("me:", e.message));
   // Fetched now rather than on first use, so switching to Sketch after the
   // model has loaded makes no request the privacy meter would have to list.
   loadRough(ROUGH);
@@ -2153,6 +2233,7 @@ async function openShared() {
   try {
     if (!share) throw new Error("The page could not load what it needs to open shared books. Reload to try again.");
     state = await share.decodeBook(location.hash);
+    await meReady;
   } catch (e) { showNote(out.body, e.message); return; }
   if ($("intro")) $("intro").remove();
   await showBook(state, out, { shared: true });

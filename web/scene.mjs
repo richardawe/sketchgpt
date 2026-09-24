@@ -19,7 +19,7 @@
 // The result is the same format the commands panel shows and edits, so
 // nothing downstream changes, and a person can still move anything by hand.
 
-import { resolveStamp, PALETTE, GRID } from "./sketch.mjs?v=8";
+import { resolveStamp, PALETTE, GRID } from "./sketch.mjs?v=9";
 import { ART_NAMES } from "./art-names.mjs?v=8";
 
 // Names that have a full-colour illustration. Those keep their own colours;
@@ -172,7 +172,7 @@ const SIZE = {
   "roller-coaster": 32, carousel: 24, statue: 26, crane: 30, island: 30, volcano: 38,
   "christmas-tree": 24, "beach-umbrella": 18, "fire-engine": 20, ambulance: 18, taxi: 16,
   "police-car": 16, motorbike: 12, tram: 20, canoe: 14, speedboat: 16, surfer: 13, swimmer: 12,
-  girl: 10, boy: 10, child: 10, runner: 12, cyclist: 13, dancer: 12, farmer: 13, cook: 13, astronaut: 13, santa: 14, snowman: 16,
+  girl: 10, boy: 10, child: 10, me: 15, runner: 12, cyclist: 13, dancer: 12, farmer: 13, cook: 13, astronaut: 13, santa: 14, snowman: 16,
   family: 16, picnic: 9, "christmas": 24, pumpkin: 9, fireworks: 16, sparkler: 8,
 };
 const sizeOf = s => SIZE[s] || 11;
