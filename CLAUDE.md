@@ -72,6 +72,8 @@ docs/sketch-scenes.md     why desktop sketches stopped asking for coordinates
 docs/storybook.md         a story written by the model, illustrated by the page — what broke
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
+docs/selfie.md            plan: animate an uploaded selfie on-device (MediaPipe + mesh warp) — not built
+scripts/rhyme-bench.mjs   can a small model rhyme? (no: 0-2/16, judged by CMUdict) — parked
 ```
 
 ---
