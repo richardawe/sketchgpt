@@ -71,7 +71,8 @@ try {
   // ---- The writer's phone ----------------------------------------------------
   const a = await device(browser, { gpu: true, voices: [{ name: 'Ava (Enhanced)', lang: 'en-US', localService: true, voiceURI: 'Ava' }] });
   const p = a.page;
-  await p.goto('http://localhost:8080/browser.html?lib=/mock.mjs&manual=1&animate=1');
+  // The default page: sharing and editing need no flag.
+  await p.goto('http://localhost:8080/browser.html?lib=/mock.mjs&manual=1');
   await p.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
   await p.click('#load');
   await p.waitForFunction(() => !document.querySelector('#send').disabled);
@@ -140,7 +141,8 @@ try {
   await p.waitForFunction(() => window.shared);
   const shared = await p.evaluate(() => window.shared);
   assert.equal(shared.title, 'Pip and the Sea');
-  assert.match(shared.url, /\?.*animate=1.*#book=z[A-Za-z0-9_-]+$/);
+  assert.match(shared.url, /#book=z[A-Za-z0-9_-]+$/);
+  assert.doesNotMatch(shared.url, /animate/, 'a shared link needs no flag');
   assert.ok(shared.url.length < 4000, `link is ${shared.url.length} characters`);
   assert.match(await p.locator('.book .share-note').textContent(), /Nothing is uploaded/);
   const mine = { texts: await texts(p), pictures: await fingerprint(p) };

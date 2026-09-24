@@ -54,6 +54,6 @@ Every update to the offline cache also wiped the downloaded AI model, so people 
 
 Found it while building this. Fixed, with a test.
 
-Try it: richardawe.github.io/sketchgpt/?animate=1
+Try it: richardawe.github.io/sketchgpt
 
 Inference by WebLLM 🙏

@@ -470,7 +470,7 @@ practical fine-tuning.
   `scripts/record-demo.mjs animated readaloud sharelink editbook` from
   `scripts/demo-books/dog-phone.json` (Qwen3-0.6B, shaped prompt). The read-aloud
   clip is silent and captioned. Mobile GIFs are ~5 MB (X caps GIFs at 15 MB).
-  **The thread links `?animate=1`** — the features are still behind the flag.
+  The thread links the plain site: the features are the default now.
   Recording found two things: the 0.6B asks the shape as a question ("Who is
   Charlie and where do they live? …"), now stripped by `unshape()`; and the
   privacy meter counted 11 of the page's own files when the offline worker took
@@ -522,8 +522,14 @@ practical fine-tuning.
 - **Storybook is the use case the owner picked, and it is now Book mode.**
   The spike scripts (`scripts/storybook.mjs` + `storybook-render.mjs`) stay as
   the Ollama harness for story prompts.
-- **Animated, read-aloud books: live behind `?animate=1`, for the owner's phone
-  first.** `web/animate.mjs` moves each picture by what it is and makes
+- **Moving pictures, read aloud, share links and editing are the DEFAULT** (the
+  owner's call after "It works" on a real phone). `?animate=0` is the plain book
+  and loads none of it — the way back for a phone that struggles; old
+  `?animate=1` links still mean on. `tests/book-browser.mjs` covers the plain
+  book with `?animate=0`; the default is covered by `animate-browser` and
+  `share-browser` (both touch screens; the desktop mouse path of the default
+  has no browser test of its own — `showBook` is the same code).
+- **Animated, read-aloud books: first built behind `?animate=1`.** `web/animate.mjs` moves each picture by what it is and makes
   characters act out their page's verbs (`pageActions()`: "jumps … He swims" →
   a leap into the water the page drew, then swimming; wishes, dreams,
   negations and "told to" are not deeds). The zoom moves the `<svg>` element,

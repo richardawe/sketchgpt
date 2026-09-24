@@ -1,12 +1,12 @@
-// ?animate=1 in the real page, on a touch screen: pictures move, the book is
+// The default book, in the real page, on a touch screen: pictures move, the book is
 // read aloud with the device's voice, printing stops everything still — and
-// without the flag none of it loads.
+// with ?animate=0 none of it loads.
 //
 //   node tests/animate-browser.mjs
 //
 // speechSynthesis is replaced by a recorder, so this checks what the page
-// asks the voice to say and when, not how it sounds. Nothing here has run on
-// a real iPhone; that is what ?animate=1 is for.
+// asks the voice to say and when, not how it sounds. The owner has run it on a
+// real iPhone ("It works"); everything here is emulation.
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { launch } from './browser.mjs';
@@ -70,7 +70,8 @@ try {
         body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
     });
 
-    await page.goto(`http://localhost:8080/browser.html?lib=/mock.mjs&manual=1${animate ? '&animate=1' : ''}`);
+    // The default is on; ?animate=0 is the plain book.
+    await page.goto(`http://localhost:8080/browser.html?lib=/mock.mjs&manual=1${animate ? '' : '&animate=0'}`);
     await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
     await page.click('#load');
     await page.waitForFunction(() => !document.querySelector('#send').disabled);
@@ -82,10 +83,11 @@ try {
     assert.equal(await book.locator('.art svg').count(), 7, 'every page and the cover get a picture');
 
     if (!animate) {
-      assert.ok(!fetched.includes('animate.mjs') && !fetched.includes('voice.mjs'), 'animation loaded without the flag');
+      assert.ok(!fetched.includes('animate.mjs') && !fetched.includes('voice.mjs') && !fetched.includes('share.mjs'),
+        'animation, voice or sharing loaded with ?animate=0');
       assert.equal(await book.locator('.book-actions button', { hasText: 'Read aloud' }).count(), 0);
       assert.equal(await page.evaluate(() => [...document.querySelectorAll('.book .art svg')]
-        .reduce((n, svg) => n + svg.getAnimations({ subtree: true }).length, 0)), 0, 'a picture moved without the flag');
+        .reduce((n, svg) => n + svg.getAnimations({ subtree: true }).length, 0)), 0, 'a picture moved with ?animate=0');
       assert.deepEqual(errors, []);
       await context.close();
       continue;
@@ -159,7 +161,7 @@ try {
   }
   console.log('Animate checks passed on a touch screen: pictures move and say how, a dream is not a deed, the zoom is on the ' +
     'picture box, off-screen pages pause, the book is read a sentence at a time with the best voice and marked as it goes, ' +
-    'a voice picker lists the device\'s voices and remembers the choice, printing is still, and without ?animate=1 nothing loads or moves.');
+    'a voice picker lists the device\'s voices and remembers the choice, printing is still, and with ?animate=0 nothing loads or moves.');
 } finally {
   await browser.close();
 }

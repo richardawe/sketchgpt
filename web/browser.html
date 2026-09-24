@@ -330,7 +330,7 @@
   .book .made p { margin: 4px 0 0; }
   .book-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   .book-status { text-align: center; }
-  /* ?animate=1: the zoom stays inside the picture; the sentence being read is marked. */
+  /* Moving books: the zoom stays inside the picture; the sentence being read is marked. */
   .book.moving .art { overflow: hidden; border-radius: 4px; }
   .book .page-text .said { border-radius: 3px; transition: background-color .3s ease; }
   .book .page-text .said.reading { background: #fff0b8; box-shadow: 0 0 0 2px #fff0b8; }
@@ -340,7 +340,7 @@
                font: 14px var(--font, sans-serif); }
   /* 16px: iOS zooms the page on a focused control smaller than that. */
   .voice-row select { font-size: 16px; max-width: 72vw; }
-  /* The bar (?animate=1 and shared books): at the top of the book, in reach while it is read. */
+  /* The bar: at the top of the book, in reach while it is read. */
   .book .book-top { position: sticky; top: -8px; z-index: 6; padding: 8px 0 6px; margin: 0 0 2px;
     background: color-mix(in srgb, var(--bg) 95%, transparent);
     -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
@@ -361,7 +361,7 @@
     font: 13px var(--font); color: var(--muted); }
   .book .edit-row .undo { min-height: 32px; padding: 4px 12px; border-radius: 999px; font: 500 13.5px var(--font); }
   .book.has-bar:not(.editing) .edit-page, .book.has-bar:not(.editing) .made, .book.has-bar:not(.editing) .edit-row { display: none; }
-  /* Editing a book (?animate=1): small, plain, out of the way of the page. */
+  /* Editing a book: small, plain, out of the way of the page. */
   .book .edit-page { display: block; margin: 8px auto 0; font-size: 13px; padding: 4px 12px; }
   .book .editor { margin-top: 12px; display: grid; gap: 10px; font: 14px/1.4 var(--font, sans-serif); }
   .book .ed-field { display: grid; gap: 4px; color: var(--book-muted); }
@@ -623,13 +623,15 @@ const CTX_PARAM = parseInt(new URLSearchParams(location.search).get("ctx"), 10);
 // ?manual=1 shows the model picker instead of downloading the chosen model
 // straight away. The "Choose a different model" link sets it.
 const MANUAL = new URLSearchParams(location.search).has("manual");
-// ?animate=1 — PROTOTYPE, for testing on a real phone before anyone else sees
-// it: pictures move (web/animate.mjs) and the book can be read aloud with the
-// device's own voice (web/voice.mjs). Neither module loads without the flag.
-const ANIMATE = new URLSearchParams(location.search).has("animate");
+// Moving pictures (web/animate.mjs), reading aloud with the device's own voice
+// (web/voice.mjs), and sharing and editing (web/share.mjs) are the default,
+// after the owner tried them on a real phone behind ?animate=1 ("It works").
+// ?animate=0 is the way back to the plain book — for a phone that struggles —
+// and loads none of the three. Old ?animate=1 links still mean "on".
+const ANIMATE = new URLSearchParams(location.search).get("animate") !== "0";
 const animation = ANIMATE ? Promise.all([import("./animate.mjs?v=10"), import("./voice.mjs?v=10")]).catch(() => null) : null;
-// A book in a link (web/share.mjs), and editing: with ?animate=1 while this is
-// a prototype — and for anyone opening a shared link, wherever it came from.
+// A book in a link (web/share.mjs), and editing — and a shared link opens
+// even with ?animate=0 in it.
 const SHARED_HASH = /^#book=/.test(location.hash);
 const SHARING = ANIMATE || SHARED_HASH;
 const sharing = SHARING ? import("./share.mjs?v=10").catch(() => null) : null;
@@ -1395,7 +1397,7 @@ function bookActions(book) {
   return bookBar(book, row, print, save);
 }
 
-// ?animate=1 and shared books: one bar at the top of the book, which stays in
+// The book's bar (not with ?animate=0): one bar at the top of the book, which stays in
 // reach while the book is read. The thing most people came for (reading it)
 // comes first; what is used once (print, download) is behind "⋯"; editing
 // is a mode, so the book reads clean until someone chooses to change it.
@@ -1436,7 +1438,7 @@ function bookBar(book, row, print, save) {
   return top;
 }
 
-// Read the book aloud with the device's own voice (?animate=1). Each page is
+// Read the book aloud with the device's own voice. Each page is
 // scrolled to and its picture replayed as its first sentence starts, and the
 // sentence being spoken is marked.
 function readButton(book, status) {
@@ -1678,7 +1680,7 @@ async function showBook(state, out, { plan = null, status = null, truncated = fa
   if (book.bar) book.prepend(actions); else book.appendChild(actions);
   if (!share) return book;
 
-  // ---- Sharing and editing (?animate=1, or any shared link) -------------------
+  // ---- Sharing and editing (not with ?animate=0, unless it is a shared link) ----
   const undo = [];
   const snapshot = () => JSON.stringify({ state, how });
   const { row: bar, note, moreBtn, barButton } = book.bar;

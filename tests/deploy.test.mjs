@@ -20,7 +20,7 @@ function modules() {
   const queue = ["browser.html"];
   while (queue.length) {
     const file = queue.shift();
-    // Static imports AND import("./x.mjs"): ?animate=1's modules are loaded on
+    // Static imports AND import("./x.mjs"): the animation modules are loaded on
     // demand, and the first deploy of them 404'd because only `from` was read.
     for (const m of web(file).matchAll(/(?:from\s+|import\(\s*)"\.\/([\w-]+\.mjs)(?:\?[^"]*)?"/g)) {
       if (!found.has(m[1])) { found.add(m[1]); queue.push(m[1]); }

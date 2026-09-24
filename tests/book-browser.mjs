@@ -79,7 +79,10 @@ try {
     }, { startIn: touch ? 'chat' : 'desk', story: STORY, plan: PLAN, copied: COPIED });
     await route(page);
 
-    await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs&manual=1');
+    // ?animate=0: the plain book, the way back for a phone that struggles. The
+    // default (moving, read aloud, share, edit) is tests/animate-browser.mjs and
+    // tests/share-browser.mjs; writing and drawing are the same code in both.
+    await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs&manual=1&animate=0');
     await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
     assert.deepEqual(errors, [], `${who}: the page threw while starting: ${errors.join('; ')}`);
     await page.click('#load');
