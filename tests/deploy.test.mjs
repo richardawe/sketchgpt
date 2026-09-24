@@ -17,7 +17,7 @@ const sw = web("sw.js");
 
 function modules() {
   const found = new Set();
-  const queue = ["browser.html"];
+  const queue = ["browser.html", "selfie.html"];
   while (queue.length) {
     const file = queue.shift();
     // Static imports AND import("./x.mjs"): the animation modules are loaded on
@@ -52,12 +52,26 @@ test("every imported module is precached by the service worker", () => {
 
 test("every versioned import of a module uses the same version", () => {
   const seen = new Map();
-  for (const f of ["browser.html", ...modules()]) {
+  for (const f of ["browser.html", "selfie.html", ...modules()]) {
     for (const m of web(f).matchAll(/(?:from\s+|import\(\s*)"\.\/([\w-]+\.mjs)\?v=(\d+)"/g)) {
       if (seen.has(m[1])) assert.equal(m[2], seen.get(m[1]), `${m[1]} is imported as v=${m[2]} and v=${seen.get(m[1])}`);
       seen.set(m[1], m[2]);
     }
   }
+});
+
+test("selfie.html is deployed, and every vendored file it loads exists and is deployed", async () => {
+  assert.match(workflow, /cp web\/selfie\.html\s/);
+  assert.match(workflow, /cp -r web\/vendor\s+_site\/vendor/);
+  const { existsSync } = await import("node:fs");
+  const refs = new Set();
+  for (const f of ["selfie.html", "face-find.mjs"])
+    for (const m of web(f).matchAll(/"\.\/vendor\/([\w./-]+)"/g)) refs.add(m[1]);
+  // face-find.mjs names its models and wasm by folder; list what it loads.
+  for (const m of ["face_detector", "face_landmarks_detector", "hair_segmenter", "selfie_segmenter"]) refs.add(`models/${m}.tflite`);
+  for (const f of ["litert_wasm_internal.js", "litert_wasm_internal.wasm", "litert_wasm_compat_internal.js", "litert_wasm_compat_internal.wasm", "wasm-utils.mjs"]) refs.add("litert/" + f);
+  for (const r of refs) assert.ok(existsSync(new URL("../web/vendor/" + r, import.meta.url)), `web/vendor/${r} is missing`);
+  assert.ok(refs.size >= 10);
 });
 
 test("an updated worker deletes only its own old caches, never the model weights", async () => {

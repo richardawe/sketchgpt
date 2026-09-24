@@ -72,7 +72,13 @@ docs/sketch-scenes.md     why desktop sketches stopped asking for coordinates
 docs/storybook.md         a story written by the model, illustrated by the page — what broke
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
-docs/selfie.md            plan: a selfie drawn as an animated hand-drawn caricature on-device, with GIF/sticker export — not built
+web/selfie.html           Draw me: a photo drawn as a moving caricature, GIF/sticker/SVG export (stage 1)
+web/face.mjs              selfie drawing: alignment, caricature rules, colour, hair, SVG, poses (pure)
+web/face-find.mjs         MediaPipe's face/hair/person models on LiteRT.js — never MediaPipe's runtime (it logs)
+web/face-mean.mjs         generated average face — never edit by hand (scripts/build-face-mean.mjs)
+web/vendor/               LiteRT.js, the four .tflite models, gifenc — regenerate with scripts/vendor-face.mjs
+docs/selfie.md            Selfie mode: the plan, stage 1 as built, what was measured and not tested
+scripts/face-bench.mjs    selfie fixture review: photos through the real page, drawings + skin numbers
 scripts/rhyme-bench.mjs   can a small model rhyme? (no: 0-2/16, judged by CMUdict) — parked
 ```
 
@@ -135,6 +141,8 @@ serves **4-bit**, and that gap explains most surprises.
 | **One picture must never cost the book** | First phone run of Book mode (Qwen3-0.6B, iPhone, 1024 ctx): the story came back, then page one's picture held only sky and ground, the renderer refused it ("did not return a drawing in the expected format"), and the error replaced the whole book. Causes found with `scripts/book-bench.mjs`: a hero with no illustration (fairy, witch, knight, grandma… — 0 of 96 bench pages, so rare but real), and the prefix matcher drawing "fairy" as a **ferris wheel** (fair + y). Fixed: heroes without a picture get a stand-in person, said under the picture; a word extends a known one only by a suffix or a known word; a scenery-only page is drawn; a picture that still fails leaves its page's words and a note. The bench also showed "happy", "love" and "friend" drawn as an emoji face, a heart and a child — feelings are no longer drawn. |
 | **The page must pick a model the browser can store** | "Models not downloading on desktop": a desktop with fp16 gets Qwen3-1.7B, a 990 MB download; a browser offering less room (nearly full disk, private window) ran it to 89% and then refused to store it, although the card already knew the quota and warned. Reproduced on the live site with real WebLLM. The auto-pick now skips a preferred model whose download will not fit in the browser's free storage (unless already cached) and says so: "Qwen3 1.7B would not fit: this browser has room for ~952 MB". **Confirmed by the owner on their desktop: models now download and it works.** |
 | **A second pass does not fix a small model's story; the page's shape does** | "The stories are not that coherent." Measured before building (`scripts/story-pass-bench.mjs`, Qwen3-0.6B, 8 stories per approach, scored blind 0–3): one pass 5/24, write-then-revise 6, plan-then-write 11, **one line per page saying what it is for (at home → wants → tries and fails → help → works → ending) 15/24, 7 of 8 coherent, none broken**, one call, ~80 extra prompt tokens. A 0.6B cannot see what is wrong with its own story; it can fill a structure it is handed. As general advice the same shape scored 8. It leaks: the model copies the labels into the text and writes "the hero", so `unshape()` strips them on the page. `docs/storybook.md`. |
+| **A library can log even when the page never asks it to** | MediaPipe's `tasks-vision` runtime POSTs usage statistics to Google from every task it creates. The owner's rule is **use nothing that logs**, not "block it". MediaPipe's models (weights) are kept; they run on LiteRT.js, whose every URL was checked. `tests/face.test.mjs` fails on any logging endpoint in `web/vendor/`. Read a vendored bundle's URLs before shipping it. |
+| **Skin colour: both obvious rules were wrong** | On 9 public-domain portraits: sampling lit pixels drew a dark-skinned woman several shades lighter; the whole-face median drew two side-lit people near-black; "the lit half" drew almost everyone lighter, since even studio portraits differ 12–25 L* between halves. Shipped: the median of face skin without *deep* shadow (>25 L* below the lit half), lightness kept exactly. A judgement for people to review, printed by `scripts/face-bench.mjs`. `docs/selfie.md`. |
 
 ### Browser gotchas already fixed
 
@@ -577,6 +585,14 @@ practical fine-tuning.
   Editing is a mode — per-page Edit buttons, "How this picture was made" and
   Undo show only while it is on — so the book reads clean. One panel open at a
   time; one row at 390px. The public page without the flag keeps its bottom row.
+- **Selfie mode ("Draw me", `web/selfie.html`) stage 1 is built and never run
+  on a phone.** Pick a photo → moving hand-drawn caricature → slider, GIF /
+  sticker / SVG export → Forget. MediaPipe's models on LiteRT.js, all on
+  CPU, nothing sent or stored (`tests/selfie-browser.mjs`, touch screen,
+  mutation-checked). Owed: the owner's phone (Safari will likely load
+  LiteRT's compat wasm), real selfies instead of studio portraits, and a
+  stereotype review on ~20 faces. The caricature as Book's hero is stage 3.
+  The main page does not link to it yet.
 - **Next idea: product specification manuals with diagrams.** Researched,
   nothing built. The design that follows from the findings above: the model
   fills a JSON plan (blocks, links, labels) and the page lays it out — elkjs

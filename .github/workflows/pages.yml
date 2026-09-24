@@ -46,10 +46,15 @@ jobs:
           cp web/animate.mjs _site/animate.mjs   # ?animate=1 only
           cp web/voice.mjs  _site/voice.mjs     # ?animate=1 only
           cp web/share.mjs  _site/share.mjs     # ?animate=1 and shared links
+          cp web/face.mjs   _site/face.mjs      # selfie.html
+          cp web/face-mean.mjs _site/face-mean.mjs
+          cp web/face-find.mjs _site/face-find.mjs
+          cp -r web/vendor  _site/vendor        # selfie.html: LiteRT.js, MediaPipe's models, gifenc
           cp web/sw.js      _site/sw.js
           cp web/browser.html _site/index.html   # the page that works for visitors
           cp web/index.html   _site/ollama.html  # needs a local Ollama
           cp web/browser.html _site/browser.html # stable direct link
+          cp web/selfie.html  _site/selfie.html  # Draw me: a photo drawn as a caricature
           ls -la _site
 
       # NOTE: enablement cannot bootstrap Pages on its own here. Creating a
