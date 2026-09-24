@@ -6,6 +6,16 @@ learn, and the conventions that hold here.
 **What this is:** the first shipped project of a one-person AI lab, built in
 public on X. The lab's thesis is at the bottom.
 
+**Who this is for, and how it works.** One person, trying things out and
+building things. There is no team, no roadmap committee and no product to
+protect, so the working pattern is: pick an idea, build the smallest version
+that runs on a real device, measure it, and keep it, change it or cut it on
+what the measurement says. Sketch → Work → Desk → Book is that loop run four
+times; the next idea (spec manuals with diagrams) is the fifth. Expect the
+direction to change — a mode being retired is the process working, not a
+failure. Write things down here so the next session does not have to relearn
+them, and keep changes small enough for one person to review.
+
 ---
 
 ## Live now
