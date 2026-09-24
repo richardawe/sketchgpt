@@ -36,6 +36,16 @@ export const STORY_SCHEMA = JSON.stringify({
   }
 });
 
+// What each page is for. A second pass did not make Qwen3-0.6B's stories make
+// sense — asked to "rewrite it so it makes sense" it kept every problem (6/24
+// against 5/24 for one pass). Handing it this shape did: 15/24, 7 of 8 stories
+// coherent, none broken, in the same single call (docs/storybook.md). The page
+// owns structure the way it owns continuity. As general advice in the system
+// prompt the same shape scored 8/24; it has to be one line per page.
+export const SHAPE = ["who the hero is and where they live", "what the hero wants, or the problem",
+  "the hero tries, and it does not work", "a friend or an idea helps", "the hero tries again and it works",
+  "a happy ending that answers the problem"];
+
 export function storyMessages(premise) {
   return [
     { role: "system", content: "You write short picture-book stories for young children. Warm, simple, " +
@@ -45,8 +55,48 @@ export function storyMessages(premise) {
     // in it, Qwen2.5-0.5B wrote a book whose pages read "page 1 text", "page 2
     // text" — in 2 of 3 stories. The schema already fixes the shape.
     { role: "user", content: `Write a ${PAGES}-page picture-book story about ${premise}. Reply in JSON ` +
-      `with the title, the cast (each main character's name and what they are), and the ${PAGES} pages.` }
+      `with the title, the cast (each main character's name and what they are), and the ${PAGES} pages. ` +
+      `Follow this shape. ` + SHAPE.map((a, i) => `Page ${i + 1}: ${a}.`).join(" ") }
   ];
+}
+
+const words = s => s.toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
+// The shape's words, and the ones a model swaps in when it paraphrases them
+// ("It Doesn't Work" for "it does not work").
+const SHAPE_WORDS = new Set([...SHAPE.flatMap(words), "doesn", "t", "didn", "don", "does", "not"]);
+
+// Is this sentence the shape rather than the story? Four or more words, all of
+// them the shape's — so "A friend helps." is story. A name is allowed only in
+// Title Case, where the model has put the hero's name into the label ("Who Lila
+// Is and Where They Live"); in a plain sentence — "Pip tries again and it
+// works." — a name makes it story.
+function isShape(sentence, cast) {
+  const w = words(sentence);
+  if (w.length < 4) return false;
+  if (w.every(x => SHAPE_WORDS.has(x))) return true;
+  const names = new Set(cast.flatMap(c => words(c.name)));
+  const titled = sentence.split(/\s+/).filter(x => /^[a-z]/i.test(x) && x.length > 3).every(x => /^[A-Z]/.test(x));
+  return titled && w.every(x => SHAPE_WORDS.has(x) || names.has(x));
+}
+
+/**
+ * The shape, taken back out of the story. In 7 of 8 shaped stories the model
+ * copied it into the text — "Who the hero is and where they live. Lila lives in
+ * a small garden." — or called the hero "the hero". Once in a spot check it gave
+ * the label a page of its own. A leading label is dropped, a page that is only a
+ * label comes back empty (parseStory drops it), and "the hero" becomes the
+ * hero's name.
+ */
+export function unshape(text, cast = []) {
+  let t = text.trim().replace(/^(first|second|third|fourth|fifth|sixth|last)\s+page\s*[:.\-–—]\s*/i, "");
+  if (isShape(t.replace(/[.:!]\s*$/, ""), cast) && !/[.:!?]\s+\S/.test(t)) return "";
+  const m = t.match(/^([^.:!?]+)[.:]\s+(\S.*)$/s);
+  if (m && isShape(m[1], cast)) t = m[2];
+  // "The hero, Lucas, lives…" names the hero itself.
+  t = t.replace(/\bthe hero,\s*([A-Z][\w'-]*),\s*/gi, "$1 ");
+  const hero = cast[0] && cast[0].name;
+  if (hero && !/^the\b/i.test(hero)) t = t.replace(/\bthe hero\b/gi, hero);
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 // A story needs room: six short pages and a title fit well inside this.
@@ -73,18 +123,22 @@ export function parseStory(raw) {
     if (pages.length) data = { title: title ? title[1] : "", cast, pages, truncated: true };
   }
   if (!data || !Array.isArray(data.pages)) throw new Error("The model did not write a story. Try again.");
+  const cast = (Array.isArray(data.cast) ? data.cast : [])
+    .filter(c => c && typeof c.name === "string" && typeof c.is === "string" && c.name.trim())
+    // "Lila (girl)" — the model puts what they are into the name, too.
+    .map(c => ({ name: c.name.replace(/\s*\([^)]*\)/g, "").trim() || c.name.trim(),
+                 is: c.is.trim().toLowerCase().split(/\s+/).pop() }))
+    .slice(0, 3);
   const pages = data.pages.filter(p => typeof p === "string")
     // "page 1: Emily plants a seed" — the number is the page's job, not the text's.
     // So is "1. Luna and Milo…", which Qwen3-0.6B wrote in 2 of 3 phone books.
     .map(p => p.trim().replace(/^page\s*\d+\s*[:.\-–—]\s*/i, "").replace(/^\d{1,2}\s*[.):\-–—]\s+/, "").trim())
     // A placeholder copied from a template is not a page.
     .filter(p => p && !/^(page\s*\d+\s*(text)?|\.\.\.|…|text)$/i.test(p))
+    .map(p => unshape(p, cast))
+    .filter(Boolean)
     .slice(0, 8);
   if (pages.length < 2) throw new Error("The model did not write a story. Try again.");
-  const cast = (Array.isArray(data.cast) ? data.cast : [])
-    .filter(c => c && typeof c.name === "string" && typeof c.is === "string" && c.name.trim())
-    .map(c => ({ name: c.name.trim(), is: c.is.trim().toLowerCase().split(/\s+/).pop() }))
-    .slice(0, 3);
   return { title: (typeof data.title === "string" && data.title.trim()) || "A story", cast, pages,
            truncated: !!data.truncated || pages.length < PAGES };
 }

@@ -9,7 +9,7 @@
 // a book whose pages read "page 1 text".
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PAGES, STORY_SCHEMA, storyMessages, parseStory, pageMessages, nameWords,
+import { PAGES, STORY_SCHEMA, SHAPE, storyMessages, parseStory, unshape, pageMessages, nameWords,
          planFromWords, fixPagePlan, wordsOnlyPlan, coverPlan, drawAs } from "../web/book.mjs?v=8";
 import { resolveStamp, parseSketch } from "../web/sketch.mjs?v=8";
 import { composeScene } from "../web/scene.mjs?v=8";
@@ -31,7 +31,65 @@ test("the prompt carries the premise and no placeholder text to copy", () => {
   const m = storyMessages("a cat who wants to fly");
   assert.match(m[1].content, /a cat who wants to fly/);
   // `"page 1 text"` in the prompt became the pages themselves on Qwen2.5-0.5B.
-  assert.doesNotMatch(m.map(x => x.content).join(" "), /page 1|\.\.\."|"text"/i);
+  // The shape names pages, but only with what happens on them.
+  assert.doesNotMatch(m.map(x => x.content).join(" "), /page \d+ text|\.\.\."|"text"/i);
+});
+
+test("the prompt gives every page its job, one line each", () => {
+  assert.equal(SHAPE.length, PAGES);
+  const user = storyMessages("a cat who wants to fly")[1].content;
+  SHAPE.forEach((beat, i) => assert.ok(user.includes(`Page ${i + 1}: ${beat}.`), beat));
+});
+
+test("the shape copied into a page is taken back out", () => {
+  // All four from Qwen3-0.6B stories written with the shape.
+  assert.equal(unshape("Who the hero is and where they live. Lila lives in a small garden.", [{ name: "Lila" }]),
+    "Lila lives in a small garden.");
+  assert.equal(unshape("The Hero Tries, and It Does Not Work. The robot tries to find a friend.", [{ name: "Robot" }]),
+    "The robot tries to find a friend.");
+  assert.equal(unshape("The hero, Lucas, lives in the woods and is afraid of the dark.", [{ name: "Lucas" }]),
+    "Lucas lives in the woods and is afraid of the dark.");
+  assert.equal(unshape("The hero wants to see the sea, but the ocean is too far away.", [{ name: "Max" }]),
+    "Max wants to see the sea, but the ocean is too far away.");
+  assert.equal(unshape("First page: At home, the Dragon is by the fire.", []), "At home, the Dragon is by the fire.");
+});
+
+test("the story's own sentences are left alone", () => {
+  // Short, or not made of the shape's words: story, not a label.
+  assert.equal(unshape("A friend helps. Max smiles.", [{ name: "Max" }]), "A friend helps. Max smiles.");
+  assert.equal(unshape("Pip tries again and it works. The kite flies!", [{ name: "Pip" }]),
+    "Pip tries again and it works. The kite flies!");
+  // "The Little Dog" is a name that starts with "the"; "the hero" stays rather than read "The Little Dog" mid-sentence.
+  assert.equal(unshape("The hero finds the sea.", [{ name: "The Little Dog" }]), "The hero finds the sea.");
+});
+
+test("a page that is only the shape is not a page", () => {
+  // Qwen3-0.6B, spot check: labels and story on alternate pages, the hero's name in the label.
+  const lila = [{ name: "Lila", is: "dog" }];
+  assert.equal(unshape("Who Lila Is and Where They Live", lila), "");
+  assert.equal(unshape("Lila Tries, and It Doesn't Work", lila), "");
+  assert.equal(unshape("What the hero wants, or the problem.", lila), "");
+  // Title Case with a name, then story: the label goes, the story stays.
+  assert.equal(unshape("Who Lila Is and Where They Live. Lila lives by the sea.", lila), "Lila lives by the sea.");
+  // A real one-sentence page with a name is story.
+  assert.equal(unshape("Lila tries again and it works.", lila), "Lila tries again and it works.");
+  const s = parseStory(JSON.stringify({ title: "A Little Dog and the Sea", cast: lila, pages: [
+    "Who Lila Is and Where They Live", "Lila lives in a small town and dreams of the sea.",
+    "What Lila Wants or the Problem", "Lila wants to go to the sea, but she doesn't know how.",
+    "Lila Tries, and It Doesn't Work", "Lila tries to swim, but she's scared."] }));
+  assert.equal(s.pages.length, 3);
+  assert.ok(s.truncated, "half a book says so");
+});
+
+test("what a character is does not stay in their name", () => {
+  const s = parseStory(story(["The hero wants to grow a plant.", ...six.slice(1)], { cast: [{ name: "Lila (girl)", is: "girl" }] }));
+  assert.equal(s.cast[0].name, "Lila");
+  assert.equal(s.pages[0], "Lila wants to grow a plant.");
+});
+
+test("a parsed story comes back without the shape in it", () => {
+  const s = parseStory(story(["Who the hero is and where they live. Pip lives by a wood.", ...six.slice(1)]));
+  assert.equal(s.pages[0], "Pip lives by a wood.");
 });
 
 test("a story is read, with thinking and code fences stripped", () => {
