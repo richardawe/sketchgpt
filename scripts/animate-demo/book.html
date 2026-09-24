@@ -28,7 +28,7 @@
 <script type="module">
 import { renderSketch, loadRough, loadArt, readDrawing } from "/web/sketch.mjs?v=8";
 import { composeScene } from "/web/scene.mjs?v=8";
-import { parseStory, fixPagePlan, coverPlan } from "/web/book.mjs?v=8";
+import { parseStory, fixPagePlan, coverPlan, wordsOnlyPlan } from "/web/book.mjs?v=8";
 import { animatePicture } from "/web/animate.mjs";
 
 const q = new URLSearchParams(location.search);
@@ -44,10 +44,18 @@ const draw = (box, title, entries) => {
 };
 
 // Every page is planned and drawn up front, as the app does while writing.
+// ?phone=1 draws each picture from its page's words, as the app does on a phone.
+const phone = q.has("phone");
 const plans = story.pages.map((text, i) => {
+  if (phone) return wordsOnlyPlan(text, story).entries;
   let entries = []; try { entries = readDrawing(book.plans[i]).c; } catch {}
   return fixPagePlan(entries, text, story).entries;
 });
+// Frames per second while the pages play, for judging a slow device.
+const frames = []; let last = performance.now();
+(function tick(t) { frames.push(t - last); last = t; if (!window.__done) requestAnimationFrame(tick); })(last);
+window.__fps = () => { const f = frames.slice(30); const avg = f.reduce((a, b) => a + b, 0) / f.length;
+  const slow = f.filter(x => x > 50).length; return { fps: Math.round(1000 / avg), framesOver50ms: slow, frames: f.length }; };
 
 let current = null, motion = null;
 async function show(sheet, hold) {
