@@ -105,6 +105,10 @@ try {
     assert.ok(states.length && states.every(s => s === 'paused'), `page 5, off screen, should be paused: ${states}`);
 
     // ---- The voice picker ------------------------------------------------------
+    // The bar is at the top of the book, and the voice picker is one tap into it.
+    assert.ok(await book.evaluate(b => b.firstElementChild.classList.contains('book-top')), 'the bar is not at the top of the book');
+    await book.locator('.book-bar .voice-btn').click();
+    assert.equal(await book.locator('.book-bar .voice-btn').getAttribute('aria-expanded'), 'true');
     const select = book.locator('.voice-row select');
     assert.deepEqual(await select.locator('option').allTextContents(),
       ['Best available (Ava (Enhanced))', 'Ava (Enhanced) · en-US', 'Albert · en-US']);
@@ -133,7 +137,9 @@ try {
     // As a sentence starts it is marked, and its page's picture plays again.
     await page.evaluate(() => window.spoken[1].onstart());
     assert.equal(await book.locator('.said.reading').textContent(), 'Pip is a little dog who lives on a farm. ');
+    assert.match(await book.locator('.book-top .share-note').textContent(), /Reading page 1 of 6 · Albert/);
     await page.evaluate(() => window.spoken[6].onstart());
+    assert.match(await book.locator('.book-top .share-note').textContent(), /Reading page 5 of 6/);
     assert.match(await book.locator('.said.reading').textContent(), /^Pip jumps into the sea/);
     assert.equal(await book.locator('.reading').count(), 1, 'only one sentence is marked');
     await page.evaluate(() => window.spoken.at(-1).onend());
@@ -141,7 +147,9 @@ try {
     assert.equal(await book.locator('.reading').count(), 0, 'the mark stays after the reading ended');
 
     // ---- Printing stops everything still, then it moves again -------------------
-    await book.locator('.book-actions button', { hasText: 'Print' }).click();
+    await book.locator('.book-bar .more-btn').click();
+    assert.ok(await book.locator('.voice-panel').isHidden(), 'one panel at a time');
+    await book.locator('.more-panel button', { hasText: 'Print' }).click();
     assert.equal(await page.evaluate(() => window.animsWhilePrinting), 0, 'pictures were moving while printing');
     await page.waitForTimeout(1700);
     assert.ok(await page.evaluate(() => document.getAnimations().length) > 10, 'pictures did not move again after printing');

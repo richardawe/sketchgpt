@@ -11,7 +11,7 @@
 // Everything decoded here came from a link anyone could have written, so it
 // is capped and type-checked before the page touches it, and the page shows
 // it as text, never markup.
-import { drawAs, nameWords, SHAPE, storyMessages } from "./book.mjs?v=8";
+import { drawAs, nameWords, SHAPE, storyMessages, wordsOnlyPlan, coverPlan } from "./book.mjs?v=8";
 
 export const LIMITS = { title: 120, name: 40, is: 20, pages: 8, text: 600, things: 24, thing: 48, voice: 80 };
 const str = (v, max) => (typeof v === "string" ? v : "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max);
@@ -36,10 +36,27 @@ export function cleanBook(b) {
 }
 
 // Short keys: the link is the whole book, and every byte is in someone's message.
-const pack = b => ({ v: 1, t: b.title, c: b.cast.map(c => [c.name, c.is]), p: b.pages.map(p => [p.text, p.things]),
-  k: b.cover, s: b.voice || undefined });
-const unpack = o => ({ title: o.t, cast: (o.c || []).map(c => ({ name: c && c[0], is: c && c[1] })),
-  pages: (o.p || []).map(p => ({ text: p && p[0], things: p && p[1] })), cover: o.k, voice: o.s });
+// The words are ~85% of it and cannot be left out; what the page can rebuild
+// is — a picture's list that is exactly what its words give (every phone
+// page, unless edited), and a cover that is exactly what page one gives.
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const pack = b => {
+  const pages = b.pages.map(p => same(p.things, wordsOnlyPlan(p.text, b).entries) ? [p.text] : [p.text, p.things]);
+  const firstThings = b.pages[0] ? b.pages[0].things : [];
+  return { v: 1, t: b.title, c: b.cast.map(c => [c.name, c.is]), p: pages,
+    k: same(b.cover, coverPlan(b, firstThings)) ? undefined : b.cover, s: b.voice || undefined };
+};
+const unpack = o => {
+  const book = { title: o.t, cast: (o.c || []).map(c => ({ name: c && c[0], is: c && c[1] })),
+    // Empty pages go first, so page i of the link is page i of the book.
+    pages: (Array.isArray(o.p) ? o.p : []).filter(p => Array.isArray(p) && str(p[0], LIMITS.text))
+      .map(p => ({ text: p[0], things: p[1] })), cover: o.k, voice: o.s };
+  const clean = cleanBook({ ...book, pages: book.pages.map(p => ({ ...p, things: p.things || [] })) });
+  // Rebuild what was left out, from the cleaned words (the same code that made it).
+  clean.pages.forEach((p, i) => { if (!Array.isArray(book.pages[i] && book.pages[i].things)) p.things = wordsOnlyPlan(p.text, clean).entries; });
+  if (!Array.isArray(o.k)) clean.cover = coverPlan(clean, clean.pages[0].things);
+  return clean;
+};
 
 const toB64 = bytes => { let s = ""; for (const x of bytes) s += String.fromCharCode(x);
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
@@ -75,7 +92,7 @@ export async function decodeBook(fragment) {
   let o;
   try { o = JSON.parse(new TextDecoder().decode(bytes)); } catch { throw new Error("This link is damaged — part of it may be missing."); }
   if (!o || o.v !== 1) throw new Error("This link was made by a newer version of the page.");
-  return cleanBook(unpack(o));
+  return unpack(o);
 }
 
 // ---- Edits -------------------------------------------------------------------

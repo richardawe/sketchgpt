@@ -547,6 +547,17 @@ practical fine-tuning.
   from data. `tests/share-browser.mjs` covers it, including a second device
   with no GPU opening the link — mutation-checked on the autoload skip, the
   typed list, the rename and the voice. Never tried on a real phone.
+  **Owner: "Works !!!"** on a real phone. **Why the link is long:** the words
+  are ~85% of it (measured: 797 characters for a six-page desktop book, 674
+  of them text). What the page can rebuild is left out — a picture list equal
+  to `wordsOnlyPlan(text)`, a cover equal to `coverPlan()` — for 5–10%. Shorter
+  than that needs a server holding the story, which breaks "nothing uploaded".
+- **The book's controls are one sticky bar at the top** (?animate=1 and shared
+  books): Read aloud (primary; the bar says "Reading page 3 of 6 · voice"),
+  Voice (a panel with the picker and Try), Share, Edit, ⋯ (Print, Download).
+  Editing is a mode — per-page Edit buttons, "How this picture was made" and
+  Undo show only while it is on — so the book reads clean. One panel open at a
+  time; one row at 390px. The public page without the flag keeps its bottom row.
 - **Next idea: product specification manuals with diagrams.** Researched,
   nothing built. The design that follows from the findings above: the model
   fills a JSON plan (blocks, links, labels) and the page lays it out — elkjs

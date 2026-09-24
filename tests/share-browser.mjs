@@ -79,8 +79,14 @@ try {
   await p.click('#send');
   await p.waitForFunction(() => !document.querySelector('#send').disabled && document.querySelector('.book .share'));
 
-  // Edit a page's words: the picture is rebuilt from them.
+  // Editing is a mode: until it is on, the book reads clean.
   const sheet = n => p.locator(`.book .sheet:nth-of-type(${n})`);
+  assert.ok(await sheet(4).locator('.edit-page').isHidden(), 'edit buttons show before editing is on');
+  assert.ok(await sheet(4).locator('.made').isHidden(), '"How this picture was made" shows before editing is on');
+  await p.locator('.book .edit-toggle').click();
+  assert.equal(await p.locator('.book .edit-toggle').textContent(), 'Done');
+
+  // Edit a page's words: the picture is rebuilt from them.
   await sheet(4).locator('.edit-page').click();
   await sheet(4).locator('.ed-text').fill('Pip rides a bike past the village.');
   await sheet(4).locator('.ed-save').click();
@@ -157,6 +163,13 @@ try {
   assert.match(await b.page.locator('.book .reader-note:not(.share-note)').textContent(),
     /asked for Ava \(Enhanced\): using Ava \(Premium\)/);
   assert.equal(await b.page.locator('.book .voice-row select').inputValue(), 'AvaP');
+  if (process.env.SHOT) {
+    const q = b.page, shot = async n => { await q.waitForTimeout(1200); await q.screenshot({ path: `${process.env.SHOT}-${n}.png` }); };
+    await q.evaluate(() => document.querySelector('.book').scrollIntoView()); await shot(1);
+    await q.evaluate(() => document.querySelector('.book .sheet:nth-of-type(4)').scrollIntoView({ block: 'center' })); await shot(2);
+    await q.locator('.book-bar .voice-btn').click(); await shot(3); await q.locator('.book-bar .voice-btn').click();
+    await q.locator('.book .edit-toggle').click(); await shot(4); await q.locator('.book .edit-toggle').click();
+  }
   // It can be edited and shared on, too.
   assert.equal(await b.page.locator('.book .edit-page').count(), 7);
   assert.deepEqual(b.errors, [], b.errors.join('; '));

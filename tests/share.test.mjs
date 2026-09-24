@@ -3,6 +3,7 @@
 //   node --test tests/share.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { wordsOnlyPlan, coverPlan } from "../web/book.mjs";
 import { encodeBook, decodeBook, cleanBook, changeCharacter, replaceName, thingsFrom, LIMITS, rewriteMessages, readRewrite } from "../web/share.mjs";
 
 // A real Qwen3-1.7B book (scripts/demo-books/dog-shaped.json), shortened.
@@ -102,3 +103,28 @@ test("a rewrite is asked with the page's job and its neighbour, and read back as
   assert.equal(readRewrite('</think>{"text": "He says \\"hi\\" and'), 'He says "hi" and', "cut off: keep what came");
   assert.equal(readRewrite("I cannot do that."), null);
 });
+
+test("what the page can rebuild is left out of the link, and rebuilt the same", async () => {
+  // A phone's book: every picture comes from its page's words.
+  const phone = { ...BOOK, pages: BOOK.pages.map(p => ({ text: p.text, things: wordsOnlyPlan(p.text, BOOK).entries })) };
+  phone.cover = coverPlan(phone, phone.pages[0].things);
+  const lean = await encodeBook(phone);
+  const full = "book=j" + Buffer.from(JSON.stringify({ v: 1, t: phone.title, c: phone.cast.map(c => [c.name, c.is]),
+    p: phone.pages.map(p => [p.text, p.things]), k: phone.cover, s: phone.voice })).toString("base64url");
+  assert.deepEqual(await decodeBook(lean), phone);
+  assert.deepEqual(await decodeBook(full), phone, "a link that spells everything out still opens");
+  const bare = JSON.parse(Buffer.from((await encodeBookPlain(phone)).slice(6), "base64url").toString());
+  assert.ok(bare.p.every(p => p.length === 1) && !("k" in bare), "lists and cover were not left out");
+  // An edited list is the person's, and always travels.
+  const edited = { ...phone, pages: [{ ...phone.pages[0], things: ["rocket"] }, ...phone.pages.slice(1)] };
+  assert.deepEqual((await decodeBook(await encodeBook(edited))).pages[0].things, ["rocket"]);
+  // An empty page in a link does not shift the pictures onto the wrong pages.
+  const gap = "book=j" + Buffer.from(JSON.stringify({ v: 1, t: "x", c: [], p: [["   "], ["Pip swims."], ["Pip sleeps.", ["moon"]]] })).toString("base64url");
+  assert.deepEqual((await decodeBook(gap)).pages.map(p => p.text), ["Pip swims.", "Pip sleeps."]);
+  assert.deepEqual((await decodeBook(gap)).pages[1].things, ["moon"]);
+});
+
+async function encodeBookPlain(b) {
+  const saved = globalThis.CompressionStream; globalThis.CompressionStream = undefined;
+  try { return await encodeBook(b); } finally { globalThis.CompressionStream = saved; }
+}

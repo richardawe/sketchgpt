@@ -340,6 +340,27 @@
                font: 14px var(--font, sans-serif); }
   /* 16px: iOS zooms the page on a focused control smaller than that. */
   .voice-row select { font-size: 16px; max-width: 72vw; }
+  /* The bar (?animate=1 and shared books): at the top of the book, in reach while it is read. */
+  .book .book-top { position: sticky; top: -8px; z-index: 6; padding: 8px 0 6px; margin: 0 0 2px;
+    background: color-mix(in srgb, var(--bg) 95%, transparent);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+  .book .book-bar { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; }
+  .book .book-bar button { min-height: 40px; padding: 8px 11px; border-radius: 999px; font: 500 14.5px var(--font); }
+  .book .book-bar .read { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+  .book .book-bar .read::before { content: "\25B6\FE0E\00a0"; font-size: .8em; }
+  .book .book-bar .read.on::before { content: "\25A0\FE0E\00a0"; }
+  .book .book-bar [aria-expanded="true"], .book .book-bar [aria-pressed="true"] { background: var(--sunk); border-color: var(--ink-2); }
+  .book .book-bar .more-btn { min-width: 44px; font-weight: 700; }
+  .book .bar-panels > div { margin-top: 8px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .book .bar-panels > div[hidden] { display: none; }
+  .book .voice-panel { flex-direction: column; align-items: center; }
+  .book .voice-panel .voice-row { margin: 0; }
+  .book .book-top .share-note { margin: 6px 0 0; min-height: 0; }
+  .book .book-top .share-note:empty { display: none; }
+  .book .edit-row { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 6px;
+    font: 13px var(--font); color: var(--muted); }
+  .book .edit-row .undo { min-height: 32px; padding: 4px 12px; border-radius: 999px; font: 500 13.5px var(--font); }
+  .book.has-bar:not(.editing) .edit-page, .book.has-bar:not(.editing) .made, .book.has-bar:not(.editing) .edit-row { display: none; }
   /* Editing a book (?animate=1): small, plain, out of the way of the page. */
   .book .edit-page { display: block; margin: 8px auto 0; font-size: 13px; padding: 4px 12px; }
   .book .editor { margin-top: 12px; display: grid; gap: 10px; font: 14px/1.4 var(--font, sans-serif); }
@@ -356,7 +377,7 @@
     body.printing .msg:not(:has(.print-me)), body.printing .msg .who, body.printing .msg .body > :not(.print-me),
     body.printing .book .made, body.printing .book-actions,
     body.printing .book .voice-row, body.printing .book .reader-note,
-    body.printing .book .edit-page, body.printing .book .editor { display: none !important; }
+    body.printing .book .edit-page, body.printing .book .editor, body.printing .book .book-top { display: none !important; }
     body.printing #log { overflow: visible; padding: 0; }
     body.printing .wrap { max-width: none; }
     body.printing .msg { margin: 0; }
@@ -1330,7 +1351,7 @@ async function drawInto(box, title, entries) {
 function bookFile(book) {
   const css = $("bookcss").textContent;
   const clone = book.cloneNode(true);
-  clone.querySelectorAll(".book-actions, .voice-row, .reader-note, .edit-page, .editor, .made, details, .art button, .art p")
+  clone.querySelectorAll(".book-top, .book-actions, .voice-row, .reader-note, .edit-page, .editor, .made, details, .art button, .art p")
     .forEach(n => n.remove());
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
@@ -1369,15 +1390,56 @@ function bookActions(book) {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
-  row.append(print, save);
-  if (book.voice && "speechSynthesis" in window) row.append(readButton(book));
-  return row;
+  if (!book.voice && !SHARING) { row.append(print, save); return row; }   // the public page: as it was
+  print.className = "";
+  return bookBar(book, row, print, save);
+}
+
+// ?animate=1 and shared books: one bar at the top of the book, which stays in
+// reach while the book is read. The thing most people came for (reading it)
+// comes first; what is used once (print, download) is behind "⋯"; editing
+// is a mode, so the book reads clean until someone chooses to change it.
+function bookBar(book, row, print, save) {
+  book.classList.add("has-bar");
+  row.classList.add("book-bar");
+  row.setAttribute("role", "toolbar");
+  row.setAttribute("aria-label", "Book");
+  const top = document.createElement("div"); top.className = "book-top";
+  const panels = document.createElement("div"); panels.className = "bar-panels";
+  const note = document.createElement("p"); note.className = "reader-note share-note"; note.setAttribute("aria-live", "polite");
+  const buttons = new Map();
+  // One panel open at a time, under the bar.
+  const toggle = (btn, panel) => {
+    panel.hidden = true; panels.append(panel); buttons.set(panel, btn);
+    btn.setAttribute("aria-expanded", "false");
+    btn.addEventListener("click", () => {
+      const open = panel.hidden;
+      for (const [p, b] of buttons) { p.hidden = true; b.setAttribute("aria-expanded", "false"); }
+      panel.hidden = !open; btn.setAttribute("aria-expanded", String(open));
+    });
+  };
+  const barButton = (text, cls, label) => { const b = document.createElement("button"); b.type = "button";
+    b.textContent = text; b.className = cls; if (label) b.setAttribute("aria-label", label); return b; };
+  if (book.voice && "speechSynthesis" in window) {
+    const { read, voicePanel } = readButton(book, note);
+    const voiceBtn = barButton("Voice", "voice-btn");
+    row.append(read, voiceBtn);
+    toggle(voiceBtn, voicePanel);
+  }
+  const more = document.createElement("div"); more.className = "more-panel";
+  more.append(print, save);
+  const moreBtn = barButton("⋯", "more-btn", "More: print or download");
+  row.append(moreBtn);
+  toggle(moreBtn, more);
+  book.bar = { row, note, toggle, barButton, moreBtn };
+  top.append(row, panels, note);
+  return top;
 }
 
 // Read the book aloud with the device's own voice (?animate=1). Each page is
 // scrolled to and its picture replayed as its first sentence starts, and the
 // sentence being spoken is marked.
-function readButton(book) {
+function readButton(book, status) {
   const read = document.createElement("button");
   read.type = "button"; read.className = "read"; read.textContent = "Read aloud";
   let reading = null;
@@ -1388,22 +1450,28 @@ function readButton(book) {
     const chosen = picked();
     const mark = el => { book.querySelectorAll(".reading").forEach(n => n.classList.remove("reading")); if (el) el.classList.add("reading"); };
     const parts = [];
+    const who = chosen ? ` · ${chosen.name}` : "";
+    const say = t => { status.textContent = t; };
     const cover = book.querySelector(".cover"), title = cover && cover.querySelector("h2");
-    if (title) parts.push({ text: title.textContent, onStart: () => { mark(title); cover.scrollIntoView({ behavior: "smooth", block: "center" }); } });
-    for (const s of book.querySelectorAll(".sheet:not(.cover):not(.end)")) {
+    if (title) parts.push({ text: title.textContent, onStart: () => { mark(title); say(`Reading the title${who}`);
+      cover.scrollIntoView({ behavior: "smooth", block: "center" }); } });
+    const pages = [...book.querySelectorAll(".sheet:not(.cover):not(.end)")];
+    pages.forEach((s, n) => {
       [...s.querySelectorAll(".page-text .said")].forEach((span, k) => parts.push({ text: span.textContent.trim(), onStart: () => {
-        if (k === 0) { s.scrollIntoView({ behavior: "smooth", block: "center" }); const m = book.motions.get(s); if (m) m.replay(); }
+        if (k === 0) { s.scrollIntoView({ behavior: "smooth", block: "center" }); const m = book.motions.get(s); if (m) m.replay();
+          say(`Reading page ${n + 1} of ${pages.length}${who}`); }
         mark(span);
       } }));
-    }
+    });
     const end = book.querySelector(".end .page-text");
     if (end) parts.push({ text: end.textContent, onStart: () => { mark(end); end.scrollIntoView({ behavior: "smooth", block: "center" }); } });
     reading = voice.readAloud(parts, { voice: chosen });
-    read.textContent = "Stop reading";
-    note.textContent = chosen ? `Voice: ${chosen.name}${chosen.localService ? "" : " (online)"}.` : "Using the device's default voice.";
+    read.textContent = "Stop reading"; read.classList.add("on");
+    say(`Reading${who}${chosen && !chosen.localService ? " (online voice)" : ""}`);
     const how = await reading.done;
-    mark(null); reading = null; read.textContent = "Read aloud";
-    if (how === "error") note.textContent = "The device's voice stopped with an error. Try again, or check the phone is not on silent.";
+    mark(null); reading = null; read.textContent = "Read aloud"; read.classList.remove("on");
+    say(how === "error" ? "The voice stopped with an error. Try again, or check the phone is not on silent." :
+      how === "stopped" ? "" : "The end.");
   });
   const note = document.createElement("p");
   note.className = "reader-note";
@@ -1412,6 +1480,7 @@ function readButton(book) {
   // give them all), the nicest first, a Try button, and the choice remembered.
   const synth = window.speechSynthesis, lang = (navigator.language || "en").slice(0, 2);
   const row = document.createElement("div"); row.className = "voice-row";
+  const voicePanel = document.createElement("div"); voicePanel.className = "voice-panel";
   const label = document.createElement("label"); label.textContent = "Voice ";
   const select = document.createElement("select"); select.className = "voice";
   const tryIt = document.createElement("button"); tryIt.type = "button"; tryIt.textContent = "Try";
@@ -1456,8 +1525,8 @@ function readButton(book) {
   // Voices can arrive late (Chrome), and Safari has no addEventListener here.
   synth.onvoiceschanged = fill;
 
-  queueMicrotask(() => { if (read.parentElement) read.parentElement.after(row, note); });
-  return read;
+  voicePanel.append(row, note);
+  return { read, voicePanel };
 }
 
 async function runBook(premise, out) {
@@ -1605,20 +1674,36 @@ async function showBook(state, out, { plan = null, status = null, truncated = fa
 
   if (status) status.textContent = stopFlag ? "Stopped. The pages drawn so far are kept." :
     `${state.pages.length} pages, written and drawn on this device.`;
-  book.appendChild(bookActions(book));
+  const actions = bookActions(book);
+  if (book.bar) book.prepend(actions); else book.appendChild(actions);
   if (!share) return book;
 
   // ---- Sharing and editing (?animate=1, or any shared link) -------------------
   const undo = [];
   const snapshot = () => JSON.stringify({ state, how });
-  const actions = book.querySelector(".book-actions");
-  const note = document.createElement("p"); note.className = "reader-note share-note";
-  const undoBtn = document.createElement("button"); undoBtn.type = "button"; undoBtn.className = "undo";
-  undoBtn.textContent = "Undo"; undoBtn.disabled = true;
-  const shareBtn = document.createElement("button"); shareBtn.type = "button"; shareBtn.className = "share";
-  shareBtn.textContent = "Share";
-  actions.prepend(shareBtn);
-  actions.append(undoBtn);
+  const { row: bar, note, moreBtn, barButton } = book.bar;
+  const shareBtn = barButton("Share", "share");
+  const editBtn = barButton("Edit", "edit-toggle");
+  editBtn.setAttribute("aria-pressed", "false");
+  const undoBtn = barButton("Undo", "undo");
+  undoBtn.disabled = true;
+  bar.insertBefore(shareBtn, moreBtn);
+  bar.insertBefore(editBtn, moreBtn);
+  // While editing: a line under the bar says how, and holds Undo — the bar
+  // itself stays one row on a phone.
+  const editRow = document.createElement("div"); editRow.className = "edit-row";
+  const hint = document.createElement("span"); hint.textContent = "Tap Edit on a page, or on the cover.";
+  editRow.append(hint, undoBtn);
+  bar.parentElement.insertBefore(editRow, note);
+  // Editing is a mode: the edit buttons, "How this picture was made" and Undo
+  // show only while it is on.
+  editBtn.addEventListener("click", () => {
+    const on = book.classList.toggle("editing");
+    editBtn.textContent = on ? "Done" : "Edit";
+    editBtn.setAttribute("aria-pressed", String(on));
+    if (!on) book.querySelectorAll(".editor .ed-cancel").forEach(b => b.click());
+    note.textContent = "";
+  });
 
   // The link is made ahead of the tap: iOS opens the share sheet only from
   // inside a tap, and compressing the book is asynchronous.
@@ -1770,7 +1855,6 @@ async function showBook(state, out, { plan = null, status = null, truncated = fa
     });
   });
 
-  queueMicrotask(() => actions.after(note));
   return book;
 }
 
