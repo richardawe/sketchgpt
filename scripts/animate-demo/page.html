@@ -1,0 +1,38 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Animated page — prototype</title>
+<style>
+body{margin:0;background:#e9e2d2;font:17px/1.45 Georgia,serif;color:#2b2b2b}
+.sheet{max-width:440px;margin:18px auto;background:#fffdf7;padding:18px 18px 10px;border-radius:6px;box-shadow:0 2px 10px #0002}
+.art svg{width:100%;height:auto;display:block;border-radius:4px;overflow:hidden}
+.art details,.art p,.art button{display:none}
+.page-text{margin:14px 4px 6px}
+.num{text-align:center;color:#8a8170;font-size:14px}
+.tag{max-width:440px;margin:0 auto;font:12px system-ui;color:#6b6252;text-align:center}
+</style></head><body>
+<div class="tag">Prototype: animation added by the page, from real model output (Qwen3-1.7B story + page plan)</div>
+<div class="sheet"><div class="art" id="art"></div><p class="page-text" id="text"></p><div class="num" id="num"></div></div>
+<script type="module">
+import { renderSketch, loadRough, loadArt } from "/web/sketch.mjs?v=8";
+import { composeScene } from "/web/scene.mjs?v=8";
+import { parseStory, fixPagePlan } from "/web/book.mjs?v=8";
+import { readDrawing } from "/web/sketch.mjs?v=8";
+import { animatePicture } from "/web/animate.mjs";
+const q = new URLSearchParams(location.search);
+const book = await (await fetch(`/books/${q.get("book") || "dog"}.json`)).json();
+const i = Number(q.get("page") || 4) - 1;
+const story = parseStory(book.story);
+const text = story.pages[i];
+let entries = []; try { entries = readDrawing(book.plans[i]).c; } catch {}
+const fixed = fixPagePlan(entries, text, story);
+const composed = composeScene({ t: text, c: fixed.entries });
+const art = document.getElementById("art");
+renderSketch(art, JSON.stringify({ t: composed.t, c: composed.c }),
+  { rough: await loadRough("/web/rough.mjs"), art: await loadArt("/web/art.mjs"), spread: false, scenery: true });
+document.getElementById("text").textContent = text;
+document.getElementById("num").textContent = `— ${i + 1} —`;
+const svg = art.querySelector("svg");
+const still = q.has("still");
+const r = still ? { said: [] } : animatePicture(svg, { text, story });
+window.__said = { plan: fixed.entries, composed: composed.c, said: r.said };
+window.__ready = true;
+</script></body></html>

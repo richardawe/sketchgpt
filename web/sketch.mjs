@@ -515,7 +515,8 @@ function drawStamp(doc, parent, rough, { args: [x, y, size], text, colour }, til
       `scale(${k.toFixed(4)})` + (tilt ? ` rotate(${tilt.toFixed(1)} ${STAMP_BOX / 2} ${STAMP_BOX / 2})` : ""),
     // The transform scales the pen too, so undo it here and the stamp is
     // drawn with the same nib as everything else.
-    "stroke-width": (STROKE / k).toFixed(3)
+    "stroke-width": (STROKE / k).toFixed(3),
+    "data-thing": text, "data-at": `${(x * SCALE).toFixed(1)} ${(y * SCALE).toFixed(1)} ${px.toFixed(1)}`
   });
   // Colour is a coloured-pencil wash under the ink line: hatched, light, and
   // drawn first so the outline sits on top. It costs no tokens — the model
@@ -553,6 +554,8 @@ function drawArt(doc, parent, rc, art, { args: [x, y, size], text, colour }, til
   const group = svgNode(doc, "g", {
     transform: `translate(${(x * SCALE - px / 2).toFixed(1)} ${(y * SCALE - px / 2).toFixed(1)}) ` +
       `scale(${k.toFixed(4)})` + (tilt ? ` rotate(${tilt.toFixed(1)} ${box / 2} ${box / 2})` : ""),
+    // What this is and where, for web/animate.mjs to move it by.
+    "data-thing": text, "data-at": `${(x * SCALE).toFixed(1)} ${(y * SCALE).toFixed(1)} ${px.toFixed(1)}`
   });
   const repaint = colour && PALETTE[colour] ? mainFill(shapes) : null;
   const ink = Math.max(0.3, 0.8 / k);
@@ -600,11 +603,12 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
       : svgNode(doc, "rect", { x, y, width: w, height: hgt, fill: colour, stroke: "none" }));
     parent.append(g);
   };
-  const line = (d, colour, width = STROKE, opacity = 1) => {
+  const line = (d, colour, width = STROKE, opacity = 1, kind = null) => {
     const node = rc
       ? rc.path(d, { seed, stroke: colour, strokeWidth: width, roughness: 1.2, bowing: 2 })
       : svgNode(doc, "path", { d, stroke: colour, "stroke-width": width, fill: "none" });
     if (opacity < 1) node.setAttribute("opacity", opacity);
+    if (kind) node.setAttribute("data-thing", kind);
     parent.append(node);
   };
   const skyline_d = y => `M 0 ${y + 2} Q ${CANVAS / 3} ${y - 6} ${CANVAS / 2} ${y} T ${CANVAS} ${y - 1}`;
@@ -627,7 +631,7 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
       const y = top + (i + 0.6) * ((bottom - top) / (rows + 0.2));
       const x0 = 6 + rand() * 30;
       line(`M ${x0} ${y} q 12 -6 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0`,
-        PALETTE.blue, 1.4, 0.8);
+        PALETTE.blue, 1.4, 0.8, "ripple");
     }
   }
   if (ground) {
