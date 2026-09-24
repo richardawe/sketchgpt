@@ -374,6 +374,7 @@ node scripts/retrieval-bench.mjs      # BM25 vs an embedder; Ollama optional
 node scripts/token-budget.mjs         # real tokenizer; needs @lenml/tokenizers
 node scripts/sketch-bench.mjs qwen3:1.7b   # real models; needs Ollama
 node scripts/storybook.mjs            # a book from a real model; needs Ollama
+node scripts/book-bench.mjs qwen3:0.6b # Book's prompt, every page drawn by the page's code
 node scripts/desk-bench.mjs qwen3:0.6b     # the retired Desk's prompts
 node scripts/build-stamps.mjs         # regenerates web/stamps.mjs from Lucide
 node scripts/build-art.mjs            # regenerates web/art.mjs from Twemoji

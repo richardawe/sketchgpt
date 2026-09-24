@@ -43,6 +43,7 @@ scripts/lib/desk.mjs         the retired Desk module, kept for desk-bench
 scripts/desk-bench.mjs       the retired Desk's real prompts through real models, with the page's checks
 scripts/storybook.mjs        write a six-page story + scene plans with a real model (Book-mode spike)
 scripts/storybook-render.mjs lay a written story out as a printable picture book
+scripts/book-bench.mjs       Book's real story prompt through real models, every page drawn by the page's code
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
@@ -114,6 +115,7 @@ serves **4-bit**, and that gap explains most surprises.
 | **Line icons read as a diagram; illustrations read as a picture** | Same scene plan, same placement: Lucide pictograms looked like "basic drawing", Twemoji redrawn in "ink and wash" (own colours, slight wobble, thin ink, tiny details crisp) looked illustrated. Twemoji beat Fluent Emoji, whose cow and person muddied when roughened; OpenMoji is share-alike. The model's job did not change — it still names a noun. `docs/sketch-scenes.md`. |
 | **A bigger vocabulary makes a loose matcher wrong** | With 485 words, the prefix rule drew a ship for "line" (via "liner") and a building for "sky" (via "skyscraper"). A known word may extend the model's word only when that word is at least five letters. |
 | **A story breaks continuity in ways a sketch never shows** | Across three model-written books: the prompt's example copied onto 5 of 18 vague pages, a dog named Ducky drawn as a duck, "he" drawn as a boy, the hero missing when the text used a pronoun. All fixed on the page — the cast is drawn on every page as the same picture, names are not nouns, stand-ins are dropped, and a near-empty plan is rebuilt from the page's own words. **The page owns continuity; the model is never trusted with it.** `docs/storybook.md`. |
+| **One picture must never cost the book** | First phone run of Book mode (Qwen3-0.6B, iPhone, 1024 ctx): the story came back, then page one's picture held only sky and ground, the renderer refused it ("did not return a drawing in the expected format"), and the error replaced the whole book. Causes found with `scripts/book-bench.mjs`: a hero with no illustration (fairy, witch, knight, grandma… — 0 of 96 bench pages, so rare but real), and the prefix matcher drawing "fairy" as a **ferris wheel** (fair + y). Fixed: heroes without a picture get a stand-in person, said under the picture; a word extends a known one only by a suffix or a known word; a scenery-only page is drawn; a picture that still fails leaves its page's words and a note. The bench also showed "happy", "love" and "friend" drawn as an emoji face, a heart and a child — feelings are no longer drawn. |
 
 ### Browser gotchas already fixed
 

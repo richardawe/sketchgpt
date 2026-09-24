@@ -414,10 +414,10 @@
 // kills the whole page. Bump it whenever a module's exports change. The
 // service worker falls back with ignoreSearch, so offline still finds them.
 import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, loadArt, estimateTokens,
-         readDrawing } from "./sketch.mjs?v=7";
-import { scenePrompt, composeScene, looksLikeCoordinates } from "./scene.mjs?v=7";
+         readDrawing } from "./sketch.mjs?v=8";
+import { scenePrompt, composeScene, looksLikeCoordinates } from "./scene.mjs?v=8";
 import { STORY_SCHEMA, STORY_TOKENS, PAGE_TOKENS, storyMessages, parseStory, pageMessages,
-         fixPagePlan, wordsOnlyPlan, coverPlan } from "./book.mjs?v=7";
+         fixPagePlan, wordsOnlyPlan, coverPlan } from "./book.mjs?v=8";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
 
@@ -1245,10 +1245,23 @@ function sheet(book, cls) {
   return s;
 }
 
+// One picture never costs the book. The first phone run of Book mode died on
+// page one: its picture held nothing but sky and ground, the renderer refused
+// it, and the error ended the whole book with five pages of text unshown.
+// A page with only scenery now shows its scenery, and a picture that cannot
+// be drawn at all leaves its page's words in place and says so.
 async function drawInto(box, title, entries) {
-  const composed = composeScene({ t: title, c: entries });
-  renderSketch(box, JSON.stringify({ t: composed.t, c: composed.c }),
-    { rough: await loadRough(ROUGH), art: await loadArt(), spread: false });
+  try {
+    const composed = composeScene({ t: title, c: entries });
+    renderSketch(box, JSON.stringify({ t: composed.t, c: composed.c }),
+      { rough: await loadRough(ROUGH), art: await loadArt(), spread: false, scenery: true });
+    return true;
+  } catch (e) {
+    box.classList.add("pending");
+    box.textContent = "No picture for this page.";
+    console.warn("picture failed:", e.message, entries);
+    return false;
+  }
 }
 
 // The book as its own file: the pages and the book's styles, nothing else.

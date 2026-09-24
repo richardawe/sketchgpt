@@ -10,7 +10,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PAGES, STORY_SCHEMA, storyMessages, parseStory, pageMessages, nameWords,
-         planFromWords, fixPagePlan, wordsOnlyPlan, coverPlan } from "../web/book.mjs?v=7";
+         planFromWords, fixPagePlan, wordsOnlyPlan, coverPlan, drawAs } from "../web/book.mjs?v=8";
+import { resolveStamp, parseSketch } from "../web/sketch.mjs?v=8";
+import { composeScene } from "../web/scene.mjs?v=8";
 
 const story = (pages, extra = {}) => JSON.stringify({ title: "Pip and the Sea",
   cast: [{ name: "Pip", is: "dog" }], pages, ...extra });
@@ -133,4 +135,35 @@ test("a phone's picture comes from the words alone, hero included", () => {
 test("the cover holds the whole cast in the first page's setting", () => {
   assert.deepEqual(coverPlan(pip, ["big dog front", "sea", "sun"]),
     ["big dog front", "big bird front", "sea", "sun"]);
+});
+
+// ---- from the first phone run: a picture with nothing in it ---------------------
+
+test("a hero with no illustration is drawn as the nearest person, and the page says so", () => {
+  const fay = { cast: [{ name: "Fay", is: "fairy" }, { name: "Grandma Rose", is: "grandma" }] };
+  assert.equal(drawAs(fay.cast[0]), "girl");
+  const r = fixPagePlan([], "Fay sat very still and listened to Grandma Rose.", fay);
+  assert.deepEqual(r.entries.slice(0, 2), ["big girl front", "big girl front"]);
+  assert.match(r.fixes.join(), /Fay drawn as a girl — there is no fairy picture/);
+  assert.match(pageMessages(fay, "x")[0].content, /Fay is drawn as "girl"/);
+  assert.equal(drawAs({ name: "Drop", is: "dew" }), null);
+});
+
+test("'fairy' is not a ferris wheel: a word extends a known one only by a suffix or a word", () => {
+  assert.equal(resolveStamp("fairy"), null);
+  assert.equal(resolveStamp("sailboats"), "sailboat");
+  assert.equal(resolveStamp("boating"), "sailboat");
+  assert.equal(resolveStamp("pinetree"), "tree-pine");
+});
+
+test("feelings are not drawn (Qwen3-0.6B pages drew a grinning face for 'happy')", () => {
+  assert.deepEqual(planFromWords("Max feels happy. They love their friends and have fun in the world.", pip), []);
+  assert.deepEqual(planFromWords("Pip ran home.", pip), ["home"], "a home is a place you can draw");
+});
+
+test("a page with nothing drawable is still a picture: its scenery", () => {
+  const scene = composeScene({ t: "It was quiet.", c: wordsOnlyPlan("It was quiet.", { cast: [{ name: "Drop", is: "dew" }] }).entries });
+  const raw = JSON.stringify({ t: "p", c: scene.c });
+  assert.throws(() => parseSketch(raw), /expected format/, "a sketch of nothing but backdrop is still a failed sketch");
+  assert.ok(parseSketch(raw, { scenery: true }).commands.length > 0);
 });

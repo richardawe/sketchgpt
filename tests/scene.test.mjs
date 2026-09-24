@@ -8,8 +8,8 @@
 // sun on the grass; a leaked moon turned a sunny party into night).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseEntry, composeScene, looksLikeCoordinates, scenePrompt } from "../web/scene.mjs?v=7";
-import { parseSketch, GRID } from "../web/sketch.mjs?v=7";
+import { parseEntry, composeScene, looksLikeCoordinates, scenePrompt } from "../web/scene.mjs?v=8";
+import { parseSketch, GRID } from "../web/sketch.mjs?v=8";
 
 const plan = (t, c) => composeScene({ t, c });
 const drawn = composed => parseSketch(JSON.stringify({ t: composed.t, c: composed.c }), { spread: false });

@@ -17,8 +17,8 @@
 //      covering the same scene cost 26, and look better. Naming a noun is the
 //      easiest thing a small model does; drawing a recognisable tree from
 //      line segments is among the hardest.
-import { STAMPS, ALIASES, STAMP_BOX } from "./stamps.mjs?v=7";   // ?v= : see browser.html
-import { ART_NAMES } from "./art-names.mjs?v=7";
+import { STAMPS, ALIASES, STAMP_BOX } from "./stamps.mjs?v=8";   // ?v= : see browser.html
+import { ART_NAMES } from "./art-names.mjs?v=8";
 
 export const GRID = 100;    // the coordinate space the model is given
 export const CANVAS = 400;  // SVG user units
@@ -242,8 +242,13 @@ export function resolveStamp(word) {
   // illustrations' 485 words, "line" matched "liner" and drew a ship, and
   // "sky" matched "skyscraper". A word may extend a known one; a known word
   // may extend the word only when the word is long enough to mean something.
+  // And a word may extend a known one only by a suffix or by another known
+  // word ("pinetree"): "fairy" is not "fair" + y — a fairy hero was about to
+  // be drawn as a ferris wheel on every page — nor "carpet" a car.
   for (const [norm, name] of NORMAL) {
-    if (norm.length > 3 && key.startsWith(norm)) return name;
+    const tail = key.slice(norm.length);
+    if (norm.length > 3 && key.startsWith(norm) &&
+        (/^(s|es|ing|ed|er|ers)$/.test(tail) || NORMAL.has(tail))) return name;
     if (key.length >= 5 && norm.startsWith(key)) return name;
   }
   return null;
@@ -394,7 +399,7 @@ function spreadStamps(commands) {
 // correct a model that cannot place things, and a human who types two
 // coordinates means those two coordinates. The page corrects the model, never
 // the person.
-export function parseSketch(raw, { spread = true } = {}) {
+export function parseSketch(raw, { spread = true, scenery = false } = {}) {
   if (typeof raw !== "string" || raw.length > 24000) throw new Error("Drawing is too large.");
   const text = drawingJSON(raw);
   let data;
@@ -423,7 +428,10 @@ export function parseSketch(raw, { spread = true } = {}) {
   // A couple of bad lines is a model being sloppy; mostly-bad output is a
   // model that did not understand the format, and saying so beats rendering
   // a confident fragment of nonsense.
-  if (!commands.some(c => c.tool !== "backdrop") || dropped > commands.length) {
+  // `scenery` lets a picture be only its backdrop — a book page whose only
+  // subject has no illustration still gets its sky and ground, where a sketch
+  // request that produced nothing but a backdrop is a model that failed.
+  if (!commands.some(c => scenery || c.tool !== "backdrop") || dropped > commands.length) {
     throw new Error("The model did not return a drawing in the expected format.");
   }
   // Keep what the model said before the page tidies it. "Show commands" is
@@ -471,7 +479,7 @@ export function resetRough() { roughPromise = null; }
 
 // The illustrations are ~330 KB, so they load only when a drawing needs them,
 // and never for Desk or Chat. A failed load leaves the line icons, then words.
-const ART_URL = "./art.mjs?v=7";
+const ART_URL = "./art.mjs?v=8";
 let artPromise = null;
 export function loadArt(url = ART_URL) {
   if (url === null) return Promise.resolve(null);
@@ -652,8 +660,8 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
   }
 }
 
-export function renderSketch(container, raw, { rough = null, art = null, onEdit = null, spread = true } = {}) {
-  const drawing = parseSketch(raw, { spread }); // Validate the whole drawing before touching the DOM.
+export function renderSketch(container, raw, { rough = null, art = null, onEdit = null, spread = true, scenery = false } = {}) {
+  const drawing = parseSketch(raw, { spread, scenery }); // Validate the whole drawing before touching the DOM.
   const doc = container.ownerDocument;
   const svg = svgNode(doc, "svg", { xmlns: "http://www.w3.org/2000/svg",
     viewBox: `0 0 ${CANVAS} ${CANVAS}`, width: CANVAS, height: CANVAS, role: "img",

@@ -171,6 +171,22 @@ try {
     assert.equal(await cut.locator('.page-text').count(), 5, '4 finished pages and The End');
     assert.match(await cut.textContent(), /ran out of room after 4 pages/);
 
+    // ---- The first phone run: a page with nothing to draw ended the book -------
+    // Its picture held only sky and ground, the renderer refused it, and the
+    // error replaced the whole book. The hero here has no illustration and no
+    // stand-in, and the pages name nothing drawable.
+    await page.evaluate(() => {
+      window.story = JSON.stringify({ title: 'Quiet', cast: [{ name: 'Drop', is: 'dew' }],
+        pages: Array.from({ length: 6 }, (_, i) => `It was very quiet for a while, part ${i + 1}.`) });
+      window.plans = Array(6).fill(JSON.stringify({ t: 'p', c: ['silence', 'calm'] }));
+    });
+    await send('a drop of dew');
+    const quiet = page.locator('.msg.assistant').last();
+    assert.doesNotMatch(await quiet.textContent(), /Generation failed|expected format/, 'one picture ended the book');
+    assert.equal(await quiet.locator('.sheet .page-text').count(), 7, 'the pages were not all shown');
+    assert.equal(await quiet.locator('.art svg').count(), 7, 'each page and the cover should still show scenery');
+    assert.equal(await quiet.locator('.book-actions').count(), 1, 'the book never finished');
+
     // ---- Nothing typed is stored ----------------------------------------------------
     const stored = await page.evaluate(() => JSON.stringify(localStorage));
     for (const secret of ['never seen', 'a cat', 'leftover'])

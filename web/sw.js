@@ -15,7 +15,7 @@
 //   the CDN lib  -> cache first. It is pinned to an exact version in the URL,
 //                   so it can never go stale, and it is 6 MB we should not
 //                   re-download.
-const VERSION = "sketchgpt-v7";
+const VERSION = "sketchgpt-v8";
 const SHELL = ["./", "./index.html", "./browser.html", "./sketch.mjs",
                "./stamps.mjs", "./rough.mjs", "./book.mjs", "./scene.mjs",
                "./art.mjs", "./art-names.mjs"];

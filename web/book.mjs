@@ -17,9 +17,9 @@
 // (docs/sketch-scenes.md), so planFromWords() builds each picture from the
 // page's own words and the cast — the page doing all of it.
 
-import { resolveStamp } from "./sketch.mjs?v=7";
-import { scenePrompt, parseEntry } from "./scene.mjs?v=7";
-import { ART_NAMES } from "./art-names.mjs?v=7";
+import { resolveStamp } from "./sketch.mjs?v=8";
+import { scenePrompt, parseEntry } from "./scene.mjs?v=8";
+import { ART_NAMES } from "./art-names.mjs?v=8";
 
 export const PAGES = 6;
 
@@ -89,7 +89,7 @@ export function parseStory(raw) {
 }
 
 export function pageMessages(story, text) {
-  const castLine = story.cast.map(c => `${c.name} is drawn as "${c.is}"`).join("; ");
+  const castLine = story.cast.map(c => `${c.name} is drawn as "${drawAs(c) || c.is}"`).join("; ");
   return [
     { role: "system", content: scenePrompt(12) + `\nThis picture is one page of a story.` +
       (castLine ? ` ${castLine}. Draw each character who is on this page with exactly that word, once.` : "") },
@@ -122,7 +122,33 @@ const named = (name, text) => nameWords(name).some(w => new RegExp("\\b" + w + "
 
 const said = e => (parseEntry(e) || {}).said || "";
 const stampOf = e => (parseEntry(e) || {}).stamp || null;
-const castStamp = c => resolveStamp(c.is);
+
+// A hero with no illustration of its own is drawn as the nearest person, so
+// they are still on every page. The first phone run of Book mode died on a
+// picture with nothing in it: a page whose only subject had no picture.
+// Fairies, witches and grandmas are people as far as a picture book's
+// illustrations go; a wizard or a knight is a boy-sized hero, not a blank page.
+const STAND_IN = { fairy: "girl", witch: "girl", mermaid: "girl", queen: "girl", lady: "girl",
+  woman: "girl", mother: "girl", mom: "girl", mum: "girl", grandma: "girl", granny: "girl",
+  grandmother: "girl", sister: "girl", aunt: "girl", daughter: "girl", ballerina: "girl",
+  wizard: "boy", knight: "boy", king: "boy", man: "boy", father: "boy", dad: "boy",
+  grandpa: "boy", grandfather: "boy", brother: "boy", uncle: "boy", son: "boy", pirate: "boy",
+  giant: "boy", elf: "child", gnome: "child", kid: "child", person: "child", friend: "child",
+  teacher: "child", hero: "child", dino: "dinosaur", kitty: "cat", doggy: "dog", pup: "dog",
+  bunny: "rabbit", birdie: "bird", pony: "horse", dragonfly: "butterfly" };
+/** The word a character is drawn with, or null when there is none. */
+export const drawAs = c => resolveStamp(c.is) ? c.is : (STAND_IN[c.is] || null);
+const castStamp = c => { const w = drawAs(c); return w ? resolveStamp(w) : null; };
+
+// Words the illustrations happen to have that are not things in a scene.
+// "Max feels happy" drew a grinning emoji face on the page, "they love
+// flying" a heart, "friends" a stand-in child (measured, book-bench on
+// Qwen3-0.6B). A picture book's picture shows the story, not its feelings.
+const ABSTRACT = new Set(["happy", "happiness", "love", "loves", "loved", "friend", "friends",
+  "heart", "light", "world", "game", "games", "family", "fun", "joy", "smile", "sad", "angry",
+  "idea", "dream", "dreams", "magic", "time", "day", "way", "place", "thing", "things",
+  "help", "hope", "kind", "brave", "proud", "scared", "afraid", "adventure", "story", "end",
+  "problem", "surprise", "wish", "wishes", "map", "new", "best", "lot", "lots", "top", "back"]);
 
 /** Picture names that appear in the text itself — exact words only, never a loose prefix. */
 export function planFromWords(text, story = { cast: [] }) {
@@ -133,6 +159,7 @@ export function planFromWords(text, story = { cast: [] }) {
   for (const raw of String(text).toLowerCase().match(/[a-z]+/g) || []) {
     if (raw.length < 3) continue;
     const w = raw.replace(/(ies)$/, "y").replace(/s$/, "");
+    if (ABSTRACT.has(raw) || ABSTRACT.has(w)) continue;
     const entry = SETTING_WORDS[raw] || SETTING_WORDS[w] || (ART_NAMES[raw] || ART_NAMES[w] ? w : null);
     if (!entry || names.some(n => n.startsWith(w))) continue;
     const st = stampOf(entry);
@@ -192,7 +219,10 @@ export function fixPagePlan(entries, text, story) {
     const want = casts[k];
     if (!want) return;
     c = c.filter(e => stampOf(e) !== want);
-    if (k === 0 || named(x.name, text)) cast.push(`big ${x.is} front`);
+    if (k === 0 || named(x.name, text)) {
+      cast.push(`big ${drawAs(x)} front`);
+      if (drawAs(x) !== x.is) fixes.push(`${x.name} drawn as a ${drawAs(x)} — there is no ${x.is} picture`);
+    }
   });
   return { entries: [...cast, ...c], fixes, unknown };
 }
@@ -204,6 +234,6 @@ export function wordsOnlyPlan(text, story) {
 
 /** The cover: the whole cast in the first page's setting. */
 export function coverPlan(story, firstPage) {
-  return [...story.cast.filter(c => castStamp(c)).map(c => `big ${c.is} front`),
+  return [...story.cast.filter(c => castStamp(c)).map(c => `big ${drawAs(c)} front`),
           ...firstPage.filter(e => !/^big /.test(e))];
 }

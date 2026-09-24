@@ -32,10 +32,10 @@ await page.route('**/*', async route => {
 });
 await page.goto('http://localhost:8080/book.html');
 await page.evaluate(async story => {
-  const sk = await import('./sketch.mjs?v=7');
-  const sc = await import('./scene.mjs?v=7');
+  const sk = await import('./sketch.mjs?v=8');
+  const sc = await import('./scene.mjs?v=8');
   const rough = await sk.loadRough('./rough.mjs');
-  const art = await sk.loadArt('./art.mjs?v=7');
+  const art = await sk.loadArt('./art.mjs?v=8');
   const book = document.getElementById('book');
   const sheet = cls => { const s = document.createElement('section'); s.className = 'sheet ' + (cls || ''); book.append(s); return s; };
   const draw = (into, t, entries) => {
