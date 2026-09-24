@@ -87,6 +87,18 @@ test("what a character is does not stay in their name", () => {
   assert.equal(s.pages[0], "Lila wants to grow a plant.");
 });
 
+test("the shape asked as a question is taken out too", () => {
+  // Qwen3-0.6B, captured for the Book-mode clips (scripts/demo-books/dog-phone.json).
+  const charlie = [{ name: "Charlie", is: "dog" }, { name: "Sally", is: "girl" }];
+  assert.equal(unshape("Who is Charlie and where do they live? They are a little dog named Charlie who lives in a small town.", charlie),
+    "They are a little dog named Charlie who lives in a small town.");
+  assert.equal(unshape("What does Charlie want, or the problem? Charlie wants to see the sea but is afraid of it.", charlie),
+    "Charlie wants to see the sea but is afraid of it.");
+  // A question a character really asks is story.
+  assert.equal(unshape("Where is the sea? Charlie asked.", charlie), "Where is the sea? Charlie asked.");
+  assert.equal(unshape("Will Sally help Charlie find the sea? She will try.", charlie), "Will Sally help Charlie find the sea? She will try.");
+});
+
 test("a parsed story comes back without the shape in it", () => {
   const s = parseStory(story(["Who the hero is and where they live. Pip lives by a wood.", ...six.slice(1)]));
   assert.equal(s.pages[0], "Pip lives by a wood.");

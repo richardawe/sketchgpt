@@ -70,11 +70,18 @@ const SHAPE_WORDS = new Set([...SHAPE.flatMap(words), "doesn", "t", "didn", "don
 // Title Case, where the model has put the hero's name into the label ("Who Lila
 // Is and Where They Live"); in a plain sentence — "Pip tries again and it
 // works." — a name makes it story.
-function isShape(sentence, cast) {
+// The shape's words without a plural or verb "s", for the question form below.
+const SHAPE_STEMS = new Set([...SHAPE_WORDS].map(x => x.replace(/s$/, "")));
+function isShape(sentence, cast, question = false) {
   const w = words(sentence);
   if (w.length < 4) return false;
   if (w.every(x => SHAPE_WORDS.has(x))) return true;
   const names = new Set(cast.flatMap(c => words(c.name)));
+  // The phone's 0.6B also asks the shape as a question, with the hero's name
+  // in it: "Who is Charlie and where do they live? They are a little dog…"
+  // A story does not open a page by asking what the page is for.
+  if (question && w.every(x => names.has(x) || SHAPE_STEMS.has(x.replace(/s$/, "")) || x === "do" || x === "does"))
+    return true;
   const titled = sentence.split(/\s+/).filter(x => /^[a-z]/i.test(x) && x.length > 3).every(x => /^[A-Z]/.test(x));
   return titled && w.every(x => SHAPE_WORDS.has(x) || names.has(x));
 }
@@ -90,8 +97,8 @@ function isShape(sentence, cast) {
 export function unshape(text, cast = []) {
   let t = text.trim().replace(/^(first|second|third|fourth|fifth|sixth|last)\s+page\s*[:.\-–—]\s*/i, "");
   if (isShape(t.replace(/[.:!]\s*$/, ""), cast) && !/[.:!?]\s+\S/.test(t)) return "";
-  const m = t.match(/^([^.:!?]+)[.:]\s+(\S.*)$/s);
-  if (m && isShape(m[1], cast)) t = m[2];
+  const m = t.match(/^([^.:!?]+)([.:?])\s+(\S.*)$/s);
+  if (m && isShape(m[1], cast, m[2] === "?")) t = m[3];
   // "The hero, Lucas, lives…" names the hero itself.
   t = t.replace(/\bthe hero,\s*([A-Z][\w'-]*),\s*/gi, "$1 ");
   const hero = cast[0] && cast[0].name;

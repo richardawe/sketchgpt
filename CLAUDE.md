@@ -465,6 +465,17 @@ practical fine-tuning.
   cut (mood tagger, open chat, document Q&A, Desk), five tweets with GIFs, and
   use cases. The GIFs replay real captured model output at camera pace, so the
   thread makes no speed claim; keep it that way.
+- **A fifth thread is drafted: `media/tweets/thread-2.md`, 7 tweets, GIFs 6–9**
+  (moving pictures, read aloud, share link, edit), recorded by
+  `scripts/record-demo.mjs animated readaloud sharelink editbook` from
+  `scripts/demo-books/dog-phone.json` (Qwen3-0.6B, shaped prompt). The read-aloud
+  clip is silent and captioned. Mobile GIFs are ~5 MB (X caps GIFs at 15 MB).
+  **The thread links `?animate=1`** — the features are still behind the flag.
+  Recording found two things: the 0.6B asks the shape as a question ("Who is
+  Charlie and where do they live? …"), now stripped by `unshape()`; and the
+  privacy meter counted 11 of the page's own files when the offline worker took
+  control after a stub model's instant load (warmWorker) — a harness race, not
+  a visitor's, so the recorder now waits for the worker first.
 - **Three X threads are drafted and none are posted.** The two older ones (a
   measurement-led one, and a user-benefit one covering device detection,
   privacy, formula rendering and storage control) are in session history. The

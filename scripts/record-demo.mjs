@@ -13,6 +13,11 @@
 //   bookphone   the same on a phone (Qwen3-0.6B, pictures from each page's words)
 //   bookprivate a book written with the network cut
 //   bookmade    "How this picture was made", then the print view
+//   animated    ?animate=1 on a phone: the pictures move, acting out their words
+//   readaloud   Read aloud: the bar says which page, the sentence is marked (silent:
+//               the voice is the phone's own and headless Chrome has none — captioned)
+//   sharelink   Share, then the link opened as someone else: no model downloaded
+//   editbook    Edit: rename the hero and make him a cat, then change a page's words
 //   intro    type a request, get a drawing            — "no app, no account"
 //   private  the same, with the network truly cut     — "nothing leaves your phone"
 //   offline  reload with no network at all, then draw — "aeroplane mode"
@@ -125,6 +130,31 @@ const turnPages = async (page, pause = 1300) => {
     await page.waitForTimeout(pause);
   }
 };
+// A caption drawn in the page (the static ffmpeg builds have no drawtext), for
+// clips that have to say something the picture cannot, or that navigate.
+const caption = (page, text) => page.evaluate(t => {
+  document.querySelectorAll(".clip-caption").forEach(n => n.remove());
+  if (!t) return;
+  const b = document.createElement("div");
+  b.className = "clip-caption"; b.textContent = t;
+  b.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:99;padding:12px 10px;pointer-events:none;" +
+    "background:rgb(0 0 0 / .84);color:#fff;font:600 16px system-ui,sans-serif;text-align:center";
+  document.body.appendChild(b);
+}, text);
+// Headless Chrome has no voices. This one "speaks" each sentence for as long
+// as a person reading aloud would take, so the page's marking and paging run
+// at the real pace; the clip is silent and says so.
+const PRETEND_VOICE = () => {
+  const voices = [{ name: "Ava (Enhanced)", lang: "en-US", localService: true, voiceURI: "Ava" }];
+  let queue = [], timer = null;
+  const next = () => { const u = queue.shift(); if (!u) return;
+    u.onstart && u.onstart();
+    timer = setTimeout(() => { u.onend && u.onend(); next(); }, 500 + u.text.split(/\s+/).length * 330); };
+  Object.defineProperty(window, "speechSynthesis", { value: { getVoices: () => voices, onvoiceschanged: null,
+    speak(u) { queue.push(u); if (!timer) next(); }, cancel() { queue = []; clearTimeout(timer); timer = null; } } });
+  window.SpeechSynthesisUtterance = class { constructor(t) { this.text = t; } };
+  Object.defineProperty(navigator, "share", { value: async d => { window.sharedLink = d.url; } });
+};
 const settled = async page => {
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null, { timeout: 20000 });
 };
@@ -172,6 +202,61 @@ const CLIPS = {
     await page.evaluate(() => scrollTo(0, 0));
     await page.waitForTimeout(800);
     for (let y = 0; y < 5; y++) { await page.mouse.wheel(0, 700); await page.waitForTimeout(700); }
+  } },
+
+  animated: { caption: null, mode: "book", mobile: true, query: "&animate=1", size: { width: 390, height: 760 },
+    async run(page) {
+    await writeBook(page, BOOK("dog-phone"));
+    await turnPages(page, 2600);
+  } },
+
+  readaloud: { caption: "read aloud by the phone's own voice — this clip is silent", mode: "book", mobile: true,
+    query: "&animate=1", size: { width: 390, height: 760 }, async run(page) {
+    await writeBook(page, BOOK("dog-phone"));
+    await page.evaluate(() => document.querySelector(".book").scrollIntoView());
+    await page.waitForTimeout(900);
+    await page.locator(".book-bar .voice-btn").click();
+    await page.waitForTimeout(1600);
+    await page.locator(".book-bar .voice-btn").click();
+    await page.locator(".book-bar .read").click();
+    await page.waitForFunction(() => /page 3 of/.test(document.querySelector(".book-top .share-note").textContent),
+      null, { timeout: 60000 });
+    await page.waitForTimeout(6000);
+  } },
+
+  sharelink: { caption: null, mode: "book", mobile: true, query: "&animate=1", size: { width: 390, height: 760 },
+    async run(page) {
+    await writeBook(page, BOOK("dog-phone"));
+    await page.evaluate(() => document.querySelector(".book").scrollIntoView());
+    await page.waitForTimeout(900);
+    await page.locator(".book-bar .share").click();
+    await page.waitForFunction(() => window.sharedLink);
+    await page.waitForTimeout(2600);
+    // Opened as someone else would: the same link, no ?manual, no GPU needed.
+    const link = (await page.evaluate(() => window.sharedLink)).replace("&manual=1", "");
+    await page.goto(link);
+    await page.waitForFunction(() => document.querySelectorAll(".book .art svg").length > 3, null, { timeout: 30000 });
+    await caption(page, "the link, opened on another phone — no model downloaded");
+    await page.waitForTimeout(1200);
+    await turnPages(page, 1300);
+  } },
+
+  editbook: { caption: null, mode: "book", mobile: true, query: "&animate=1", size: { width: 390, height: 760 },
+    async run(page) {
+    await writeBook(page, BOOK("dog-phone"));
+    await page.evaluate(() => document.querySelector(".book").scrollIntoView());
+    await page.waitForTimeout(800);
+    await page.locator(".book .edit-toggle").click();
+    await page.waitForTimeout(600);
+    await page.locator(".book .edit-cover").click();
+    const name = page.locator(".book .ed-name").first(), is = page.locator(".book .ed-is").first();
+    await name.evaluate(e => e.scrollIntoView({ block: "center" }));
+    await name.fill(""); await name.pressSequentially("Biscuit", { delay: 90 });
+    await is.fill(""); await is.pressSequentially("cat", { delay: 110 });
+    await page.waitForTimeout(700);
+    await page.locator(".book .cover .ed-save").click();
+    await page.waitForTimeout(900);
+    await turnPages(page, 1400);
   } },
 
   intro: { caption: null, async run(page) {
@@ -272,14 +357,21 @@ for (const name of names) {
       userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148" } : {}) });
   try {
     const page = await context.newPage();
+    if (clip.query) await page.addInitScript(PRETEND_VOICE);
     await page.addInitScript(() => {
       Object.defineProperty(navigator, "gpu", { value: { requestAdapter: async () => ({
         features: new Set(["shader-f16"]), limits: { maxBufferSize: 1e9 } }) } });
       window.result = "{}";
     });
     // manual=1: the page would otherwise start its model download by itself.
-    await page.goto(`${origin}/browser.html?lib=${origin}/mock.mjs&rough=${origin}/rough.mjs&manual=1`);
+    await page.goto(`${origin}/browser.html?lib=${origin}/mock.mjs&rough=${origin}/rough.mjs&manual=1${clip.query || ""}`);
     await page.waitForFunction(() => document.querySelector("#status").textContent === "ready to load");
+    // The offline worker re-fetches the page's own code when it takes control
+    // (warmWorker). A stub model loads instantly, so that can land after the
+    // load and the privacy meter honestly counts 11 of the page's own files —
+    // real downloads take minutes, so a visitor never sees it. Wait for the
+    // worker first, so a clip's shield shows what a visitor's would.
+    if (clip.query) await settled(page);
     await page.click("#load");
     await page.waitForFunction(() => !document.querySelector("#send").disabled);
     await page.click(`#output [data-mode="${clip.mode || "sketch"}"]`);
@@ -309,8 +401,9 @@ for (const name of names) {
     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23", "-movflags", "+faststart",
     `${out}/sketchgpt-${name}.mp4`]);
   await run(["-y", "-i", src, "-filter_complex",
-    `fps=12,scale=560:-1:flags=lanczos${band},split[a][b];` +
-    `[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3`,
+    // X takes GIFs up to 15 MB: phone clips are drawn at their own width, fewer frames.
+    `fps=${clip.mobile ? 10 : 12},scale=${clip.mobile ? size.width : 560}:-1:flags=lanczos${band},split[a][b];` +
+    `[a]palettegen=max_colors=${clip.mobile ? 96 : 256}:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3`,
     "-loop", "0", `${out}/sketchgpt-${name}.gif`]);
   await rm(dir, { recursive: true, force: true });
   console.log(`  ${name}: ${out}/sketchgpt-${name}.mp4 + .gif`);
