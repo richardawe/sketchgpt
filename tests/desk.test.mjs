@@ -10,7 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { TOOLS, TONES, toolById, planDeskTurn, maxWords, wordCount,
          parseChecklist, listFromProse, collapseRepeats,
-         stripPreamble, checkRewrite, leftOut } from "../web/desk.mjs";
+         stripPreamble, checkRewrite, leftOut } from "../scripts/lib/desk.mjs";
 import { estimateTokens } from "../web/sketch.mjs";
 
 const dump = toolById("dump");

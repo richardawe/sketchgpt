@@ -87,21 +87,22 @@ try {
   // — came back from the worker's cache and ran.
   await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load',
     null, { timeout: 10000 });
-  assert.equal(await page.locator('#tools .tab').count(), 2, 'the Desk tools did not render offline');
+  assert.equal(await page.locator('#output [data-mode="book"]').getAttribute('aria-selected'), 'true',
+    'the page did not start in Book mode offline');
   // The local modules must come from the cache too, not just the HTML.
   const drew = await page.evaluate(async () => {
     const m = await import('./sketch.mjs');
     return m.parseSketch('{"t":"A cat","c":["cat 50 52 34"]}').commands[0].text;
   });
   assert.equal(drew, 'cat', 'sketch.mjs was not available offline');
-  // Desk is the mode whose whole argument is that nothing leaves the device,
-  // so its module has to be in the shell cache, not fetched on demand.
+  // Book is the default mode, so its module has to be in the shell cache, not
+  // fetched on demand.
   const planned = await page.evaluate(async () => {
-    const m = await import('./desk.mjs');
-    return m.planDeskTurn({ tool: m.toolById('dump'), text: 'buy milk, call mum' }).run;
+    const m = await import('./book.mjs');
+    return m.storyMessages('a dog').length;
   });
-  assert.equal(planned, true, 'desk.mjs was not available offline');
-  console.log('Offline check passed: page, composer, sketch and desk modules all load ' +
+  assert.equal(planned, 2, 'book.mjs was not available offline');
+  console.log('Offline check passed: page, composer, sketch and book modules all load ' +
     'with the network down.');
 } finally {
   await context.close(); await browser.close();

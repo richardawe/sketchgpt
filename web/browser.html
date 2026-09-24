@@ -153,9 +153,7 @@
   #menu label.inline { display: flex; align-items: center; gap: 8px; color: var(--ink-2); margin: 8px 0 0; }
   #menu .kv { font-size: 13px; color: var(--ink-2); }
   #menu .kv b { font-weight: 600; color: var(--ink); }
-  #system { width: 100%; min-height: 76px; resize: vertical; }
-  #preset { width: 100%; }
-  #hint, .fine { font-size: 12.5px; color: var(--muted); }
+  .fine { font-size: 12.5px; color: var(--muted); }
   #evict { width: 100%; justify-content: flex-start; color: var(--err); padding-left: 0; }
   #netlog { font: 12px/1.5 var(--mono); color: var(--ink-2); background: var(--sunk);
             border-radius: var(--r-sm); padding: 8px 10px; margin: 8px 0 0; white-space: pre-wrap;
@@ -182,49 +180,11 @@
      the markup carries the line breaks and pre-wrap would double them. */
   .body { white-space: pre-wrap; word-wrap: break-word; }
   .body.rich { white-space: normal; }
+  .body.rich { white-space: normal; }
   .body > :first-child { margin-top: 0; }
   .body > :last-child { margin-bottom: 0; }
   .body p { margin: 0 0 10px; }
-  .body h1, .body h2, .body h3, .body h4, .body h5, .body h6 { margin: 16px 0 8px; line-height: 1.3; font-weight: 600; }
-  .body h1 { font-size: 1.3em; } .body h2 { font-size: 1.18em; }
-  .body h3 { font-size: 1.06em; } .body h4, .body h5, .body h6 { font-size: 1em; }
-  .body ul, .body ol { margin: 0 0 10px; padding-left: 22px; }
-  .body li { margin: 2px 0; }
-  .body blockquote { margin: 0 0 10px; padding: 2px 0 2px 12px; border-left: 3px solid var(--line-2); color: var(--muted); }
-  .body hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
-  .body code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
-  .body pre { margin: 0 0 10px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--code-bg); overflow-x: auto; }
-  .body pre code { background: none; padding: 0; }
-  .body a { text-decoration: underline; text-underline-offset: 2px; }
-  .body code.tex { color: var(--muted); }
-  .body .katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
-  .body .katex { font-size: 1.05em; }
-  .think { font-size: 13px; color: var(--muted); border-left: 2px solid var(--line-2);
-           padding-left: 10px; margin-bottom: 8px; font-style: italic; white-space: pre-wrap; }
 
-  /* An answer you are meant to use sits in a card, with its actions. */
-  .result { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r);
-            padding: 14px 16px; box-shadow: var(--shadow); }
-  .actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-  .actions button { font-size: 13px; padding: 5px 10px; }
-  .actions svg.i { width: 15px; height: 15px; }
-
-  /* The brain-dump checklist. The model named the items; the page owns the
-     boxes, the ticking and the order. */
-  .body .checklist { list-style: none; margin: 0; padding: 0; }
-  .body .checklist li { margin: 0; border-bottom: 1px solid var(--line); }
-  .checklist li:last-child { border-bottom: 0; }
-  .checklist label { display: flex; align-items: flex-start; gap: 10px; padding: 9px 2px; cursor: pointer; }
-  .checklist input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--ink); flex: none; }
-  .checklist input:checked + span { color: var(--faint); text-decoration: line-through; }
-
-  .callout { margin-top: 10px; padding: 10px 12px; border-radius: var(--r-sm); font-size: 13.5px;
-             background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-line); }
-  .callout b { font-weight: 600; }
-  .callout .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .callout .chips button { font-size: 13px; padding: 4px 10px; border-radius: 999px;
-                           background: var(--panel); border-color: var(--warn-line); color: var(--ink); }
-  .callout ul { margin: 4px 0 0; padding-left: 18px; }
 
   .note { font-size: 13.5px; color: var(--muted); margin: 0 0 8px; }
   .sketch svg { display: block; width: 100%; max-width: 420px; height: auto; background: #fff;
@@ -280,14 +240,6 @@
   .intro { max-width: 640px; margin: 5vh auto 0; text-align: center; }
   .intro h2 { font-size: 26px; letter-spacing: -0.02em; margin: 0 0 8px; font-weight: 650; }
   .intro > p { color: var(--muted); margin: 0 auto 24px; max-width: 460px; }
-  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align: left; }
-  .tile { display: block; width: 100%; text-align: left; white-space: normal; padding: 16px;
-          border-radius: var(--r); background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
-  .tile:hover:not(:disabled) { border-color: var(--line-2); }
-  .tile .t { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; margin-bottom: 4px; }
-  .tile .d { color: var(--muted); font-size: 13.5px; }
-  .tile .ex { display: block; margin-top: 10px; font-size: 13px; color: var(--ink-2);
-              background: var(--sunk); border-radius: var(--r-sm); padding: 7px 9px; }
   .suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
   .suggest button { border-radius: 999px; font-size: 13.5px; }
 
@@ -302,12 +254,6 @@
   .composer { background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r-lg);
               box-shadow: var(--shadow); transition: border-color .12s, box-shadow .12s; }
   .composer:focus-within { border-color: var(--faint); box-shadow: var(--shadow-lg); }
-  .tools { display: flex; align-items: center; gap: 6px; padding: 8px 8px 0; flex-wrap: wrap; }
-  .tools .tab { border: 1px solid transparent; background: transparent; color: var(--muted);
-                font-size: 13.5px; font-weight: 550; padding: 5px 10px; border-radius: 8px; }
-  .tools .tab svg.i { width: 16px; height: 16px; }
-  .tools .tab[aria-selected="true"] { background: var(--sunk); color: var(--ink); border-color: var(--line); }
-  #opt { font-size: 13px; padding: 4px 8px; border-radius: 8px; margin-left: auto; }
   #input { display: block; width: 100%; border: 0; background: transparent; resize: none;
            min-height: 52px; max-height: 220px; overflow-y: auto; padding: 12px 14px 4px; outline: none; }
   #input:focus-visible { outline: none; }
@@ -334,7 +280,6 @@
     .meta .v { font-size: 14px; }
     .intro { margin-top: 2vh; }
     .intro h2 { font-size: 22px; }
-    .tiles { grid-template-columns: 1fr; }
     #log { padding: 18px 12px 8px; }
     footer { padding-left: 10px; padding-right: 10px; }
   }
@@ -344,21 +289,68 @@
      so emulation will not catch this; the rule has to stay. */
   @media (pointer: coarse) {
     select, input, textarea { font-size: 16px; }
-    #opt { font-size: 16px; }
+  }
+</style>
+<!-- The book's own styles, kept apart so "Download book" can carry exactly
+     these and nothing else. A book is paper-coloured in dark mode too. -->
+<style id="bookcss">
+  .book { --paper: #fbf6ea; --book-ink: #2b2622; --book-muted: #7d7369;
+          font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif; color: var(--book-ink);
+          display: grid; gap: 18px; margin-top: 4px; white-space: normal; }
+  .book .sheet { background: var(--paper); border-radius: 6px; padding: 18px 18px 14px;
+          box-shadow: 0 1px 3px rgb(0 0 0 / .08), 0 12px 30px rgb(0 0 0 / .10); }
+  .book .cover { text-align: center; padding: 30px 22px 22px; }
+  .book .cover h2 { font-size: 34px; line-height: 1.1; margin: 4px 0 8px; letter-spacing: -0.01em; font-weight: 700; }
+  .book .by { font-style: italic; font-size: 15px; color: var(--book-muted); margin: 0 0 16px; }
+  .book .art svg { display: block; width: 100%; max-width: none; height: auto; border: 0; border-radius: 4px; margin: 0; }
+  .book .art > :not(svg) { display: none; }
+  .book .art.pending { aspect-ratio: 1; display: grid; place-items: center; border-radius: 4px;
+          background: rgb(0 0 0 / .035); color: var(--book-muted); font-style: italic; font-size: 15px; }
+  .book .page-text { font-size: 20px; line-height: 1.55; margin: 18px 4px 0; white-space: normal; }
+  .book .page-text::first-letter { font-size: 1.8em; float: left; line-height: 1; margin: 3px 6px 0 0; font-weight: 700; }
+  .book .page-num { text-align: center; font-style: italic; font-size: 13px; color: var(--book-muted); margin-top: 12px; }
+  .book .end { text-align: center; padding: 34px 22px; }
+  .book .end .page-text { font-size: 26px; font-style: italic; margin: 0 0 12px; }
+  .book .end .page-text::first-letter { font-size: 1em; float: none; margin: 0; font-weight: inherit; }
+  .book .credit { font: 12px/1.5 -apple-system, "Segoe UI", sans-serif; color: var(--book-muted); margin: 0; }
+  @media (max-width: 640px) {
+    .book .sheet { padding: 12px 12px 10px; }
+    .book .cover h2 { font-size: 27px; }
+    .book .page-text { font-size: 18px; }
+  }
+  @media print {
+    .book { display: block; }
+    .book .sheet { box-shadow: none; border-radius: 0; break-inside: avoid; break-after: page; margin: 0; }
+  }
+</style>
+<style>
+  /* Working shown on screen, never printed: how each picture was made. */
+  .book .made { font: 12.5px/1.5 var(--font); color: var(--book-muted); margin-top: 8px; }
+  .book .made summary { cursor: pointer; }
+  .book .made p { margin: 4px 0 0; }
+  .book-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .book-status { text-align: center; }
+  /* Print one book and nothing else. */
+  @media print {
+    body.printing { background: #fff; height: auto; display: block; }
+    body.printing header, body.printing footer, body.printing #menu,
+    body.printing .msg:not(:has(.print-me)), body.printing .msg .who, body.printing .msg .body > :not(.print-me),
+    body.printing .book .made, body.printing .book-actions { display: none !important; }
+    body.printing #log { overflow: visible; padding: 0; }
+    body.printing .wrap { max-width: none; }
+    body.printing .msg { margin: 0; }
   }
 </style>
 </head>
 <body>
 <header>
   <div class="brand"><span class="dot" id="dot"></span><h1>sketchgpt</h1></div>
-  <div class="seg" id="output" role="tablist" aria-label="Mode" data-value="desk">
-    <button type="button" role="tab" data-mode="desk" aria-selected="true">Desk</button>
+  <div class="seg" id="output" role="tablist" aria-label="Mode" data-value="book">
+    <button type="button" role="tab" data-mode="book" aria-selected="true">Book</button>
     <button type="button" role="tab" data-mode="sketch" aria-selected="false">Sketch</button>
-    <button type="button" role="tab" data-mode="chat" aria-selected="false">Chat</button>
   </div>
   <span class="spacer"></span>
   <span id="status">checking…</span>
-  <span id="mode" hidden></span>
   <button type="button" id="net" hidden title="Network requests this page has made since the model loaded">
     <svg class="i" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
     <span id="netn">0</span><span class="long">&nbsp;sent</span>
@@ -375,24 +367,6 @@
     <div class="kv" id="netinfo" style="margin-top:8px"></div>
     <pre id="netlog" hidden></pre>
   </section>
-  <section id="settings">
-    <h3>Chat settings</h3>
-    <label for="preset">Preset</label>
-    <select id="preset">
-      <option value="chat">Chat — open conversation</option>
-      <option value="concise">Concise — short answers</option>
-      <option value="custom">Custom</option>
-    </select>
-    <label for="system">System prompt</label>
-    <textarea id="system" placeholder="Instructions the model sees before every message."></textarea>
-    <label for="temp">Temperature</label>
-    <input id="temp" type="number" min="0" max="2" step="0.1" value="0.7" style="width:90px">
-    <label class="inline" title="Send each message on its own, ignoring earlier turns">
-      <input type="checkbox" id="single"> One message at a time</label>
-    <label class="inline" title="Qwen3 and similar models reason before answering">
-      <input type="checkbox" id="think"> Show reasoning</label>
-    <p id="hint" style="margin:8px 0 0"></p>
-  </section>
   <section>
     <button type="button" id="evict" class="ghost">Remove downloaded models from this browser</button>
   </section>
@@ -401,9 +375,10 @@
 <div id="log"><div class="wrap" id="wrap">
   <section class="card" id="card">
     <span class="eyebrow"><svg class="i" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>Runs on this device</span>
-    <h2>Private AI that never leaves this tab</h2>
-    <p>The model downloads once, then runs on your own graphics chip. What you type is
-       not sent anywhere — and after the first load it works offline.</p>
+    <h2>Picture books, written and drawn in this tab</h2>
+    <p>A small language model downloads once, then writes stories on your own graphics chip, and
+       the page illustrates every page. Nothing you type is sent anywhere — and after the first
+       load it works offline.</p>
     <label for="model">Model</label>
     <select id="model" title="Model"></select>
     <div id="meta"></div>
@@ -420,8 +395,7 @@
        listener being attached, and every Send reloaded the page. -->
   <form id="form" onsubmit="return false">
     <div class="composer">
-      <div class="tools" id="tools" role="tablist" aria-label="Tool"></div>
-      <textarea id="input" rows="2" placeholder="Send a message…"></textarea>
+      <textarea id="input" rows="2" placeholder="A story about…"></textarea>
       <div class="bar">
         <span id="count"></span>
         <span class="spacer"></span>
@@ -440,11 +414,10 @@
 // kills the whole page. Bump it whenever a module's exports change. The
 // service worker falls back with ignoreSearch, so offline still finds them.
 import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, loadArt, estimateTokens,
-         readDrawing } from "./sketch.mjs?v=6";
-import { scenePrompt, composeScene, looksLikeCoordinates } from "./scene.mjs?v=6";
-import { TOOLS, TONES, toolById, planDeskTurn, maxWords, wordCount,
-         parseChecklist, listFromProse, collapseRepeats,
-         stripPreamble, checkRewrite, leftOut } from "./desk.mjs?v=6";
+         readDrawing } from "./sketch.mjs?v=7";
+import { scenePrompt, composeScene, looksLikeCoordinates } from "./scene.mjs?v=7";
+import { STORY_SCHEMA, STORY_TOKENS, PAGE_TOKENS, storyMessages, parseStory, pageMessages,
+         fixPagePlan, wordsOnlyPlan, coverPlan } from "./book.mjs?v=7";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
 
@@ -625,14 +598,7 @@ let engineDead = false;
 let CTX = 4096;
 
 let sketchHistory = [];
-let engine = null, history = [], generating = false, stopFlag = false;
-
-// ---- Desk state ------------------------------------------------------------
-// What you type in Desk lives in the composer and the conversation on screen,
-// and nowhere else. It is never written to localStorage and never sent
-// anywhere; save() stores the chosen tool and tone, never the text.
-let deskTool = "dump";
-let savedTone = null;
+let engine = null, generating = false, stopFlag = false;
 
 // Everything the page itself fetches after the model has loaded, for the
 // privacy meter in the header. See startNetMeter().
@@ -791,19 +757,21 @@ async function init() {
 
   // Phones get the smallest capable model; desktops get the one this repo is
   // built around. Both are validated against the budget with headroom to spare.
-  // Chosen by measurement on Desk's own prompts (docs/desk.md), each entry
-  // with the smallest context it is worth running at:
+  // Chosen by measurement on Book's own prompt (docs/storybook.md), each
+  // entry with the smallest context it is worth running at:
   //
-  //   phone    Qwen2.5-0.5B. SmolLM2-360M, the old default, returned prose
-  //            instead of a list in 4 of 12 brain dumps, looped, and invented
-  //            content in rewrites. Qwen2.5-0.5B listed 12 of 12, fits a phone
-  //            at the full 4096 context, and downloads 296 MB.
+  //   phone    Qwen3-0.6B. Qwen2.5-0.5B, the previous default (best at lists
+  //            and simple sketches), could not write a story: casts like
+  //            "Dog (has)", pages that did not follow. Qwen3-0.6B wrote two
+  //            coherent books of three and fits a phone at 1024 context
+  //            (~476 MB). Qwen2.5-0.5B stays as the fallback.
   //   desktop  Qwen3-1.7B where it fits at 2048 or more — clearly the best
   //            of the four benched — otherwise Qwen3-0.6B. A 1.7B squeezed to
   //            a 1024 context is a worse trade than a 0.6B with room.
   const preferred = DEV.mobile
-    ? [["Qwen2.5-0.5B-Instruct-q4f16_1-MLC", 2048], ["Qwen2.5-0.5B-Instruct-q4f32_1-MLC", 2048],
-       ["Qwen3-0.6B-q4f16_1-MLC", 1024], ["SmolLM2-360M-Instruct-q4f16_1-MLC", 1024],
+    ? [["Qwen3-0.6B-q4f16_1-MLC", 1024], ["Qwen3-0.6B-q4f32_1-MLC", 1024],
+       ["Qwen2.5-0.5B-Instruct-q4f16_1-MLC", 2048], ["Qwen2.5-0.5B-Instruct-q4f32_1-MLC", 2048],
+       ["SmolLM2-360M-Instruct-q4f16_1-MLC", 1024],
        ["SmolLM2-360M-Instruct-q4f32_1-MLC", 1024]]
     : [["Qwen3-1.7B-q4f16_1-MLC", 2048], ["Qwen3-0.6B-q4f16_1-MLC", 1024],
        ["Qwen2.5-0.5B-Instruct-q4f16_1-MLC", 1024], ["Qwen3-0.6B-q4f32_1-MLC", 1024],
@@ -1058,90 +1026,19 @@ $("evict").addEventListener("click", async () => {
   location.reload();
 });
 
-// ---- Presets --------------------------------------------------------------
-// SmolLM2-360M scored 10/10 on realistic journal entries, where Llama-3.2-1B
-// managed 4/10 because it drifted off-format. Small models obey tight
-// constraints well; they reason badly. Temperature 0 keeps it deterministic,
-// and one-message-at-a-time stops earlier turns from skewing the label.
-const PRESETS = {
-  chat:    { system: "", temp: 0.7, single: false },
-  concise: { system: "Answer in at most two short sentences.", temp: 0.5, single: false }
-};
-
-const HINTS = {
-  chat: "",
-  concise: "Small models ramble; this keeps answers short.",
-  custom: ""
-};
-
-const MODE_LABEL = { concise: "concise", custom: "custom prompt" };
-
-function syncBadge() {
-  const name = $("preset").value;
-  $("mode").hidden = name === "chat";
-  // Sketch mode does not send the chat prompt, so a badge that just says
-  // "custom prompt" would claim an effect it no longer has.
-  $("mode").textContent = (MODE_LABEL[name] || "") +
-    (outMode() === "chat" ? "" : " — not used in this mode");
-}
-
-function applyPreset(name) {
-  const cfg = PRESETS[name];
-  if (cfg) {
-    $("system").value = cfg.system;
-    $("temp").value = cfg.temp;
-    $("single").checked = cfg.single;
-  }
-  $("hint").textContent = HINTS[name] || "";
-  syncBadge();
-  save();
-}
-
+// ---- Saved preferences -------------------------------------------------------
+// Only the mode is remembered. Nothing anyone types — a premise, a story, a
+// sketch request — is ever written to storage.
 function save() {
-  try {
-    localStorage.setItem("sketchgpt.cfg", JSON.stringify({
-      preset: $("preset").value, system: $("system").value,
-      temp: $("temp").value, single: $("single").checked,
-      think: $("think").checked, output: outMode(),
-      // The chosen tool and tone, never the text: Desk input is not stored.
-      tool: deskTool, tone: $("opt") ? $("opt").value : savedTone
-    }));
-  } catch {}
+  try { localStorage.setItem("sketchgpt.cfg", JSON.stringify({ output: outMode() })); } catch {}
 }
-
 function restore() {
   let c = null;
   try { c = JSON.parse(localStorage.getItem("sketchgpt.cfg") || "null"); } catch {}
-  if (c) {
-    $("preset").value = c.preset || "chat";
-    $("system").value = c.system || "";
-    $("temp").value = c.temp != null ? c.temp : 0.7;
-    $("single").checked = !!c.single;
-    $("think").checked = !!c.think;
-    setMode(c.output || "desk", { quiet: true });
-    if (c.tool && toolById(c.tool)) deskTool = c.tool;
-    if (c.tone) savedTone = c.tone;
-    $("hint").textContent = HINTS[$("preset").value] || "";
-    syncBadge();
-  } else {
-    applyPreset("chat");
-  }
-}
-
-$("preset").addEventListener("change", () => applyPreset($("preset").value));
-// Hand-editing the prompt means it is no longer one of the presets.
-for (const id of ["system", "temp", "single"]) {
-  $(id).addEventListener("input", () => {
-    const cur = PRESETS[$("preset").value];
-    if (cur && ($("system").value !== cur.system ||
-                parseFloat($("temp").value) !== cur.temp ||
-                $("single").checked !== cur.single)) {
-      $("preset").value = "custom";
-      $("hint").textContent = "";
-      syncBadge();
-    }
-    save();
-  });
+  setMode(c && c.output, { quiet: true });
+  // Rewrite it at once: settings saved by the removed Chat mode (a system
+  // prompt someone typed) should not outlive the feature.
+  save();
 }
 
 // ---- The menu ----------------------------------------------------------------
@@ -1150,8 +1047,6 @@ function setMenu(open) {
   $("toggle").setAttribute("aria-expanded", String(open));
 }
 $("toggle").addEventListener("click", e => { e.stopPropagation(); setMenu($("menu").hidden); });
-$("mode").addEventListener("click", e => { e.stopPropagation(); setMenu(true); });
-$("mode").title = "Constrained mode — tap to change";
 $("net").addEventListener("click", e => { e.stopPropagation(); setMenu(true); });
 document.addEventListener("click", e => {
   if (!$("menu").hidden && !$("menu").contains(e.target)) setMenu(false);
@@ -1159,14 +1054,13 @@ document.addEventListener("click", e => {
 document.addEventListener("keydown", e => { if (e.key === "Escape") setMenu(false); });
 
 // ---- Modes -----------------------------------------------------------------
-// Desk is the default: it is the part of the page that is for doing something.
-// A saved "work" (the mode Desk replaced) comes back as Desk.
-const MODES = ["desk", "sketch", "chat"];
+// Book is the default: it is what this page is for. Anything saved from the
+// modes that were removed (desk, chat, work) comes back as Book.
+const MODES = ["book", "sketch"];
 const outMode = () => $("output").dataset.value;
 
 function setMode(m, { quiet = false } = {}) {
-  if (m === "work") m = "desk";
-  if (!MODES.includes(m)) m = "desk";
+  if (!MODES.includes(m)) m = "book";
   $("output").dataset.value = m;
   for (const b of $("output").querySelectorAll("button"))
     b.setAttribute("aria-selected", String(b.dataset.mode === m));
@@ -1178,100 +1072,29 @@ for (const b of $("output").querySelectorAll("button"))
   b.addEventListener("click", () => { if (b.dataset.mode !== outMode()) setMode(b.dataset.mode); });
 
 function syncMode() {
-  syncBadge();
-  syncTools();
   fitPlaceholder();
-  updateCount();
+  updateHint();
   showIntro();
-  if (outMode() === "sketch") loadArt();
-  // Chat settings do nothing in the other modes, so they are not offered there.
-  $("settings").hidden = outMode() !== "chat";
 }
 
-// ---- Desk --------------------------------------------------------------------
-const ICON = {
-  inbox: '<svg class="i" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>',
-  wand: '<svg class="i" viewBox="0 0 24 24"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>',
-  copy: '<svg class="i" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
-  check: '<svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>'
-};
-
-const currentTool = () => toolById(deskTool) || TOOLS[0];
-
-// A 0.6B model measurably fails at the tools marked smallWeak. The page says
-// so while that model is loaded, instead of letting a phone user find out from
-// a draft that says the opposite of what they meant.
+// A phone-sized model writes simpler stories and cannot plan scenes (measured:
+// Qwen2.5-0.5B returned casts like "Dog (has)"; the small models loop or copy
+// a scene list). On those, each picture is built from the page's own words.
 const smallModel = () => { const m = modelOf($("model").value); return !m || m.tier === 0; };
 
-function selectTool(id) {
-  deskTool = toolById(id) ? id : TOOLS[0].id;
-  save();
-  syncTools();
-  fitPlaceholder();
-  updateCount();
-}
-
-function syncTools() {
-  const box = $("tools");
-  const desk = outMode() === "desk";
-  box.hidden = !desk;
-  if (!desk) return;
-  if (!box.childElementCount) {
-    for (const t of TOOLS) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "tab"; b.setAttribute("role", "tab"); b.dataset.tool = t.id;
-      b.innerHTML = ICON[t.icon] || "";
-      b.append(t.label);
-      b.addEventListener("click", () => { selectTool(t.id); $("input").focus(); });
-      box.appendChild(b);
-    }
-    const opt = document.createElement("select");
-    opt.id = "opt";
-    opt.setAttribute("aria-label", "Tone");
-    for (const v of TONES) {
-      const o = document.createElement("option");
-      o.value = v; o.textContent = `Make it ${v}`;
-      opt.appendChild(o);
-    }
-    opt.value = savedTone && TONES.includes(savedTone) ? savedTone : TONES[0];
-    opt.addEventListener("change", save);
-    box.appendChild(opt);
-  }
-  const tool = currentTool();
-  for (const b of box.querySelectorAll(".tab"))
-    b.setAttribute("aria-selected", String(b.dataset.tool === tool.id));
-  $("opt").hidden = !tool.options;
-}
-
-// The composer says how much fits BEFORE Send, using the same rule the planner
-// applies after it. Work mode's tray and planner disagreed about what fitted;
-// here there is one function, and both ends call it.
-function updateCount(note) {
+function updateHint() {
   const el = $("count");
-  el.className = "";
-  if (outMode() !== "desk" || !engine) { el.textContent = ""; return; }
-  if (note) { el.textContent = note; el.className = "over"; el.title = note; return; }
-  const tool = currentTool();
-  const n = wordCount($("input").value);
-  const max = maxWords(tool, CTX);
-  el.title = "";
-  if (!n) {
-    el.textContent = smallModel() && tool.smallWeak
-      ? "Small model — check the result before you use it"
-      : "Stays on this device";
-    return;
-  }
-  el.textContent = `${n.toLocaleString()} / ${max.toLocaleString()} words`;
-  if (n > max) el.className = "over";
-  else if (n > max * 0.85) el.className = "warn";
+  if (!engine) { el.textContent = ""; return; }
+  el.textContent = outMode() === "book"
+    ? (smallModel() ? "Six short pages · simpler on a phone" : "Six short pages · about 30 seconds")
+    : "Stays on this device";
 }
 
 // ---- Empty states ------------------------------------------------------------
-// Each mode opens on what it is for and something to try, rather than on a
-// blank log with a blinking cursor.
-const SKETCH_IDEAS = ["a house beside a tree", "a sailboat on the sea under the sun",
-                      "a cat next to a cup of coffee"];
-const CHAT_IDEAS = ["Give me five names for a bakery", "Write a haiku about Monday mornings"];
+const BOOK_IDEAS = ["a little dog who has never seen the sea", "a young dragon who is afraid of the dark",
+                    "a girl who plants a magic seed", "a cat who wants to fly"];
+const SKETCH_IDEAS = ["a farm with animals and a tractor", "a cosy cabin in the woods at night",
+                      "a sunny beach with people and boats"];
 
 function showIntro() {
   const wrap = $("wrap");
@@ -1279,52 +1102,34 @@ function showIntro() {
   let el = $("intro");
   if (wrap.querySelector(".msg")) { if (el) el.remove(); return; }
   if (!el) { el = document.createElement("section"); el.id = "intro"; el.className = "intro"; wrap.prepend(el); }
-  const m = outMode();
-  el.dataset.mode = m;
-  if (m === "desk") {
-    el.innerHTML = `<h2>Your private desk</h2>
-      <p>For the things you would not paste into a chatbot. It all runs on this device —
-      the shield in the header counts what has been sent since the model loaded.</p>
-      <div class="tiles"></div>`;
-    for (const t of TOOLS) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "tile";
-      b.innerHTML = `<span class="t">${ICON[t.icon] || ""}${esc(t.label)}</span>` +
-        `<span class="d">${esc(t.blurb)}` +
-        (smallModel() && t.smallWeak ? ` On this small model, read it before you send it.` : "") +
-        `</span><span class="ex">Try: “${esc(t.example)}”</span>`;
-      b.addEventListener("click", () => {
-        selectTool(t.id);
-        $("input").value = t.example;
-        $("input").dispatchEvent(new Event("input"));
-        $("input").focus();
-      });
-      el.querySelector(".tiles").appendChild(b);
-    }
-  } else {
-    const sketch = m === "sketch";
-    el.innerHTML = sketch
-      ? `<h2>Describe a picture</h2><p>The model names what to draw and where; the page draws
-         it by hand. If something lands in the wrong place, edit the numbers and redraw.</p>`
-      : `<h2>Ask a small model</h2><p>It runs on this device. Good for ideas and first drafts;
-         unreliable on facts — check anything that matters.</p>`;
-    const row = document.createElement("div");
-    row.className = "suggest";
-    for (const idea of sketch ? SKETCH_IDEAS : CHAT_IDEAS) {
-      const b = document.createElement("button");
-      b.type = "button"; b.textContent = idea;
-      b.addEventListener("click", () => { $("input").value = idea; $("form").requestSubmit(); });
-      row.appendChild(b);
-    }
-    el.appendChild(row);
+  const book = outMode() === "book";
+  el.innerHTML = book
+    ? `<h2>Write a picture book</h2><p>Give it an idea — a character and a wish or a worry. The model
+       writes six short pages on this device, and the page illustrates every one.</p>`
+    : `<h2>Draw a scene</h2><p>Say what is in it. The model names the things; the page places them and
+       draws them by hand. Edit the commands under a drawing to move anything.</p>`;
+  if (book && smallModel()) {
+    const n = document.createElement("p");
+    n.className = "fine";
+    n.textContent = "On this phone's model the stories are simpler, and each picture is drawn from the words on its page.";
+    el.appendChild(n);
   }
+  const row = document.createElement("div");
+  row.className = "suggest";
+  for (const idea of book ? BOOK_IDEAS : SKETCH_IDEAS) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = idea;
+    b.addEventListener("click", () => { $("input").value = idea; $("form").requestSubmit(); });
+    row.appendChild(b);
+  }
+  el.appendChild(row);
 }
 
 // ---- The privacy meter -------------------------------------------------------
 // "Nothing you type leaves this device" is a claim every privacy page makes.
 // This one counts: every request the page makes after the model has loaded
 // shows up here, with its address, from the browser's own Resource Timing
-// record. Desk and Chat make none. The counter does not pretend otherwise if
+// record. Writing a book and drawing make none. The counter does not pretend otherwise if
 // something does — a KaTeX font fetched for a formula is listed like anything
 // else, so the reader can see it is a font and not their text.
 function startNetMeter() {
@@ -1358,200 +1163,11 @@ function renderNet() {
   }).join("\n");
 }
 
-// ---- Rendering model output ----------------------------------------------
-// Small models emit Markdown and LaTeX whether or not you ask for it, so a
-// plain-text pane shows people raw `**bold**` and \frac{}{} and reads as
-// broken. This renders both.
-//
-// The rule that keeps it safe: **escape first, then format**. Model output is
-// never inserted as HTML. Everything is HTML-escaped up front, and the only
-// tags that reach the DOM are ones this code adds itself. A model that emits
-// `<script>` gets it rendered as visible text, which is the correct outcome.
-//
-// KaTeX is loaded from the same CDN as WebLLM, lazily, on the first message
-// that actually contains maths. If it fails to load the page keeps working and
-// formulas fall back to their source text, which is still readable.
-const KATEX_VER = "0.18.7";
-let katexReady = null;
-
-function loadKatex() {
-  if (katexReady) return katexReady;
-  katexReady = new Promise(resolve => {
-    const base = `https://cdn.jsdelivr.net/npm/katex@${KATEX_VER}/dist/katex.min`;
-    const css = document.createElement("link");
-    css.rel = "stylesheet"; css.href = base + ".css";
-    document.head.appendChild(css);
-    const js = document.createElement("script");
-    js.src = base + ".js";
-    js.onload = () => resolve(true);
-    js.onerror = () => resolve(false);   // degrade to source text, never throw
-    document.head.appendChild(js);
-  });
-  return katexReady;
-}
-
+// ---- Escaping -------------------------------------------------------------
+// Everything the model writes is inserted as text; the few places that build
+// markup escape it first.
 const esc = t => t.replace(/[&<>"']/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-
-// Pull spans out before escaping/formatting so Markdown cannot chew through
-// LaTeX (subscripts are `_`, which is also emphasis) and vice versa.
-function extract(text, re, store, kind, keep) {
-  return text.replace(re, (...m) => {
-    if (keep && !keep(m[1])) return m[0];   // not ours — hand the text back intact
-    store.push({ kind, groups: m });
-    return `\u0000${store.length - 1}\u0000`;
-  });
-}
-
-// Is what sits between two `$` actually a formula, or is it "$5 and $10"?
-// `$$…$$`, `\[…\]` and `\(…\)` are unambiguous; the single-dollar form is not,
-// so it has to be judged on content. Two things count as a formula:
-//   - LaTeX markup: a control sequence, a sub/superscript, or braces
-//   - plain algebra: letters and numbers joined by an operator, kept short
-// "5 and " has neither, so prices survive. Note that models routinely pad the
-// delimiters — `$ \frac{a}{b} $` — so inner spaces must be allowed, which is
-// why this cannot simply be a whitespace rule.
-const isFormula = c => {
-  const t = c.trim();
-  if (!t) return false;
-  if (/[\\^_{}]/.test(t)) return true;
-  // A lone symbol — $v$, $c$, $E$ — is the commonest inline formula of all and
-  // has no operator to detect. Require a letter first so "$5" stays a price.
-  if (/^[A-Za-z][A-Za-z0-9]{0,2}$/.test(t)) return true;
-  return t.length <= 60 &&
-         /^[A-Za-z0-9\s+\-*/=<>().,:;|']+$/.test(t) &&
-         /[+\-*/=<>]/.test(t);
-};
-
-function renderMarkdown(src) {
-  const held = [];
-  let t = src;
-
-  // 1. Code first — nothing inside a code span is Markdown or maths.
-  t = extract(t, /```(\w*)\n?([\s\S]*?)```/g, held, "fence");
-  t = extract(t, /`([^`\n]+)`/g, held, "code");
-
-  // 2. Maths. $$…$$ and \[…\] are display; $…$ and \(…\) are inline.
-  //    The $…$ form requires non-space just inside the delimiters, so prices
-  //    like "$5 and $10" are not swallowed as a formula.
-  t = extract(t, /\$\$([\s\S]+?)\$\$/g, held, "display");
-  t = extract(t, /\\\[([\s\S]+?)\\\]/g, held, "display");
-  t = extract(t, /\$((?:[^$\n]|\n(?!\n))+?)\$/g, held, "inline", isFormula);
-  t = extract(t, /\\\(([\s\S]+?)\\\)/g, held, "inline");
-
-  // 3. Everything that survives is untrusted text.
-  t = esc(t);
-
-  // 4. Block structure, then inline emphasis.
-  const lines = t.split("\n");
-  const out = [];
-  let list = null;
-  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
-
-  for (let line of lines) {
-    // A bare "###" with nothing after it is how a truncated answer ends. It is
-    // not a heading and it is not prose; drop it rather than printing it.
-    if (/^\s*#{1,6}\s*$/.test(line)) { closeList(); continue; }
-    const h = line.match(/^(#{1,6})\s+(.*)$/);
-    const ul = line.match(/^\s*[-*+]\s+(.*)$/);
-    const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
-    const quote = line.match(/^&gt;\s?(.*)$/);
-
-    if (h)            { closeList(); out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); }
-    else if (/^\s*([-*_])\1{2,}\s*$/.test(line)) { closeList(); out.push("<hr>"); }
-    else if (ul)      { if (list !== "ul") { closeList(); out.push("<ul>"); list = "ul"; }
-                        out.push(`<li>${inline(ul[1])}</li>`); }
-    else if (ol)      { if (list !== "ol") { closeList(); out.push("<ol>"); list = "ol"; }
-                        out.push(`<li>${inline(ol[1])}</li>`); }
-    else if (quote)   { closeList(); out.push(`<blockquote>${inline(quote[1])}</blockquote>`); }
-    else if (!line.trim()) { closeList(); out.push(""); }
-    else {
-      closeList();
-      // A line that is nothing but a code block or a display formula is
-      // block-level already; wrapping it in <p> is invalid HTML and the
-      // browser silently splits it into empty paragraphs.
-      const solo = line.trim().match(/^\u0000(\d+)\u0000$/);
-      const kind = solo && held[+solo[1]].kind;
-      out.push(kind === "fence" || kind === "display"
-        ? line.trim()
-        : `<p>${inline(line)}</p>`);
-    }
-  }
-  closeList();
-  t = out.join("\n").replace(/\n{3,}/g, "\n\n");
-
-  // 5. Put the held spans back, rendered.
-  return t.replace(/\u0000(\d+)\u0000/g, (_, i) => {
-    const h = held[+i];
-    if (h.kind === "fence") {
-      const lang = h.groups[1] ? ` data-lang="${esc(h.groups[1])}"` : "";
-      return `<pre${lang}><code>${esc(h.groups[2].replace(/\n$/, ""))}</code></pre>`;
-    }
-    if (h.kind === "code") return `<code>${esc(h.groups[1])}</code>`;
-    return math(h.groups[1], h.kind === "display");
-  });
-}
-
-// Emphasis, links and stray inline code, applied to already-escaped text.
-function inline(t) {
-  return t
-    .replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|\W)\*([^*\n]+)\*(?=\W|$)/g, "$1<em>$2</em>")
-    .replace(/(^|\W)_([^_\n]+)_(?=\W|$)/g, "$1<em>$2</em>")
-    .replace(/~~([^~]+)~~/g, "<del>$1</del>")
-    // Links: the href is rebuilt from an allow-list of schemes, never echoed.
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, href) =>
-      /^(https?:|mailto:)/i.test(href)
-        ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`
-        : `${label} (${esc(href)})`);
-}
-
-// KaTeX if it loaded, otherwise the source, which is what a formula looked
-// like in the terminal anyway.
-// Small models drop closing braces routinely — `\frac{a}{\sqrt{b)}` was in a
-// real answer. Count unescaped braces and close what is open; it is the one
-// repair that recovers the model's evident intent without inventing content.
-function balanceBraces(src) {
-  let depth = 0;
-  for (let i = 0; i < src.length; i++) {
-    if (src[i] === "\\") { i++; continue; }        // escaped, skip the pair
-    if (src[i] === "{") depth++;
-    else if (src[i] === "}") depth--;
-  }
-  return depth > 0 ? src + "}".repeat(depth) : src;
-}
-
-function math(src, display) {
-  const raw = src.trim();
-  if (!window.katex) return `<code class="tex">${esc(raw)}</code>`;
-
-  const opts = { displayMode: display, throwOnError: true, trust: false,
-                 strict: false, output: "html" };
-  // As written, then with braces closed, then give up.
-  for (const attempt of [raw, balanceBraces(raw)]) {
-    try { return window.katex.renderToString(attempt, opts); } catch {}
-    if (attempt === balanceBraces(raw)) break;
-  }
-  // KaTeX's own error styling is red and alarming, which puts the blame on the
-  // page rather than on the model that emitted broken LaTeX. Show the source
-  // quietly instead — it is what the answer said.
-  return `<code class="tex" title="This formula could not be parsed">${esc(raw)}</code>`;
-}
-
-const hasMath = t =>
-  /\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)/.test(t) ||
-  [...t.matchAll(/\$([^$\n]+?)\$/g)].some(m => isFormula(m[1]));
-
-// While tokens are still arriving the Markdown and the delimiters are both
-// half-finished, so streaming renders as plain text and the rich pass runs
-// once the message is complete. One reflow at the end beats formatting that
-// flickers as it is typed.
-async function paint(el, text) {
-  if (hasMath(text)) await loadKatex();
-  el.innerHTML = renderMarkdown(text);
-  el.classList.add("rich");
-}
 
 // ---- Chat ----------------------------------------------------------------
 function addMsg(role, text, tag) {
@@ -1573,24 +1189,6 @@ function addMsg(role, text, tag) {
   return { body, think };
 }
 
-// Qwen3 emits reasoning inside <think>…</think>. Chat templates commonly
-// PREFILL the opening tag, so the stream often carries only the closing one —
-// treating a missing "<think>" as "no reasoning here" dumped the entire
-// monologue into the answer. Handle both shapes.
-function splitThink(raw) {
-  const open  = raw.indexOf("<think>");
-  const close = raw.indexOf("</think>");
-
-  if (open === -1) {
-    if (close === -1) return { think: "", answer: raw };      // no reasoning
-    // Opening tag was prefilled: everything up to </think> is reasoning.
-    return { think: raw.slice(0, close), answer: raw.slice(close + 8) };
-  }
-  return close === -1
-    ? { think: raw.slice(open + 7), answer: "" }               // still thinking
-    : { think: raw.slice(open + 7, close), answer: raw.slice(close + 8) };
-}
-
 // ---- Scene staging --------------------------------------------------------------
 // null means "draw it as a coordinate drawing" — the model answered in
 // coordinates despite being asked for a list, which the tests' stub always
@@ -1603,130 +1201,187 @@ function stageScene(raw) {
   return { raw: JSON.stringify({ t: composed.t, c: composed.c }), plan, unknown: composed.unknown };
 }
 
-// ---- Desk rendering -----------------------------------------------------------
-// The model named things; the page lays them out, checks what it mechanically
-// can, and says what it found. Everything here is inserted as text, never as
-// markup: the model's words and the person's words are both untrusted.
-async function copyText(text, btn) {
-  let ok = false;
-  try { await navigator.clipboard.writeText(text); ok = true; } catch {
-    const t = document.createElement("textarea");
-    t.value = text; t.style.position = "fixed"; t.style.opacity = "0";
-    document.body.appendChild(t); t.select();
-    try { ok = document.execCommand("copy"); } catch {}
-    t.remove();
+// ---- Talking to the model --------------------------------------------------------
+// One call, streamed, with the Stop discipline that keeps WebLLM usable. The
+// last request's size is kept for the failure report.
+let lastSent = { promptTokens: null, maxTokens: null };
+
+async function complete(messages, { maxTokens, temperature, schema, onText }) {
+  const promptTokens = messages.reduce((n, m) => n + estimateTokens(m.content) + 4, 0);
+  // Never ask for more room than is left: generation that reaches the context
+  // edge stops silently, mid-JSON.
+  const max_tokens = Math.max(64, Math.min(maxTokens, CTX - promptTokens - 64));
+  lastSent = { promptTokens, maxTokens: max_tokens };
+  const req = { messages, stream: true, max_tokens, temperature,
+    // Qwen3 would otherwise spend its budget thinking out loud first.
+    extra_body: { enable_thinking: false } };
+  if (schema) req.response_format = { type: "json_object", schema };
+  const stream = await engine.chat.completions.create(req);
+  let raw = "";
+  for await (const chunk of stream) {
+    // NEVER `break` out of this loop. WebLLM acquires a per-model lock in
+    // chat.completions.create() and releases it at the end of the async
+    // generator's body, with no try/finally (web-llm 0.2.85, asyncGenerate).
+    // Breaking terminates the generator at its yield, the release never runs,
+    // and the NEXT create() waits for ever. So signal and keep draining:
+    // interruptGenerate() sets the flag the generator's own loop checks, it
+    // stops normally and releases. Re-asserted on every chunk, because the
+    // generator resets the flag on its way in and an early click is lost.
+    if (stopFlag) { await engine.interruptGenerate(); continue; }
+    raw += chunk.choices?.[0]?.delta?.content || "";
+    if (onText) onText(raw);
   }
-  if (btn) {
-    const was = btn.innerHTML;
-    btn.innerHTML = ok ? ICON.check + "Copied" : "Could not copy";
-    setTimeout(() => { btn.innerHTML = was; }, 1400);
-  }
+  return raw;
 }
 
-function actionRow(getText) {
+// ---- Book --------------------------------------------------------------------
+// The model writes the story; each page is planned (or, on a small model,
+// read from its own words), fixed by the page's rules (web/book.mjs), placed
+// (web/scene.mjs) and drawn (web/sketch.mjs). Pages appear as they are drawn.
+function sheet(book, cls) {
+  const s = document.createElement("section");
+  s.className = "sheet" + (cls ? " " + cls : "");
+  book.appendChild(s);
+  return s;
+}
+
+async function drawInto(box, title, entries) {
+  const composed = composeScene({ t: title, c: entries });
+  renderSketch(box, JSON.stringify({ t: composed.t, c: composed.c }),
+    { rough: await loadRough(ROUGH), art: await loadArt(), spread: false });
+}
+
+// The book as its own file: the pages and the book's styles, nothing else.
+function bookFile(book) {
+  const css = $("bookcss").textContent;
+  const clone = book.cloneNode(true);
+  clone.querySelectorAll(".book-actions, .made, details, .art button, .art p").forEach(n => n.remove());
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+    `<meta name="viewport" content="width=device-width, initial-scale=1">` +
+    `<title>${esc(book.dataset.title || "A picture book")}</title><style>${css}\n` +
+    `body{margin:0;background:#e9e2d2} .book{margin:0 auto;padding:24px 16px}</style></head><body>` +
+    clone.outerHTML + `</body></html>`;
+}
+
+function bookActions(book) {
   const row = document.createElement("div");
-  row.className = "actions";
-  const b = document.createElement("button");
-  b.type = "button"; b.className = "ghost";
-  b.innerHTML = ICON.copy + "Copy";
-  b.addEventListener("click", () => copyText(getText(), b));
-  row.appendChild(b);
+  row.className = "book-actions";
+  const print = document.createElement("button");
+  print.type = "button"; print.className = "primary"; print.textContent = "Print or save as PDF";
+  // Print this book and nothing else: the page is marked, the print styles
+  // hide everything that is not the marked book.
+  print.addEventListener("click", () => {
+    document.body.classList.add("printing");
+    book.classList.add("print-me");
+    const done = () => { document.body.classList.remove("printing"); book.classList.remove("print-me"); };
+    addEventListener("afterprint", done, { once: true });
+    print.blur();
+    window.print();
+    setTimeout(done, 1500);   // browsers that never fire afterprint
+  });
+  const save = document.createElement("button");
+  save.type = "button"; save.textContent = "Download book";
+  save.addEventListener("click", () => {
+    const blob = new Blob([bookFile(book)], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = (book.dataset.title || "book").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-") + ".html";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  row.append(print, save);
   return row;
 }
 
-function checkItem(text) {
-  const li = document.createElement("li");
-  const label = document.createElement("label");
-  const box = document.createElement("input");
-  box.type = "checkbox";
-  const span = document.createElement("span");
-  span.textContent = text;
-  label.append(box, span);
-  li.appendChild(label);
-  return li;
-}
+async function runBook(premise, out) {
+  const status = document.createElement("p");
+  status.className = "note book-status";
+  status.textContent = "Writing the story…";
+  out.body.appendChild(status);
 
-/** Returns the text the conversation should remember for this turn. */
-function renderDesk(body, tool, source, raw) {
-  const cut = collapseRepeats(stripPreamble(raw));
-  const text = cut.text;
-  body.textContent = "";
-  if (!text) {
-    // Measured: the only thing Qwen3-0.6B returned for two rewrites was
-    // "Sure! Here's a firmer version of your message:" — and then nothing.
-    showNote(body, "The model did not return anything usable. Try again, or try shorter text.");
-    return "";
+  const raw = await complete(storyMessages(premise), { maxTokens: STORY_TOKENS, temperature: 0.8,
+    schema: STORY_SCHEMA, onText: t => { status.textContent = `Writing the story… ${t.length} characters`; } });
+  if (stopFlag && !raw.includes('"pages"')) { status.textContent = "Stopped."; return; }
+  let story;
+  try { story = parseStory(raw); } catch (e) {
+    // Not a failure of the page or the device: the model wrote something that
+    // is not a story. Say so plainly, and keep what it wrote one tap away.
+    status.textContent = "The model did not write a story this time. Try again, or give it a simpler idea.";
+    const details = document.createElement("details");
+    details.className = "source raw";
+    const summary = document.createElement("summary");
+    summary.textContent = "Show what the model returned";
+    const pre = document.createElement("pre");
+    pre.textContent = raw.trim() || "(nothing)";
+    details.append(summary, pre);
+    out.body.appendChild(details);
+    return;
   }
-  const card = document.createElement("div");
-  card.className = "result";
-  body.appendChild(card);
 
-  // Said, not hidden: a cut loop means the model misbehaved, and the person
-  // should weigh the rest of the answer knowing that.
-  const loopNote = () => { if (cut.looped) showNote(body, "The model started repeating itself; the repeats were removed."); };
+  const book = document.createElement("div");
+  book.className = "book";
+  book.dataset.title = story.title;
+  out.body.appendChild(book);
 
-  if (tool.list) {
-    let items = parseChecklist(text);
-    let reshaped = false;
-    if (!items) { items = listFromProse(text); reshaped = !!items; }
-    if (!items) {
-      card.textContent = text;
-      showNote(body, "This did not come back as a list. Try again — or rephrase it as items separated by commas.");
-      loopNote();
-      body.appendChild(actionRow(() => text));
-      return text;
+  // The cover first, drawn once page 1 is known; the pages with their text
+  // straight away, pictures as they arrive.
+  const cover = sheet(book, "cover");
+  cover.innerHTML = `<h2>${esc(story.title)}</h2><p class="by">Written by a small language model on this ` +
+    `device · illustrated by the page</p>`;
+  const coverArt = document.createElement("div"); coverArt.className = "art pending"; cover.appendChild(coverArt);
+  const sheets = story.pages.map((text, i) => {
+    const s = sheet(book);
+    const art = document.createElement("div"); art.className = "art pending"; art.textContent = "Drawing…";
+    const p = document.createElement("p"); p.className = "page-text"; p.textContent = text;
+    const n = document.createElement("div"); n.className = "page-num"; n.textContent = `— ${i + 1} —`;
+    s.append(art, p, n);
+    return { s, art, text };
+  });
+  const end = sheet(book, "end");
+  end.innerHTML = `<p class="page-text">The End</p><p class="credit">Story by a language model running in ` +
+    `this browser · pictures placed and drawn by sketchgpt · illustrations from Twemoji (CC-BY 4.0) · ` +
+    `inference by WebLLM</p>`;
+  if (story.truncated) {
+    const t = document.createElement("p"); t.className = "note";
+    t.textContent = `The model ran out of room after ${story.pages.length} pages, so the story is short.`;
+    out.body.insertBefore(t, book);
+  }
+
+  const planning = sceneMode();
+  let first = null;
+  for (const [i, pg] of sheets.entries()) {
+    if (stopFlag) { pg.art.textContent = "Stopped before this page was drawn."; continue; }
+    status.textContent = `Drawing page ${i + 1} of ${sheets.length}…`;
+    let entries = [];
+    if (planning) {
+      try { entries = readDrawing(await complete(pageMessages(story, pg.text),
+        { maxTokens: PAGE_TOKENS, temperature: 0.3, schema: SKETCH_SCHEMA })).c; } catch {}
     }
-    const ul = document.createElement("ul");
-    ul.className = "checklist";
-    for (const it of items) ul.appendChild(checkItem(it));
-    card.appendChild(ul);
-    if (reshaped) showNote(body, "The model wrote this as prose; the page split it into a list.");
-    loopNote();
-
-    // What the person said that is nowhere on the list. Shown as one-tap
-    // chips, because the page cannot tell a dropped task from a worry the
-    // prompt told the model to leave out — the person can, instantly.
-    const missing = leftOut(source, items);
-    if (missing.length) {
-      const c = document.createElement("div");
-      c.className = "callout";
-      c.innerHTML = "<b>Not on the list.</b> Tap any that are tasks to add them.";
-      const chips = document.createElement("div");
-      chips.className = "chips";
-      for (const m of missing) {
-        const b = document.createElement("button");
-        b.type = "button"; b.textContent = "+ " + m;
-        b.addEventListener("click", () => {
-          ul.appendChild(checkItem(m.charAt(0).toUpperCase() + m.slice(1)));
-          b.remove();
-          if (!chips.childElementCount) c.remove();
-        });
-        chips.appendChild(b);
-      }
-      c.appendChild(chips);
-      body.appendChild(c);
-    }
-    body.appendChild(actionRow(() =>
-      [...ul.querySelectorAll("li")].map(li =>
-        (li.querySelector("input").checked ? "- [x] " : "- [ ] ") + li.textContent.trim()).join("\n")));
-    return text;
+    const fixed = planning ? fixPagePlan(entries, pg.text, story) : wordsOnlyPlan(pg.text, story);
+    pg.art.textContent = ""; pg.art.classList.remove("pending");
+    await drawInto(pg.art, pg.text, fixed.entries);
+    if (i === 0) first = fixed.entries;
+    // Show the working, one tap away and never printed: what the model listed
+    // and what the page changed.
+    const made = document.createElement("details");
+    made.className = "made";
+    const sum = document.createElement("summary"); sum.textContent = "How this picture was made";
+    const body = document.createElement("p");
+    body.textContent = (planning ? `The model listed: ${entries.join(", ") || "nothing usable"}. ` :
+      "Drawn from the words on this page. ") +
+      (fixed.fixes.length ? `The page: ${fixed.fixes.join("; ")}.` : "") +
+      (fixed.unknown.length ? ` No picture for ${fixed.unknown.map(w => `"${w}"`).join(", ")}.` : "");
+    made.append(sum, body);
+    pg.s.appendChild(made);
   }
+  if (first) {
+    coverArt.classList.remove("pending");
+    await drawInto(coverArt, story.title + " " + story.pages[0], coverPlan(story, first));
+  } else coverArt.remove();
 
-  card.textContent = text;
-  loopNote();
-  const warn = tool.checked ? checkRewrite(source, text) : [];
-  if (warn.length) {
-    const c = document.createElement("div");
-    c.className = "callout";
-    const b = document.createElement("b");
-    b.textContent = "Check before sending.";
-    const ul = document.createElement("ul");
-    for (const w of warn) { const li = document.createElement("li"); li.textContent = w; ul.appendChild(li); }
-    c.append(b, ul);
-    body.appendChild(c);
-  }
-  body.appendChild(actionRow(() => text));
-  return text;
+  status.textContent = stopFlag ? "Stopped. The pages drawn so far are kept." :
+    `${story.pages.length} pages, written and drawn on this device.`;
+  book.appendChild(bookActions(book));
 }
 
 // ---- When generation fails ------------------------------------------------
@@ -1857,218 +1512,96 @@ function showNote(el, text) {
 $("form").addEventListener("submit", async e => {
   e.preventDefault();
   const text = $("input").value.trim();
-  if (!engine || generating) return;
+  if (!engine || generating || !text) return;
 
   // A lost GPU device does not come back. Without this the page happily
-  // accepts message after message and fails each one identically, which reads
-  // as "this app is broken" rather than "reload the page".
-  if (engineDead) {
-    setStatus("reload needed", "err");
-    return;
-  }
+  // accepts request after request and fails each one identically.
+  if (engineDead) { setStatus("reload needed", "err"); return; }
 
   const outModeNow = outMode();
   const sketching = outModeNow === "sketch";
-  const desking = outModeNow === "desk";
-  if (!text) return;
-
-  // Desk decides BEFORE the model runs whether it runs at all. A refusal
-  // leaves the text in the composer: it is theirs, and they need to trim it.
-  let plan = null, tool = null;
-  if (desking) {
-    tool = currentTool();
-    plan = planDeskTurn({ tool, text, option: tool.options ? $("opt").value : "", ctx: CTX });
-    if (!plan.run) { updateCount(plan.note); return; }
-  }
-
   $("input").value = ""; $("input").style.height = "auto";
   if ($("intro")) $("intro").remove();
-  updateCount();
 
-  const conversation = sketching ? sketchHistory : history;
-  if (desking) {
-    addMsg("user", text, tool.label + (tool.options ? " · make it " + $("opt").value : ""));
-  } else {
-    addMsg("user", text);
-    conversation.push({ role: "user", content: text });
-  }
+  addMsg("user", text, sketching ? null : "Book");
+  if (sketching) sketchHistory.push({ role: "user", content: text });
   const out = addMsg("assistant", "");
 
   generating = true; stopFlag = false;
   $("send").disabled = true; $("stop").style.display = "";
-  setStatus("generating…", "busy");
+  setStatus(sketching ? "drawing…" : "writing…", "busy");
 
   let raw = "";
-  // Captured for the failure report: what actually went into the engine. A
-  // GPU failure is usually about size, and without these the report cannot say
-  // how big the thing was.
-  let sentTokens = null, sentMax = null;
-  if (sketching) out.body.textContent = "Drawing…";
   try {
-    const preset = PRESETS[$("preset").value];
-    const sys = $("system").value.trim();
-    // A sketch turn is planned, not accumulated: planSketchTurn carries only
-    // the previous drawing and the instruction that produced it, so the prompt
-    // stays the same size on turn ten as on turn two. The chat system prompt is
-    // written for prose and is not passed to a sketch or a Desk tool: a
-    // leftover "answer concisely in plain English" silently fought the drawing
-    // instructions on every sketch.
-    const sketchPlan = sketching
-      ? planSketchTurn(conversation, CTX, "", { scene: sceneMode() ? scenePrompt : null }) : null;
-    // One-at-a-time sends just this turn: for classification, earlier turns
-    // bias the answer rather than help it. Clone so wrapping cannot corrupt
-    // the stored history.
-    let base = sketchPlan ? sketchPlan.messages
-      : desking ? plan.messages
-      : ($("single").checked ? [conversation[conversation.length - 1]] : conversation)
-          .map(m => ({ ...m }));
-
-    if (!sketching && !desking) {
-      if (preset && preset.wrap && base.length && base[base.length - 1].role === "user") {
-        base[base.length - 1].content = preset.wrap(base[base.length - 1].content);
+    if (!sketching) {
+      await runBook(text, out);
+      scrollToAnswer(out.body);
+    } else {
+      out.body.textContent = "Drawing…";
+      // A sketch turn is planned, not accumulated: only the previous drawing
+      // and the instruction that produced it are carried, so the prompt stays
+      // the same size on turn ten as on turn two.
+      const sketchPlan = planSketchTurn(sketchHistory, CTX, "", { scene: sceneMode() ? scenePrompt : null });
+      raw = await complete(sketchPlan.messages, { maxTokens: sketchPlan.maxTokens, temperature: 0.2,
+        schema: SKETCH_SCHEMA, onText: t => { raw = t; } });
+      let done = raw.trim();
+      // A scene plan becomes a drawing here: the model's list in, the page's
+      // coordinates out. A model that answered in coordinates is drawn as is.
+      const opts = { rough: await loadRough(ROUGH), art: await loadArt() };
+      if (stopFlag) {
+        // Whatever arrived before the stop is still a drawing, if it parses.
+        try {
+          const staged = sketchPlan.scene ? stageScene(done) : null;
+          renderSketch(out.body, staged ? staged.raw : done, { ...opts, spread: !staged });
+        } catch { out.body.textContent = "Drawing stopped."; }
+        sketchHistory.pop();
+        setStatus("ready — running locally", "on");
+        return;
       }
-      if (sys) base.unshift({ role: "system", content: sys });
-    }
-
-    const temp = parseFloat($("temp").value);
-    const req = { messages: base, stream: true };
-    if (!isNaN(temp)) req.temperature = temp;
-
-    // Reasoning models otherwise spend most of their output budget thinking
-    // out loud before the answer. Off by default, and always off for tools
-    // whose output the page parses.
-    if (sketching || desking || !$("think").checked) req.extra_body = { enable_thinking: false };
-
-    // Single-turn means a short structured answer is expected, so cap the
-    // output. Without this a model that loops emits a wall of repeated text.
-    const cap = preset && preset.maxTokens ? preset.maxTokens
-              : ($("single").checked ? 12 : 0);
-    if (sketching) {
-      // Never ask for more room than is left: generation that reaches the
-      // context edge stops silently, mid-drawing.
-      req.max_tokens = sketchPlan.maxTokens;
-      req.temperature = 0.2;
-      req.response_format = { type: "json_object", schema: SKETCH_SCHEMA };
-    } else if (desking) {
-      // Same rule, same reason: the plan already costed the prompt.
-      req.max_tokens = plan.maxTokens;
-      req.temperature = tool.temp;
-    } else if (cap) req.max_tokens = cap;
-
-    sentTokens = base.reduce((n, m) => n + estimateTokens(m.content) + 4, 0);
-    sentMax = req.max_tokens ?? null;
-
-    let stream;
-    try {
-      stream = await engine.chat.completions.create(
-        !desking && !sketching && preset && preset.grammar
-          ? { ...req, response_format: { type: "grammar", grammar: preset.grammar } }
-          : req);
-    } catch (e) {
-      // Grammar support varies by model build; fall back rather than break chat.
-      if (desking || sketching || !(preset && preset.grammar)) throw e;
-      console.warn("grammar constraint rejected, retrying without:", e.message);
-      stream = await engine.chat.completions.create(req);
-    }
-    for await (const chunk of stream) {
-      // NEVER `break` out of this loop. WebLLM acquires a per-model lock in
-      // chat.completions.create() and releases it inside the async generator,
-      // at the end of the generator body — there is no try/finally around it
-      // (web-llm 0.2.85, asyncGenerate). Breaking calls the generator's
-      // .return(), which terminates it at the suspended yield, so that release
-      // never runs and CustomLock.acquired stays true for the life of the page.
-      // The NEXT create() then awaits a lock nobody will ever release: the
-      // message hangs on "generating…" for ever, with no error, and Stop does
-      // nothing because the generator that reads interruptSignal has not
-      // started. One Stop press bricked chat.
-      //
-      // So signal and keep draining. interruptGenerate() sets the flag the
-      // generator's own loop checks; it calls pipeline.triggerStop(), leaves
-      // the loop normally and releases the lock, which ends this for-await
-      // within a token or two. Re-asserting it on every chunk also covers the
-      // race where the generator body starts AFTER the click and resets the
-      // signal to false on its way in.
-      if (stopFlag) { await engine.interruptGenerate(); continue; }
-      raw += chunk.choices?.[0]?.delta?.content || "";
-      const { think, answer } = splitThink(raw);
-      if (think && !sketching) { out.think.style.display = ""; out.think.textContent = think.trim(); }
-      if (!sketching) out.body.textContent = answer.trim();
+      const staged = sketchPlan.scene ? stageScene(done) : null;
+      if (staged) {
+        renderSketch(out.body, staged.raw, { ...opts, spread: false });
+        const list = staged.plan.c.slice(0, 16).join(", ");
+        showNote(out.body, `The model listed: ${list}. The page placed them.` +
+          (staged.unknown.length ? ` No drawing for ${staged.unknown.map(w => `"${w}"`).join(", ")}, so ${staged.unknown.length === 1 ? "it is" : "they are"} written as words.` : "") +
+          " Edits change this picture; asking for a change starts again from the model's list.");
+        // The history keeps the model's LIST, so "add a dog" revises the plan
+        // in the language it was written in.
+        sketchHistory.push({ role: "assistant", content: JSON.stringify(staged.plan) });
+      } else {
+        done = renderSketch(out.body, done, { ...opts,
+          // An edit replaces the stored drawing, so a following "make it
+          // bigger" builds on what the person drew, not on what the model sent.
+          onEdit: edited => { const last = sketchHistory[sketchHistory.length - 1];
+            if (last && last.role === "assistant") last.content = edited; } });
+        sketchHistory.push({ role: "assistant", content: done });
+      }
       $("log").scrollTop = $("log").scrollHeight;
     }
-    // Now the message is whole, format it.
-    let done = sketching ? raw.trim() : splitThink(raw).answer.trim();
-    // A scene plan becomes a drawing here: the model's list in, the page's
-    // coordinates out. A model that answered in coordinates anyway is drawn
-    // as it is.
-    const staged = sketching && sketchPlan.scene ? stageScene(done) : null;
-    if (sketching && stopFlag) {
-      // Whatever arrived before the stop is still a drawing, if it parses.
-      try { renderSketch(out.body, staged ? staged.raw : done, { rough: await loadRough(ROUGH), art: await loadArt(), spread: !staged }); }
-      catch { out.body.textContent = "Drawing stopped. Try again with fewer details."; }
-      conversation.pop();
-      setStatus("ready — running locally", "on");
-      return;
-    }
-    if (sketching && staged) {
-      renderSketch(out.body, staged.raw, { rough: await loadRough(ROUGH), art: await loadArt(), spread: false });
-      // Say who did what. The model chose the things; the page placed them.
-      const list = staged.plan.c.slice(0, 16).join(", ");
-      showNote(out.body, `The model listed: ${list}. The page placed them.` +
-        (staged.unknown.length ? ` No drawing for ${staged.unknown.map(w => `"${w}"`).join(", ")}, so ${staged.unknown.length === 1 ? "it is" : "they are"} written as words.` : "") +
-        " Edits change this picture; asking for a change starts again from the model's list.");
-      // The conversation keeps the model's LIST, so "add a dog" revises the
-      // plan in the language it was written in.
-      done = JSON.stringify(staged.plan);
-    } else if (sketching) done = renderSketch(out.body, done, { rough: await loadRough(ROUGH), art: await loadArt(),
-      // An edit replaces the stored drawing, so a following "make it bigger"
-      // builds on what the person drew, not on what the model sent.
-      onEdit: edited => { const last = conversation[conversation.length - 1];
-        if (last && last.role === "assistant") last.content = edited; } });
-    else if (desking) {
-      renderDesk(out.body, tool, text, done);
-      if (stopFlag) showNote(out.body, "Stopped before the end.");
-    }
-    else await paint(out.body, done);
-    // Put the top of a long answer at the top of the view, not its end.
-    if (desking) scrollToAnswer(out.body);
-    else $("log").scrollTop = $("log").scrollHeight;
-    // Desk turns are one-shot: nothing from one rides into the next.
-    if (!desking) conversation.push({ role: "assistant", content: done });
     setStatus("ready — running locally", "on");
   } catch (err) {
     if (stopFlag) {
-      out.body.textContent = sketching ? "Drawing stopped." : "Stopped.";
+      out.body.appendChild(Object.assign(document.createElement("p"), { className: "note", textContent: "Stopped." }));
     } else {
-      // Every mode gets the diagnosis now, not just a forwarded string. A
-      // sketch keeps its own line first, because "try a simpler request" is
-      // real advice there and nowhere else.
       showGenerationFailure(out.body, err, {
-        mode: outModeNow,
-        promptTokens: sentTokens,
-        maxTokens: sentMax,
-        fallbackHead: sketching
-          ? "Could not finish a valid sketch. Try a simpler request or a larger model."
-          : null
+        mode: outModeNow, promptTokens: lastSent.promptTokens, maxTokens: lastSent.maxTokens,
+        fallbackHead: sketching ? "Could not finish a valid sketch. Try a simpler request or a larger model." : null
       });
+      // Keep the evidence: a failure on a device nobody here can reach is
+      // undiagnosable without the text the model actually produced.
+      if (sketching && raw.trim()) {
+        const details = document.createElement("details");
+        details.className = "source raw";
+        const summary = document.createElement("summary");
+        summary.textContent = "Show what the model returned";
+        const pre = document.createElement("pre");
+        pre.textContent = raw.trim();   // textContent: never parsed as markup
+        details.append(summary, pre);
+        out.body.append(details);
+      }
     }
-    // Keep the evidence. A sketch that fails on a device nobody here can reach
-    // is undiagnosable without the text the model actually produced.
-    if (sketching && !stopFlag && raw.trim()) {
-      const details = document.createElement("details");
-      // `raw` distinguishes it from the diagnostics pane above: two <details>
-      // in one failed message, and only this one holds the model's own words.
-      details.className = "source raw";
-      const summary = document.createElement("summary");
-      summary.textContent = "Show what the model returned";
-      const pre = document.createElement("pre");
-      pre.textContent = raw.trim();   // textContent: never parsed as markup
-      details.append(summary, pre);
-      out.body.append(details);
-    }
-    // Undo the turn — Desk turns pushed nothing, so there is nothing to undo.
-    if (!desking) conversation.pop();
-    setStatus(stopFlag ? "ready — running locally"
-            : engineDead ? "GPU lost — reload the page" : "error",
+    if (sketching && sketchHistory.at(-1)?.role === "user") sketchHistory.pop();
+    setStatus(stopFlag ? "ready — running locally" : engineDead ? "GPU lost — reload the page" : "error",
               stopFlag ? "on" : "err");
   } finally {
     generating = false;
@@ -2079,7 +1612,6 @@ $("form").addEventListener("submit", async e => {
     if (!engineDead && !DEV.mobile) $("input").focus();
   }
 });
-
 $("stop").addEventListener("click", () => { stopFlag = true; engine?.interruptGenerate(); });
 $("input").addEventListener("keydown", e => {
   // On a touch keyboard Return is a newline; only a physical keyboard sends.
@@ -2090,19 +1622,13 @@ $("input").addEventListener("keydown", e => {
 $("input").addEventListener("input", function () {
   this.style.height = "auto";
   this.style.height = Math.min(this.scrollHeight, 220) + "px";
-  updateCount();
+  updateHint();
 });
 
-// "Enter to send, Shift+Enter for newline" is advice for a physical keyboard,
-// and on a touch screen it is simply wrong, since Return inserts a newline.
-const PLACEHOLDER_FULL  = "Message the model…  (Enter to send, Shift+Enter for a new line)";
-const PLACEHOLDER_SHORT = "Message the model…";
-
 function fitPlaceholder() {
-  const el = $("input");
-  if (outMode() === "sketch") { el.placeholder = "Describe a picture…"; return; }
-  if (outMode() === "desk") { el.placeholder = currentTool().ask; return; }
-  el.placeholder = matchMedia("(pointer: fine)").matches ? PLACEHOLDER_FULL : PLACEHOLDER_SHORT;
+  $("input").placeholder = outMode() === "sketch"
+    ? "Describe a scene…"
+    : "A story about…  e.g. a little dog who has never seen the sea";
 }
 
 // ---- Boot ----------------------------------------------------------------------
@@ -2118,9 +1644,8 @@ function boot() {
   // Fetched now rather than on first use, so switching to Sketch after the
   // model has loaded makes no request the privacy meter would have to list.
   loadRough(ROUGH);
-  // The illustrations too, but only once someone is drawing: Desk and Chat
-  // never pay for them.
-  if (outMode() === "sketch") loadArt();
+  // The illustrations too: every book and every scene draws with them.
+  loadArt();
   init();
   // Keep the page itself available with no signal: the weights persist, but
   // GitHub Pages expires the HTML after ten minutes. Registered here, not on

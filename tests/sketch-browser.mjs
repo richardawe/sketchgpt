@@ -42,7 +42,7 @@ export async function CreateMLCEngine() { return {
     const url = new URL(route.request().url());
     if (url.pathname === '/mock.mjs') return route.fulfill({ contentType: 'text/javascript', body: stub });
     const name = url.pathname.replace(/^.*\//, '');
-    const file = /^(sketch|stamps|rough|desk|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
+    const file = /^(sketch|stamps|rough|book|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
     await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
@@ -186,26 +186,7 @@ export async function CreateMLCEngine() { return {
   assert.match(await page.locator('.msg.assistant').last().textContent(), /Could not finish a valid sketch/);
   assert.equal(await page.locator('.msg.assistant').last().locator('details.raw pre').textContent(), 'I cannot draw that.');
 
-  // A chat system prompt must not ride along with a drawing. A leftover
-  // "answer in plain English" silently fought the JSON instructions, and the
-  // only sign was a badge in the header.
-  await page.evaluate(() => { document.querySelector('#system').value = 'Answer concisely in plain English.'; });
   await page.evaluate(() => { window.result = window.drawing; });
-  await send('Draw a boat');
-  assert.equal(await page.evaluate(() =>
-    requests.at(-1).messages.some(m => m.content.includes('plain English'))), false);
-  assert.match(await page.locator('#mode').textContent(), /not used in this mode/);
-
-  // Chat mode is untouched: no schema, no sketch prompt, its own history, and
-  // the system prompt it was written for still applies there.
-  await page.evaluate(() => { window.result = 'Hello'; });
-  await page.click('#output [data-mode="chat"]');
-  await send('Hello');
-  assert.equal(await page.evaluate(() => requests.at(-1).messages.filter(m => m.role === 'user').length), 1);
-  assert.equal(await page.evaluate(() => requests.at(-1).response_format), undefined);
-  assert.equal(await page.evaluate(() =>
-    requests.at(-1).messages.some(m => m.content.includes('plain English'))), true);
-
   await page.click('#output [data-mode="sketch"]');
   await page.evaluate(() => { window.slow = true; });
   await page.fill('#input', 'Stop this sketch'); await page.click('#send'); await page.click('#stop');

@@ -39,7 +39,7 @@ jobs:
           cp web/sketch.mjs _site/sketch.mjs
           cp web/stamps.mjs _site/stamps.mjs
           cp web/rough.mjs  _site/rough.mjs
-          cp web/desk.mjs   _site/desk.mjs
+          cp web/book.mjs   _site/book.mjs
           cp web/scene.mjs  _site/scene.mjs
           cp web/art.mjs    _site/art.mjs
           cp web/art-names.mjs _site/art-names.mjs

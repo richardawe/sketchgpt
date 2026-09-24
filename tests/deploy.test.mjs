@@ -29,7 +29,7 @@ function modules() {
 
 test("the page's module graph is what we think it is", () => {
   const found = modules();
-  for (const m of ["sketch.mjs", "desk.mjs", "scene.mjs", "stamps.mjs", "art-names.mjs"]) assert.ok(found.includes(m), m);
+  for (const m of ["sketch.mjs", "book.mjs", "scene.mjs", "stamps.mjs", "art-names.mjs"]) assert.ok(found.includes(m), m);
 });
 
 test("every imported module is copied by the deploy workflow", () => {

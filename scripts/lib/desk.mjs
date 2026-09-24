@@ -1,3 +1,7 @@
+// RETIRED from the page: Desk mode was removed for Book mode. Kept for
+// scripts/desk-bench.mjs and tests/desk.test.mjs, so the numbers in
+// docs/desk.md stay reproducible.
+//
 // Desk — two tools for the work you would not paste into a cloud chatbot.
 //
 // This replaced Work mode, and the reasons are measured, not taste:
@@ -18,7 +22,7 @@
 // draws the checklist, counts the words, and decides before anything runs
 // whether the input fits.
 
-import { estimateTokens } from "./sketch.mjs?v=6";   // ?v= matches browser.html
+import { estimateTokens } from "../../web/sketch.mjs?v=7";
 
 const GROUND =
   "You work only with what the person gives you. You cannot browse and you " +

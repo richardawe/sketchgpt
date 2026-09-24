@@ -24,7 +24,7 @@ export async function CreateMLCEngine() { return {
  chat: { completions: { async create(req) {
    window.requests.push(req);
    if (window.failWith) throw new Error(window.failWith);
-   return (async function* () { yield { choices: [{ delta: { content: 'ok' } }] }; })();
+   return (async function* () { yield { choices: [{ delta: { content: window.reply || 'ok' } }] }; })();
  } } }
 }; }`;
 
@@ -47,7 +47,7 @@ try {
     if (url.pathname === '/mock.mjs')
       return route.fulfill({ contentType: 'text/javascript', body: stub });
     const name = url.pathname.replace(/^.*\//, '');
-    const file = /^(sketch|stamps|rough|desk|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
+    const file = /^(sketch|stamps|rough|book|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
     await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
@@ -63,7 +63,7 @@ try {
     await page.click('#send');
     await page.waitForFunction(() => !document.querySelector('.msg.assistant .body').textContent
       .includes('') || true);
-    await page.waitForFunction(() => !document.querySelector('#status').textContent.includes('generating'));
+    await page.waitForFunction(() => !document.querySelector('#status').textContent.match(/generating|writing|drawing/));
   };
 
   // ---- an ordinary failure still reports itself -------------------------
@@ -76,8 +76,8 @@ try {
   let facts = await page.locator('.msg.assistant .source pre').last().textContent();
   for (const key of ['model:', 'mode:', 'context:', 'prompt:', 'gpu:', 'agent:', 'error:'])
     assert.ok(facts.includes(key), `the report is missing "${key}"`);
-  // Desk is the default mode, and its failures get the same report.
-  assert.match(facts, /mode: desk/);
+  // Book is the default mode, and its failures get the same report.
+  assert.match(facts, /mode: book/);
   assert.match(facts, /gpu: apple apple-m/);
   assert.match(facts, /error: something went sideways/);
   assert.match(facts, /prompt: \d+ tokens/);
@@ -158,6 +158,11 @@ try {
   body = await page.locator('.msg.assistant .body').last().textContent();
   assert.ok(!/Generation failed|Details to copy/.test(body),
     'a successful turn was reported as a failure');
+  // A reply that is not a story is the model's miss, not a failure: it is
+  // said plainly, and what the model wrote is kept.
+  assert.match(body, /did not write a story/);
+  assert.equal(await page.locator('.msg.assistant .source.raw pre').last().textContent(), 'ok');
+  assert.equal(await page.locator('#send').isDisabled(), false);
 
   assert.deepEqual(errors, [], 'page errors: ' + errors.join('; '));
   console.log('Failure checks passed: every mode reports the facts, the GPU ' +

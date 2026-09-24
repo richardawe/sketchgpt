@@ -20,8 +20,8 @@ public on X. The lab's thesis is at the bottom.
 web/browser.html          in-browser inference (WebGPU via WebLLM) — the public page
 web/index.html            local chat against Ollama — development only
 web/sketch.mjs            sketch format, context budget, SVG rendering
-web/desk.mjs              Desk (the default mode) — Brain dump + Say it better, the
-                          planner, and the checks the page makes on the output
+web/book.mjs              Book (the default mode) — story prompt + parser, and the page's
+                          picture rules (continuity: hero on every page, names are not things)
 web/scene.mjs             scene mode (desktop) — the model lists things, the page places them
 web/art.mjs               generated Twemoji illustrations (CC-BY 4.0) — never edit by hand
 web/art-names.mjs         generated word -> illustration map — never edit by hand
@@ -39,7 +39,8 @@ scripts/record-demo.mjs   record clips of sketch mode, one per claim (Playwright
 scripts/grounding-bench.mjs  does a small model invent answers about a document? (it does)
 scripts/retrieval-bench.mjs  BM25 (Work mode's) vs an embedder, same document, same queries
 scripts/lib/retrieval.mjs    the retired Work-mode BM25, kept for that bench
-scripts/desk-bench.mjs       Desk's real prompts through real models, with the page's checks
+scripts/lib/desk.mjs         the retired Desk module, kept for desk-bench
+scripts/desk-bench.mjs       the retired Desk's real prompts through real models, with the page's checks
 scripts/storybook.mjs        write a six-page story + scene plans with a real model (Book-mode spike)
 scripts/storybook-render.mjs lay a written story out as a printable picture book
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
@@ -50,6 +51,7 @@ docs/mobile-models.md     the phone-suitable models WebLLM ships, and the plan t
 docs/work-mode.md         Phase 3 as first built — reading a document on-device, and why
                           the obvious design fails; read before touching RAG
 docs/desk.md              what replaced it — five tools benched, two shipped, and why
+                          (Desk itself was then replaced by Book)
 docs/sketch-scenes.md     why desktop sketches stopped asking for coordinates
 docs/storybook.md         a story written by the model, illustrated by the page — what broke
 docs/fix-plan-work-ui.md  the review that retired Work mode
@@ -125,13 +127,13 @@ serves **4-bit**, and that gap explains most surprises.
   mouse, where the same function returned early. Fixed structurally: every
   top-level side effect runs from one `boot()` at the bottom, and the form
   carries `onsubmit="return false"` so no future startup error can turn Send
-  into a reload. `tests/desk-browser.mjs` runs on a touch screen *starting in
-  Chat mode* and fails on any page error or navigation — mutation-checked
+  into a reload. `tests/book-browser.mjs` runs on a touch screen *starting from
+  a saved Chat mode* and fails on any page error or navigation — mutation-checked
   against the crash, the missing listener, and the missing guard.
 
 - **A new page can meet an old module for ten minutes.** GitHub Pages sends
   `max-age=600` on everything, so after a deploy a browser can pair the new
-  HTML with a cached `desk.mjs` that lacks a name the page imports — and one
+  HTML with a cached module that lacks a name the page imports — and one
   failed named import kills the whole page. Module imports carry `?v=N`
   (bump it when exports change), and the worker's network-first fetch uses
   `cache: "no-cache"` so it cannot itself serve the stale copy.
@@ -432,24 +434,27 @@ practical fine-tuning.
   still entirely unwritten: **a visitor draws, sees what their hardware
   managed, and the lab learns nothing.** The page already computes the answer
   per device and throws it away. No datapoint, no public matrix.
-- **Desk is built and benched, and no phone has run it.** Chromium touch
-  emulation is covered (`tests/desk-browser.mjs`); iOS Safari is not. The
-  "map async was not successful" GPU failure from Work mode's one phone run is
-  still unexplained — it happened on SmolLM2-360M at the 4096 rung, and Desk
-  runs the same model at the same rung on phones. The next phone run should
-  try Desk and Chat on that device and note which, if either, fails.
+- **Desk and Chat are gone; Book is the default mode.** Book mode: the model
+  writes a six-page story (JSON schema: title, cast, pages); on desktop each
+  page is planned in scene mode and fixed by `fixPagePlan()`; on phones each
+  picture comes from the page's own words (`wordsOnlyPlan()`). Print (this book
+  only) and Download (one HTML file). Chromium touch emulation is covered
+  (`tests/book-browser.mjs`); **no real GPU has written a book yet** — the
+  story quality numbers are Ollama on CPU. Phones now default to Qwen3-0.6B
+  at 1024 context (Qwen2.5-0.5B could not write a story); the "map async"
+  failure has never been seen on it. The 1024 rung leaves the story ~900
+  tokens after a ~100-token prompt, which fits; a longer premise is not capped.
 - **The model now downloads without a button press** — the owner's decision,
   reversing "silently pulling hundreds of MB is not ours to do". What is left
   of that rule: the card names model and size while it downloads, `?manual=1`
   is one tap away, and `navigator.connection.saveData` still means ask first
   (iOS Safari does not expose it). Desktop gets Qwen3-1.7B where it fits at
-  ≥2048 context, phones Qwen2.5-0.5B. Neither choice has run on a real device
+  ≥2048 context, phones Qwen3-0.6B (for Book). Neither choice has run on a real device
   yet; both come from the Ollama bench and the allocation formula.
 - **The token estimator still charges prose double.** Measured 2.0× on the
   repo's docs; a trial rule measured 1.31–1.35× and never read low on any
   paragraph. Not shipped: sketch budgets depend on it and would need
-  re-verifying with `token-budget.mjs`. Desk's word limit is therefore
-  conservative — about 1,200 words at 4096, 170 at 1024.
+  re-verifying with `token-budget.mjs`. 
 - **Scene mode has never run in a real browser.** Qwen3-1.7B on Ollama plus the
   page's real composer and renderer in headless Chromium; the q4f16 build has
   not generated a scene on a GPU. Phones stay on coordinates on the numbers
@@ -460,9 +465,9 @@ practical fine-tuning.
   locked or Safari went to the background — made likelier by auto-download.
   Planned and not built: a screen wake lock during download, one automatic
   retry (finished files are kept), and a report naming the stage that failed.
-- **Storybook is the use case the owner picked, and it is two scripts.**
-  `scripts/storybook.mjs` + `storybook-render.mjs` make a printable book in
-  ~25 s on CPU with Qwen3-1.7B. No Book mode in the app yet, and no browser run.
+- **Storybook is the use case the owner picked, and it is now Book mode.**
+  The spike scripts (`scripts/storybook.mjs` + `storybook-render.mjs`) stay as
+  the Ollama harness for story prompts.
 - **The two-engine gate is still untested — and no longer blocking.** "Can two
   WebLLM engines be resident in one tab?" was the reason not to write Work mode
   UI. Retrieving lexically removed the dependency: there is no second engine, so

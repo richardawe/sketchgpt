@@ -1,7 +1,8 @@
 # sketchgpt
 
-A chat page that runs a language model **in the browser** — no server, no API
-key, no install for whoever opens it. Weights download once from a CDN into
+A picture-book maker that runs a language model **in the browser** — no
+server, no API key, no install for whoever opens it. Type an idea; the model
+writes a six-page story on your device, and the page illustrates every page. Weights download once from a CDN into
 browser storage; every visit after that loads from cache, and a service worker
 keeps the page itself available with no connection at all.
 
@@ -29,21 +30,21 @@ Already have a repo? Run `./scripts/setup-pages.sh` inside it, or
 `./scripts/setup-pages.sh my-chat` to create one first.
 
 Then open the URL. The first visit downloads the model picked for the device;
-after that the page loads it from cache and drops you straight into Desk.
+after that the page loads it from cache and drops you straight into Book mode.
 
 ### What visitors get
 
 | Device | Model chosen | Download |
 |---|---|---|
 | Desktop | Qwen3-1.7B where it fits at ≥2048 context, else Qwen3-0.6B | ~990 MB / ~360 MB |
-| Phone / tablet | Qwen2.5-0.5B | ~300 MB |
+| Phone / tablet | Qwen3-0.6B at a 1024 context, else Qwen2.5-0.5B | ~350 MB / ~300 MB |
 
 The page reads the GPU adapter and available memory, filters out models the
 device cannot run, picks the best one that fits with headroom, and **starts the
 download by itself** — unless the browser has asked to save data. "Choose a
 different model" is on the card while it downloads. The choices come from
-benching Desk's and Sketch's real prompts (`docs/desk.md`): SmolLM2-360M, the
-old phone default, answered a quarter of brain dumps in prose.
+benching Book's real prompt (`docs/storybook.md`): Qwen2.5-0.5B, the previous
+phone default, could not write a story at all — casts like "Dog (has)".
 
 ## Quickstart
 
@@ -131,15 +132,43 @@ also starts Ollama if it is not already running.
 | Model storage | `models/ollama/` on disk | Browser cache, persisted |
 | Speed | Faster | Slower, but no setup |
 
-### Three modes
+### Two modes
 
 The browser page has a mode switch in the header:
 
 | | |
 |---|---|
-| **Desk** | brain dump → to-do list, and say-it-better rewrites, checked by the page. The default. |
+| **Book** | an idea in, a six-page illustrated story out — printable, and downloadable as one HTML file. The default. |
 | **Sketch** | describe a scene, get an SVG drawn locally |
-| **Chat** | open conversation, Markdown and LaTeX rendered |
+
+Desk (brain dump, say it better) and Chat were removed for Book. Desk's
+measurements stay in `docs/desk.md`, its module in `scripts/lib/desk.mjs` for
+the bench.
+
+### Book — a picture book, written and drawn on the device
+
+The model does the two things a small model can: write a simple story, and name
+what is in each picture. The page does everything else — placing, drawing, and
+above all **continuity**, which the model is never trusted with. Every rule
+below is a failure seen in a model-written book (`docs/storybook.md`):
+
+- **The hero is on every page**, once, as the same picture — the model dropped
+  them whenever the text said "he".
+- **A name is not a thing** — a dog called Ducky was drawn as a duck.
+- **No stand-ins** — "He jumped into the water", on a dog's page, came back as a boy.
+- **A copied example is removed** — on a vague page the model returned the
+  scene prompt's own harbour example, word for word.
+- **Things with no picture stay off the art** — the text is right under it.
+
+On a desktop (1.5B and up) each page is planned by the model and fixed by those
+rules. On a phone the model writes the story only, and each picture is built
+from the page's own words — the small models loop or copy a scene list. Under
+every picture, "How this picture was made" says what the model listed and what
+the page changed. **Print or save as PDF** prints the book and nothing else;
+**Download book** saves it as one self-contained HTML file.
+
+About 25 seconds a book with Qwen3-1.7B on Ollama on CPU. **Neither the phone
+nor the desktop build has written a book on a real GPU yet.**
 
 ### Scenes on desktop
 
@@ -251,16 +280,11 @@ because that exists to correct a model that cannot place things — a person who
 types two coordinates means them. An edit also replaces the stored drawing, so
 a following "make it bigger" builds on what you drew.
 
-The chat system prompt in Settings is **not** sent in sketch mode — it is
-written for prose, and a leftover "answer concisely in plain English" silently
-fought the drawing instructions. Ask for a style in the request instead.
-
 Output cut off mid-JSON still renders the commands that arrived, captioned as
 unfinished. A few unreadable commands are dropped and counted; mostly-bad
 output says so instead of rendering a confident fragment.
 
-Chat and sketch histories are separate. The mode is saved across reloads;
-drawings and history are not. This is in `web/browser.html`, `web/sketch.mjs`
+The mode is saved across reloads; drawings, stories and history are not. This is in `web/browser.html`, `web/sketch.mjs`
 and `web/stamps.mjs`; the Ollama page is unchanged.
 
 #### Not yet measured
@@ -334,21 +358,23 @@ desktop now gets Qwen3-1.7B wherever it fits at a 2048 context or more.
 
 ```bash
 node --test tests/sketch.test.mjs     # format, stamps, clamping, budget
-node --test tests/desk.test.mjs       # Desk's planner and the page's checks
+node --test tests/book.test.mjs       # the story parser and the page's picture rules
+node --test tests/desk.test.mjs       # the retired Desk's planner, for its bench
 node --test tests/retrieval.test.mjs  # the retired Work-mode retrieval, for the bench
 node tests/sketch-browser.mjs         # needs Playwright + Chromium
-node tests/desk-browser.mjs           # Desk on a touch screen and a mouse
+node tests/book-browser.mjs           # Book on a touch screen and a mouse
 node --test tests/scene.test.mjs      # scene composer, on real model output
 node --test tests/art.test.mjs        # the illustrations: well-formed, named, credited
 node tests/scene-browser.mjs          # scene mode in the page, desktop and phone
 node --test tests/deploy.test.mjs     # every imported module is deployed and cached
-node tests/stop.mjs                   # Stop stops, and chat survives it
+node tests/stop.mjs                   # Stop stops, and the page survives it
 node tests/failure.mjs                # what the page says when generation fails
 node tests/offline.mjs                # loads the page with the network cut
 node scripts/retrieval-bench.mjs      # BM25 vs an embedder; Ollama optional
 node scripts/token-budget.mjs         # real tokenizer; needs @lenml/tokenizers
 node scripts/sketch-bench.mjs qwen3:1.7b   # real models; needs Ollama
-node scripts/desk-bench.mjs qwen3:0.6b     # Desk prompts + the page's checks
+node scripts/storybook.mjs            # a book from a real model; needs Ollama
+node scripts/desk-bench.mjs qwen3:0.6b     # the retired Desk's prompts
 node scripts/build-stamps.mjs         # regenerates web/stamps.mjs from Lucide
 node scripts/build-art.mjs            # regenerates web/art.mjs from Twemoji
 ```
@@ -360,45 +386,18 @@ export, mobile width, the flat prompt over seven turns, truncated output,
 invalid output, cancellation and the saved mode. `SKETCH_ROUGH=0` runs them
 against the clean-SVG fallback instead.
 
-### Desk — two tools for the work you would not paste into a chatbot
+### Nothing leaves the device
 
-Desk is the default mode. It does two things:
+The header proves it: a shield counts every network request the page makes
+after the model has loaded, and lists them in the menu. Writing a book and
+drawing make none, so it reads **0**. Nothing you type is written to storage
+either — only the chosen mode is.
 
-| | |
-|---|---|
-| **Brain dump** | type everything on your mind, in any order — get back a to-do list you can tick off |
-| **Say it better** | paste a message you wrote and pick a tone — clearer, friendlier, firmer, shorter, more professional, warmer, simpler |
-
-Both run on the device, and the header proves it: a shield counts every
-network request the page makes after the model has loaded, and lists them in
-the menu. Desk and Chat make none, so it reads **0**. Nothing you type is
-written to storage either.
-
-The model names things; **the page checks what it can compute**, because a
-small model's worst failures are confident ones:
-
-- **Say it better** compares the rewrite with your message. If yours says
-  something will *not* happen and the rewrite does not, or a number went
-  missing, it says **Check before sending**. Measured: with an earlier
-  prompt, Qwen3-0.6B turned "the report won't be ready Friday" into "will be
-  ready Friday". The shipped prompt kept it in the final run; the check stays.
-- **Brain dump** lists anything you wrote that is not on the list, as one-tap
-  chips to add back. Measured: both Qwen3 sizes dropped "dentist" from a
-  seven-item dump.
-- **Too long** is refused before the model runs, with the word limit for your
-  device shown as you type — never silently cut short.
-
-Five tools were built and benched; three were cut. Draft-a-reply inverted what
-the person wanted to say on the 0.6B, neither size played a rehearsal
-convincingly, and "break it down" worked but two things done well beat five on
-a menu. What the checks do **not** catch is written down too: the 0.6B once
-rewrote "You never reply to my emails" from the recipient's side. Everything is
-in `docs/desk.md`; `scripts/desk-bench.mjs` reruns it.
-
-Desk replaced **Work mode**, which read uploaded documents with BM25 retrieval.
-Its measurements — including why a small model must never summarise a document
-nobody can check — are in `docs/work-mode.md`, and the review that retired it
-is `docs/fix-plan-work-ui.md`.
+Book replaced **Desk** (brain dump and say-it-better, `docs/desk.md`), which
+replaced **Work mode** — document reading with BM25 retrieval. Work mode's
+measurements, including why a small model must never summarise a document
+nobody can check, are in `docs/work-mode.md`; the review that retired it is
+`docs/fix-plan-work-ui.md`.
 
 ### Why the Ollama page can't go on GitHub Pages
 
@@ -493,13 +492,15 @@ scripts/serve-web.sh      serve the chat UI on localhost
 scripts/build-stamps.mjs  regenerates web/stamps.mjs from Lucide
 scripts/token-budget.mjs  measures sketch cost against Qwen3's tokenizer
 scripts/sketch-bench.mjs  runs the real prompt through real models on CPU
-scripts/desk-bench.mjs    runs Desk's prompts through real models on CPU
+scripts/storybook.mjs     writes a book with a real model on CPU (Ollama)
+scripts/desk-bench.mjs    runs the retired Desk's prompts through real models on CPU
 scripts/lib/retrieval.mjs BM25 from the retired Work mode, for retrieval-bench
 scripts/record-demo.mjs   records mp4/gif clips of sketch mode for posting
 web/index.html            streaming chat UI, talks to local Ollama
 web/browser.html          runs the model in-browser via WebGPU (Pages-ready)
 web/sketch.mjs            sketch format, context budget, SVG rendering
-web/desk.mjs              Desk: two tools, the planner, the page's checks
+web/book.mjs              Book: the story prompt and parser, the page's picture rules
+web/scene.mjs             scene mode: the model lists things, the page places them
 web/stamps.mjs            generated icon geometry (do not edit by hand)
 web/rough.mjs             vendored rough.js 4.6.6 (MIT), the hand-drawn line
 web/sw.js                 service worker — keeps the page itself usable offline
@@ -517,8 +518,6 @@ docs/customising.md       how to change what the model does
   stamps a noun has no illustration for, vendored as path data in `web/stamps.mjs`.
 - **[rough.js](https://roughjs.com)** (MIT) — the hand-drawn line, vendored
   verbatim in `web/rough.mjs` so sketches keep it offline.
-- **[KaTeX](https://katex.org)** (MIT) — maths in chat answers, loaded from a
-  CDN on demand.
 
 ## Notes
 

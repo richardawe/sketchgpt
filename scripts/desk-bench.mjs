@@ -13,7 +13,7 @@
 // MLC q4f16. This measures what the prompts get out of a model of that size,
 // not the exact bytes a visitor's device produces.
 import { toolById, planDeskTurn, parseChecklist, stripPreamble,
-         checkRewrite, leftOut } from "../web/desk.mjs";
+         checkRewrite, leftOut } from "./lib/desk.mjs";
 
 const HOST = process.env.OLLAMA_HOST || "http://127.0.0.1:11434";
 

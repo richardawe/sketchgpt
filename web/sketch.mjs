@@ -17,8 +17,8 @@
 //      covering the same scene cost 26, and look better. Naming a noun is the
 //      easiest thing a small model does; drawing a recognisable tree from
 //      line segments is among the hardest.
-import { STAMPS, ALIASES, STAMP_BOX } from "./stamps.mjs?v=6";   // ?v= : see browser.html
-import { ART_NAMES } from "./art-names.mjs?v=6";
+import { STAMPS, ALIASES, STAMP_BOX } from "./stamps.mjs?v=7";   // ?v= : see browser.html
+import { ART_NAMES } from "./art-names.mjs?v=7";
 
 export const GRID = 100;    // the coordinate space the model is given
 export const CANVAS = 400;  // SVG user units
@@ -471,7 +471,7 @@ export function resetRough() { roughPromise = null; }
 
 // The illustrations are ~330 KB, so they load only when a drawing needs them,
 // and never for Desk or Chat. A failed load leaves the line icons, then words.
-const ART_URL = "./art.mjs?v=6";
+const ART_URL = "./art.mjs?v=7";
 let artPromise = null;
 export function loadArt(url = ART_URL) {
   if (url === null) return Promise.resolve(null);

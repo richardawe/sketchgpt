@@ -1,4 +1,4 @@
-// Stop must stop, and the chat must survive it.
+// Stop must stop, and the page must survive it.
 //
 //   node tests/stop.mjs
 //
@@ -42,12 +42,14 @@ export async function CreateMLCEngine() {
       return (async function* () {
         interrupt = false;                       // asyncGenerate clears it on entry
         window.started = (window.started || 0) + 1;
-        for (let n = 0; n < 400; n++) {
+        let n = 0;
+        for (; n < 400; n++) {
           if (interrupt) break;                  // pipeline.triggerStop()
           await new Promise(r => setTimeout(r, 8));
           yield { choices: [{ delta: { content: 'tick ' } }] };
         }
         window.finished = (window.finished || 0) + 1;
+        window.lastTicks = n;
         await release();                         // ONLY on a clean exit
       })();
     } } }
@@ -69,7 +71,7 @@ try {
     if (url.pathname === '/mock.mjs')
       return route.fulfill({ contentType: 'text/javascript', body: stub });
     const name = url.pathname.replace(/^.*\//, '');
-    const file = /^(sketch|stamps|rough|desk|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
+    const file = /^(sketch|stamps|rough|book|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
     await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
@@ -83,25 +85,22 @@ try {
     () => !document.querySelector('#send').disabled, null, { timeout: 15000 });
 
   // ---- 1. a stop stops --------------------------------------------------
-  await page.fill('#input', 'count for me');
+  await page.fill('#input', 'a dog who counts');
   await page.click('#send');
-  await page.waitForFunction(() => /tick tick/.test(document.querySelector('.msg.assistant .body')?.textContent || ''));
+  await page.waitForFunction(() => /\d{2,} characters/.test(document.querySelector('.book-status')?.textContent || ''));
   await page.click('#stop');
   await ready();
 
-  const afterStop = await page.locator('.msg.assistant .body').last().textContent();
-  assert.ok(afterStop.includes('tick'), 'the partial answer was thrown away');
+  assert.match(await page.locator('.book-status').last().textContent(), /Stopped/, 'Stop was not reported');
   // The generator must have run to its end rather than being abandoned: that
   // is the whole difference between draining and breaking.
   assert.equal(await page.evaluate(() => window.finished), 1,
     'the stream was abandoned mid-generation — its lock was never released');
 
-  const grew = await page.evaluate(async () => {
-    const before = document.querySelector('.msg.assistant .body').textContent.length;
-    await new Promise(r => setTimeout(r, 400));
-    return document.querySelector('.msg.assistant .body').textContent.length - before;
-  });
-  assert.equal(grew, 0, 'text kept arriving after Stop');
+  const before = await page.evaluate(() => document.querySelector('.msg.assistant .body').textContent);
+  await page.waitForTimeout(400);
+  assert.equal(await page.evaluate(() => document.querySelector('.msg.assistant .body').textContent), before,
+    'text kept arriving after Stop');
 
   // ---- 2. the chat still works afterwards -------------------------------
   // This is the assertion that fails against `break`: create() blocks on a
@@ -109,7 +108,7 @@ try {
   await page.fill('#input', 'again please');
   await page.click('#send');
   await page.waitForFunction(
-    () => /tick/.test(document.querySelectorAll('.msg.assistant .body')[1]?.textContent || ''),
+    () => /\d+ characters/.test(document.querySelectorAll('.book-status')[1]?.textContent || ''),
     null, { timeout: 15000 });
   assert.equal(await page.evaluate(() => window.blocked || 0), 0,
     'the second turn had to wait for a leaked lock');
@@ -130,12 +129,11 @@ try {
     document.querySelector('#stop').click();   // same task, before any chunk
   });
   await ready();
-  const third = (await page.locator('.msg.assistant .body').last().textContent()).trim();
-  assert.ok(third.split('tick').length - 1 < 50,
-    `a stop issued during prefill was lost: ${third.split('tick').length - 1} ticks arrived`);
+  const third = await page.evaluate(() => window.lastTicks);
+  assert.ok(third < 50, `a stop issued during prefill was lost: ${third} ticks arrived`);
 
   assert.deepEqual(errors, [], 'page errors: ' + errors.join('; '));
-  console.log('Stop checks passed: stops, keeps the partial answer, releases the ' +
+  console.log('Stop checks passed: stops, says so, releases the ' +
     'stream lock, survives a second turn, and is not lost during prefill.');
 } finally {
   await browser.close();

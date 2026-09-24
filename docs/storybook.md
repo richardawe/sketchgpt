@@ -30,7 +30,10 @@ And three the illustrations needed:
 
 ## Open
 
-- **Book mode is not in the app.** This is two scripts and a rendered file.
+- **Book mode is in the app** (`web/book.mjs`, the default mode), with the
+  rules above in `fixPagePlan()` and a test per rule (`tests/book.test.mjs`).
+  Phones use Qwen3-0.6B and draw from each page's words; no real GPU has
+  written a book yet.
 - The stories are simple and sometimes odd ("Pip the Perfectionist"). That is
   the visible kind of failure — a flat story, not a false one.
 - Things the illustrations lack (cow is there; a llama is not) are left off.

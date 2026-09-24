@@ -10,9 +10,9 @@
 // name read as a thing (Ducky -> a duck), "he" drawn as a stand-in boy, and the
 // hero going missing. The page, not the model, owns continuity.
 import { writeFileSync } from "node:fs";
-import * as sk from "../web/sketch.mjs?v=6";
-import { scenePrompt, parseEntry } from "../web/scene.mjs?v=6";
-import { ART_NAMES } from "../web/art-names.mjs?v=6";
+import * as sk from "../web/sketch.mjs?v=7";
+import { scenePrompt, parseEntry } from "../web/scene.mjs?v=7";
+import { ART_NAMES } from "../web/art-names.mjs?v=7";
 const [model, premise, out] = process.argv.slice(2);
 const chat = async (messages, format, temperature, num_predict) => {
   const r = await fetch("http://127.0.0.1:11434/api/chat", { method: "POST", body: JSON.stringify({

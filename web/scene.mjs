@@ -19,8 +19,8 @@
 // The result is the same format the commands panel shows and edits, so
 // nothing downstream changes, and a person can still move anything by hand.
 
-import { resolveStamp, PALETTE, GRID } from "./sketch.mjs?v=6";
-import { ART_NAMES } from "./art-names.mjs?v=6";
+import { resolveStamp, PALETTE, GRID } from "./sketch.mjs?v=7";
+import { ART_NAMES } from "./art-names.mjs?v=7";
 
 // Names that have a full-colour illustration. Those keep their own colours;
 // the composer only picks a colour for the line icons.
