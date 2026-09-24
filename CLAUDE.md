@@ -116,6 +116,7 @@ serves **4-bit**, and that gap explains most surprises.
 | **A bigger vocabulary makes a loose matcher wrong** | With 485 words, the prefix rule drew a ship for "line" (via "liner") and a building for "sky" (via "skyscraper"). A known word may extend the model's word only when that word is at least five letters. |
 | **A story breaks continuity in ways a sketch never shows** | Across three model-written books: the prompt's example copied onto 5 of 18 vague pages, a dog named Ducky drawn as a duck, "he" drawn as a boy, the hero missing when the text used a pronoun. All fixed on the page — the cast is drawn on every page as the same picture, names are not nouns, stand-ins are dropped, and a near-empty plan is rebuilt from the page's own words. **The page owns continuity; the model is never trusted with it.** `docs/storybook.md`. |
 | **One picture must never cost the book** | First phone run of Book mode (Qwen3-0.6B, iPhone, 1024 ctx): the story came back, then page one's picture held only sky and ground, the renderer refused it ("did not return a drawing in the expected format"), and the error replaced the whole book. Causes found with `scripts/book-bench.mjs`: a hero with no illustration (fairy, witch, knight, grandma… — 0 of 96 bench pages, so rare but real), and the prefix matcher drawing "fairy" as a **ferris wheel** (fair + y). Fixed: heroes without a picture get a stand-in person, said under the picture; a word extends a known one only by a suffix or a known word; a scenery-only page is drawn; a picture that still fails leaves its page's words and a note. The bench also showed "happy", "love" and "friend" drawn as an emoji face, a heart and a child — feelings are no longer drawn. |
+| **The page must pick a model the browser can store** | "Models not downloading on desktop": a desktop with fp16 gets Qwen3-1.7B, a 990 MB download; a browser offering less room (nearly full disk, private window) ran it to 89% and then refused to store it, although the card already knew the quota and warned. Reproduced on the live site with real WebLLM. The auto-pick now skips a preferred model whose download will not fit in the browser's free storage (unless already cached) and says so: "Qwen3 1.7B would not fit: this browser has room for ~952 MB". Whether this was the owner's desktop is **not confirmed**. |
 
 ### Browser gotchas already fixed
 
@@ -361,8 +362,16 @@ practical fine-tuning.
   `SKETCH_CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
   `tests/browser.mjs` is the single launcher that reads those. The installed
   Playwright wants a chromium revision the image does not have, which is why
-  `SKETCH_CHROME` exists; never run `playwright install`. The proxy CA blocks
-  loading live HTTPS pages in Chromium — fetch with curl and serve locally.
+  `SKETCH_CHROME` exists; never run `playwright install`.
+- **The live site, real WebLLM and real downloads DO work in headless Chromium
+  here** once the proxy CA is in Chromium's NSS store (the image does not put it
+  there): `apt-get install -y libnss3-tools`, then
+  `certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n ccr-agent-proxy -i /root/.ccr/agent-proxy-ca.crt`,
+  and launch with `--proxy-server=$HTTPS_PROXY --enable-unsafe-webgpu`. Models
+  download and load through SwiftShader (no `shader-f16`, so q4f32 builds; to
+  exercise a q4f16 *download* add `shader-f16` to the adapter's features and
+  strip it from `requestDevice`). Generation still does not finish. Its storage
+  quota is only ~0.9 GB, which is how the next row was found.
 - **A test that passes before the fix is not a test.** Every refusal in Work
   mode was mutation-checked (flip the guard, watch it fail) and `tests/stop.mjs`
   was run against the old `break` before being trusted. This project has

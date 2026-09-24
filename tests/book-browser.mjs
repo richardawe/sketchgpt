@@ -65,6 +65,9 @@ try {
       Object.defineProperty(navigator, 'gpu', { value: { requestAdapter: async () => ({
         features: new Set(['shader-f16']), limits: { maxBufferSize: 1e9 }
       }) } });
+      // A normal disk. Headless Chromium here offers ~0.9 GB, which makes the page
+      // (correctly) pick a smaller model than a real desktop gets.
+      if (navigator.storage) navigator.storage.estimate = async () => ({ quota: 50e9, usage: 0 });
       window.requests = [];
       window.story = story; window.plan = plan; window.plans = [plan, copied];
       window.print = () => { window.printed = document.querySelectorAll('.print-me').length; };
@@ -224,23 +227,31 @@ try {
   // ---- The page picks a model for the device and downloads it by itself ----
   // A phone gets Qwen3-0.6B — the only phone-sized model that wrote a story
   // (docs/storybook.md) — and a desktop Qwen3-1.7B.
-  for (const [touch, want, saveData] of [
+  // The fourth row is the desktop that "would not download": Qwen3-1.7B is a
+  // ~1 GB download, and a browser offering less room ran it to 89% and then
+  // refused to store it. The page must pick what fits, and say why.
+  for (const [touch, want, saveData, quotaMB] of [
     [true, 'Qwen3-0.6B-q4f16_1-MLC', false],
     [false, 'Qwen3-1.7B-q4f16_1-MLC', false],
-    [true, 'Qwen3-0.6B-q4f16_1-MLC', true]]) {
+    [true, 'Qwen3-0.6B-q4f16_1-MLC', true],
+    [false, 'Qwen3-0.6B-q4f16_1-MLC', false, 900]]) {
     const context = await browser.newContext(touch ? phoneCtx : { viewport: { width: 1280, height: 860 } });
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.addInitScript(({ saveData }) => {
+    await page.addInitScript(({ saveData, quotaMB }) => {
       Object.defineProperty(navigator, 'gpu', { value: { requestAdapter: async () => ({
         features: new Set(['shader-f16']), limits: { maxBufferSize: 1e9 } }) } });
+      // A normal disk. Headless Chromium here offers ~0.9 GB, which makes the page
+      // (correctly) pick a smaller model than a real desktop gets.
+      if (navigator.storage) navigator.storage.estimate = async () => ({ quota: 50e9, usage: 0 });
       if (saveData) Object.defineProperty(navigator, 'connection', { value: { saveData: true } });
+      if (quotaMB) navigator.storage.estimate = async () => ({ quota: quotaMB * 1e6, usage: 0 });
       window.requests = []; window.plans = []; window.story = ''; window.plan = '';
-    }, { saveData });
+    }, { saveData, quotaMB });
     await route(page);
     await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs');
-    const who = `${touch ? 'phone' : 'desktop'}${saveData ? ' with Save-Data' : ''}`;
+    const who = `${touch ? 'phone' : 'desktop'}${saveData ? ' with Save-Data' : ''}${quotaMB ? ` with ${quotaMB} MB storage` : ''}`;
     await page.waitForFunction(() => document.querySelector('#model').value !== '');
     assert.equal(await page.inputValue('#model'), want, `${who}: picked the wrong model`);
     if (saveData) {
@@ -253,6 +264,8 @@ try {
         null, { timeout: 10000 });
       assert.match(await page.locator('#status').textContent(), /ready/, `${who}: did not load by itself`);
     }
+    if (quotaMB) assert.match(await page.locator('#autonote').textContent(),
+      /Qwen3 1\.7B would not fit: this browser has room for ~900 MB/, `${who}: did not say why`);
     assert.deepEqual(errors, [], `${who}: page errors: ${errors.join('; ')}`);
     await context.close();
   }

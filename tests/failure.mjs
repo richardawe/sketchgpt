@@ -39,6 +39,9 @@ try {
       limits: { maxBufferSize: 1e9 },
       info: { vendor: 'apple', architecture: 'apple-m', device: '', description: '' }
     }) } });
+      // A normal disk. Headless Chromium here offers ~0.9 GB, which makes the page
+      // (correctly) pick a smaller model than a real desktop gets.
+      if (navigator.storage) navigator.storage.estimate = async () => ({ quota: 50e9, usage: 0 });
     window.requests = [];
     window.failWith = null;
   });

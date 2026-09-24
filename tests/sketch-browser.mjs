@@ -18,6 +18,9 @@ try {
     Object.defineProperty(navigator, 'gpu', { value: { requestAdapter: async () => ({
       features: new Set(['shader-f16']), limits: { maxBufferSize: 1e9 }
     }) } });
+      // A normal disk. Headless Chromium here offers ~0.9 GB, which makes the page
+      // (correctly) pick a smaller model than a real desktop gets.
+      if (navigator.storage) navigator.storage.estimate = async () => ({ quota: 50e9, usage: 0 });
     window.requests = [];
     window.result = JSON.stringify({ t: 'A house beside a tree', c: [
       'house 25 55 40', 'tree 78 50 34', 'sun 15 15 14',

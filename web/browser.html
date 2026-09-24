@@ -778,13 +778,38 @@ async function init() {
        ["Qwen2.5-0.5B-Instruct-q4f32_1-MLC", 1024], ["SmolLM2-360M-Instruct-q4f32_1-MLC", 1024]];
 
   const has = id => usable.some(m => m.id === id);
-  let chosen = (preferred.find(([id, min]) => has(id) && (bestCtxFor(id) ?? 0) >= min) || [])[0];
+  // Storage decides too. A desktop with fp16 gets Qwen3-1.7B, a ~1 GB
+  // download, and a browser with less room than that — a nearly full disk, a
+  // private window — let it run to 89% and then refused to store it ("This
+  // browser would not store the model"), after the card had already warned.
+  // The page knows the room before it starts, so it picks what fits. A model
+  // that is already downloaded needs no room.
+  let roomMB = null;
+  try {
+    const e = await navigator.storage.estimate();
+    if (e && e.quota) roomMB = (e.quota - (e.usage || 0)) / 1e6;
+  } catch {}
+  const inCache = {};
+  for (const [id] of preferred) {
+    if (has(id)) try { inCache[id] = await webllm.hasModelInCache(id, APP); } catch {}
+  }
+  const storable = id => inCache[id] || roomMB == null || downloadOf(id) <= roomMB * 0.9;
+  const pick = ok => (preferred.find(([id, min]) => has(id) && ok(id) && (bestCtxFor(id) ?? 0) >= min) || [])[0];
+  const best = pick(() => true);
+  let chosen = pick(storable);
   if (!chosen) {
     // Nothing preferred fits — fall back to the largest that clears the
-    // headroom at some rung, and failing that the smallest option we have.
+    // headroom at some rung (and the storage, if anything does), and failing
+    // that the smallest option we have.
     const fits = usable.filter(m => bestCtxFor(m.id) !== null);
-    chosen = (fits.length ? fits[fits.length - 1] : usable[0]).id;
+    const stored = fits.filter(m => storable(m.id));
+    const pool = stored.length ? stored : fits;
+    chosen = best && !stored.length ? best : (pool.length ? pool[pool.length - 1] : usable[0]).id;
   }
+  DEV.storageNote = best && chosen !== best && !storable(best)
+    ? ` ${modelOf(best).label.split(" — ")[0]} would not fit: this browser has room for ~` +
+      `${Math.max(0, Math.round(roomMB))} MB and it downloads ${downloadOf(best)} MB.`
+    : "";
   $("model").value = chosen;
   CTX = bestCtxFor(chosen) ?? CTX_LADDER[CTX_LADDER.length - 1];
 
@@ -804,7 +829,7 @@ async function init() {
     const m = modelOf($("model").value);
     if (!cached) $("autonote").innerHTML =
       `<b>${esc(m ? m.label.split(" — ")[0] : $("model").value)}</b> was picked for this ` +
-      `${DEV.mobile ? "phone" : "computer"}. <a href="?manual=1">Choose a different one</a>`;
+      `${DEV.mobile ? "phone" : "computer"}.${esc(DEV.storageNote || "")} <a href="?manual=1">Choose a different one</a>`;
     $("autonote").hidden = cached;
     setStatus(cached ? "loading from cache…" : "downloading…", "busy");
     $("load").click();
