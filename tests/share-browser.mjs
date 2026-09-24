@@ -167,7 +167,7 @@ try {
   await c.page.waitForFunction(() => /damaged/.test(document.querySelector('#log').textContent));
   assert.equal(await c.page.locator('.book').count(), 0);
   // A shared link never starts the model download, even on a phone that could.
-  assert.match(await c.page.locator('#autonote').textContent(), /nothing was downloaded/);
+  assert.match(await c.page.locator('#autonote').textContent(), /no model was downloaded/);
   await c.page.waitForTimeout(500);
   assert.equal(await c.page.evaluate(() => window.created || false), false, 'a shared link started the model');
 

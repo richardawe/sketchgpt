@@ -860,7 +860,7 @@ async function init() {
     // Someone sent a book. Showing it needs no model, so nothing downloads —
     // on a phone that is hundreds of MB and GPU memory the book does not use.
     $("autonote").hidden = false;
-    $("autonote").textContent = "You opened a shared book, so nothing was downloaded. Press the button to get the model " +
+    $("autonote").textContent = "You opened a shared book, so no model was downloaded. Press the button to get the model " +
       "and write your own.";
   } else if (cached || (!MANUAL && !saveData)) {
     const m = modelOf($("model").value);
@@ -1525,7 +1525,7 @@ async function showBook(state, out, { plan = null, status = null, truncated = fa
   // straight away, pictures as they arrive.
   const cover = sheet(book, "cover");
   cover.innerHTML = `<h2></h2><p class="by">${shared ? "Shared with you · rebuilt on this device from the link, " +
-    "with nothing downloaded or uploaded" : "Written by a small language model on this device · illustrated by the page"}</p>`;
+    "with no model downloaded and nothing uploaded" : "Written by a small language model on this device · illustrated by the page"}</p>`;
   const titleEl = cover.querySelector("h2");
   titleEl.textContent = state.title;
   const coverArt = document.createElement("div"); coverArt.className = "art pending"; cover.appendChild(coverArt);
