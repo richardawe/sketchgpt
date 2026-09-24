@@ -15,10 +15,14 @@
 //   the CDN lib  -> cache first. It is pinned to an exact version in the URL,
 //                   so it can never go stale, and it is 6 MB we should not
 //                   re-download.
-const VERSION = "sketchgpt-v8";
+const VERSION = "sketchgpt-v9";
 const SHELL = ["./", "./index.html", "./browser.html", "./sketch.mjs",
                "./stamps.mjs", "./rough.mjs", "./book.mjs", "./scene.mjs",
-               "./art.mjs", "./art-names.mjs", "./animate.mjs", "./voice.mjs", "./share.mjs"];
+               "./art.mjs", "./art-names.mjs", "./animate.mjs", "./voice.mjs", "./share.mjs",
+               "./selfie.html", "./face.mjs", "./face-mean.mjs", "./face-find.mjs"];
+// selfie.html's vendor/ files (runtime and models, ~13 MB) are not precached:
+// only someone who picks a photo downloads them, and the network-first fetch
+// below keeps them for offline use from then on.
 
 self.addEventListener("install", event => {
   // Never let one missing file fail the whole install — a page that is

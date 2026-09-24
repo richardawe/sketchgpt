@@ -232,6 +232,14 @@ for (const [from, to] of Object.entries(ALIASES)) NORMAL.set(from.replace(/[^a-z
 // commands read the same either way.
 for (const [from, to] of Object.entries(ART_NAMES)) NORMAL.set(from, to);
 
+/**
+ * A picture the page draws itself rather than from the icon or illustration
+ * sets — "me", a person's caricature from selfie.html. Registered at run time,
+ * so a book made without one still reads "me" as unknown and draws its
+ * stand-in (web/book.mjs).
+ */
+export function registerFigure(word) { NORMAL.set(word, word); }
+
 export function resolveStamp(word) {
   const key = String(word).toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!key) return null;
@@ -574,6 +582,22 @@ function drawArt(doc, parent, rc, art, { args: [x, y, size], text, colour }, til
   parent.append(group);
 }
 
+// A figure is finished SVG (web/face.mjs draws it); it stands in the stamp's
+// square, feet on the square's bottom edge, a little taller than a stamp
+// because it is a whole person with a big head.
+function drawFigure(doc, parent, figure, { args: [x, y, size], text }) {
+  const px = size * SCALE;
+  const src = new DOMParser().parseFromString(figure.svg, "image/svg+xml").documentElement;
+  const [, , fw, fh] = (src.getAttribute("viewBox") || "0 0 400 600").split(/\s+/).map(Number);
+  const k = px * 1.25 / fh;
+  const group = svgNode(doc, "g", {
+    transform: `translate(${(x * SCALE - fw * k / 2).toFixed(1)} ${(y * SCALE + px / 2 - fh * k).toFixed(1)}) scale(${k.toFixed(4)})`,
+    "data-thing": text, "data-figure": "1", "data-at": `${(x * SCALE).toFixed(1)} ${(y * SCALE).toFixed(1)} ${px.toFixed(1)}`
+  });
+  for (const node of [...src.childNodes]) group.append(doc.importNode(node, true));
+  parent.append(group);
+}
+
 // The setting, drawn before anything else: a night sky, the ground, a sea, a
 // road. Hatched in light colour like a coloured pencil laid on its side, so it
 // reads as backdrop and never competes with the ink.
@@ -693,6 +717,7 @@ export function renderSketch(container, raw, { rough = null, art = null, onEdit 
     if (tool === "stamp") {
       // Tilt from the drawing's seed and the stamp's place in it: stable.
       const tilt = rc ? (((seed >>> (index++ % 24)) % 7) - 3) : 0;
+      if (art && art.FIGURES && art.FIGURES[text]) { drawFigure(doc, group, art.FIGURES[text], command); continue; }
       if (art && art.ART && art.ART[text]) { usedArt = true; drawArt(doc, group, rc, art, command, tilt, seed); continue; }
       if (!STAMPS[text]) {
         // A noun only the illustrations know, with the illustrations not

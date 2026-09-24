@@ -13,7 +13,7 @@
 // Costs no tokens and no download. Whole-picture moves only (hop, lean, cross,
 // bob): Twemoji pictures have no separate limbs, so there are no walk cycles.
 // Honours prefers-reduced-motion by doing nothing.
-import { drawAs, nameWords } from "./book.mjs?v=8";
+import { drawAs, nameWords } from "./book.mjs?v=9";
 import { sentences } from "./voice.mjs?v=10";
 
 // What a thing does when nothing in the story tells it to do anything.

@@ -12,10 +12,10 @@ body{margin:0;background:#e9e2d2;font:17px/1.45 Georgia,serif;color:#2b2b2b}
 <div class="tag">Prototype: animation added by the page, from real model output (Qwen3-1.7B story + page plan)</div>
 <div class="sheet"><div class="art" id="art"></div><p class="page-text" id="text"></p><div class="num" id="num"></div></div>
 <script type="module">
-import { renderSketch, loadRough, loadArt } from "/web/sketch.mjs?v=8";
-import { composeScene } from "/web/scene.mjs?v=8";
-import { parseStory, fixPagePlan } from "/web/book.mjs?v=8";
-import { readDrawing } from "/web/sketch.mjs?v=8";
+import { renderSketch, loadRough, loadArt } from "/web/sketch.mjs?v=9";
+import { composeScene } from "/web/scene.mjs?v=9";
+import { parseStory, fixPagePlan } from "/web/book.mjs?v=9";
+import { readDrawing } from "/web/sketch.mjs?v=9";
 import { animatePicture } from "/web/animate.mjs";
 const q = new URLSearchParams(location.search);
 const book = await (await fetch(`/books/${q.get("book") || "dog"}.json`)).json();

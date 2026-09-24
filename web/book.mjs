@@ -17,8 +17,8 @@
 // (docs/sketch-scenes.md), so planFromWords() builds each picture from the
 // page's own words and the cast — the page doing all of it.
 
-import { resolveStamp } from "./sketch.mjs?v=8";
-import { scenePrompt, parseEntry } from "./scene.mjs?v=8";
+import { resolveStamp } from "./sketch.mjs?v=9";
+import { scenePrompt, parseEntry } from "./scene.mjs?v=9";
 import { ART_NAMES } from "./art-names.mjs?v=8";
 
 export const PAGES = 6;
@@ -165,7 +165,7 @@ export function pageMessages(story, text) {
 // to draw the model copies it whole; three or more of these that the text never
 // mentions is that copy.
 const EXAMPLE = ["boat", "lighthouse", "bird", "fish", "crane"];
-const PEOPLE = new Set(["user", "users", "baby", "family", "girl", "boy", "child"]);
+const PEOPLE = new Set(["user", "users", "baby", "family", "girl", "boy", "child", "me"]);
 
 // Words that set a scene, for building a picture straight from the page.
 const SETTING_WORDS = { sea: "sea", ocean: "sea", beach: "sand", sand: "sand", shore: "sand",
@@ -197,7 +197,10 @@ const STAND_IN = { fairy: "girl", witch: "girl", mermaid: "girl", queen: "girl",
   grandpa: "boy", grandfather: "boy", brother: "boy", uncle: "boy", son: "boy", pirate: "boy",
   giant: "boy", elf: "child", gnome: "child", kid: "child", person: "child", friend: "child",
   teacher: "child", hero: "child", dino: "dinosaur", kitty: "cat", doggy: "dog", pup: "dog",
-  bunny: "rabbit", birdie: "bird", pony: "horse", dragonfly: "butterfly" };
+  bunny: "rabbit", birdie: "bird", pony: "horse", dragonfly: "butterfly",
+  // "me" is the reader's own caricature (selfie.html). It only exists in the
+  // tab that drew it; a shared link says "me" and everyone else gets a child.
+  me: "child" };
 /** The word a character is drawn with, or null when there is none. */
 export const drawAs = c => resolveStamp(c.is) ? c.is : (STAND_IN[c.is] || null);
 const castStamp = c => { const w = drawAs(c); return w ? resolveStamp(w) : null; };
@@ -290,6 +293,20 @@ export function fixPagePlan(entries, text, story) {
     }
   });
   return { entries: [...cast, ...c], fixes, unknown };
+}
+
+/**
+ * Make the reader the hero: the first person in the cast is drawn as "me"
+ * (their caricature). A story about a dog keeps its dog and gains the reader
+ * as its first character, so the reader is still on every page. Returns a
+ * new cast; the story's words are the model's and are not touched.
+ */
+export function castAsMe(cast, name = "") {
+  const out = cast.map(c => ({ ...c }));
+  const person = out.findIndex(c => PEOPLE.has(drawAs(c)));
+  if (person >= 0) { out[person].is = "me"; if (person > 0) out.unshift(out.splice(person, 1)[0]); }
+  else out.unshift({ name: name || "Me", is: "me" });
+  return out.slice(0, 3);
 }
 
 /** The picture plan for a page when the model is too small to plan scenes. */

@@ -11,7 +11,7 @@
 // Everything decoded here came from a link anyone could have written, so it
 // is capped and type-checked before the page touches it, and the page shows
 // it as text, never markup.
-import { drawAs, nameWords, SHAPE, storyMessages, wordsOnlyPlan, coverPlan } from "./book.mjs?v=8";
+import { drawAs, nameWords, SHAPE, storyMessages, wordsOnlyPlan, coverPlan } from "./book.mjs?v=9";
 
 export const LIMITS = { title: 120, name: 40, is: 20, pages: 8, text: 600, things: 24, thing: 48, voice: 80 };
 const str = (v, max) => (typeof v === "string" ? v : "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max);

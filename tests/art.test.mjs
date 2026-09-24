@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { ART, ART_BOX } from "../web/art.mjs";
 import { ART_NAMES } from "../web/art-names.mjs?v=8";
 import { STAMPS } from "../web/stamps.mjs?v=8";
-import { resolveStamp, parseSketch } from "../web/sketch.mjs?v=8";
+import { resolveStamp, parseSketch } from "../web/sketch.mjs?v=9";
 
 test("every picture is a list of [path, fill] shapes in a 36-unit box", () => {
   assert.equal(ART_BOX, 36);
