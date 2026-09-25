@@ -257,6 +257,15 @@
   .me-note a.photo { font-weight: 600; color: var(--ink); }
   #write { padding: 11px 22px; font-size: 15px; margin: 4px 0 8px; }
   .intro .me-note { margin: 0 auto 10px; }
+  .mode-tabs { margin: 0 auto 16px; }
+  #own-text { display: block; width: 100%; max-width: 560px; margin: 0 auto; padding: 10px 12px; border-radius: 12px;
+              border: 1px solid var(--line-2); background: var(--panel); color: var(--ink); font-family: inherit;
+              font-size: 16px; line-height: 1.5; resize: vertical; }
+  #guide { max-width: 560px; margin: 10px auto 0; text-align: left; font-size: 13.5px; }
+  #guide .g { margin: 4px 0; color: var(--ink-2); }
+  #guide .g.head { font-weight: 600; color: var(--ink); }
+  #guide .g.muted { color: var(--muted); }
+  #guide .g.warn { color: var(--err); }
 
   /* ---- Composer ----------------------------------------------------------- */
   footer {
@@ -479,7 +488,7 @@ import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, loadArt, estima
          readDrawing, registerFigure } from "./sketch.mjs?v=9";
 import { scenePrompt, composeScene, looksLikeCoordinates } from "./scene.mjs?v=9";
 import { wordsOnlyPlan, coverPlan } from "./book.mjs?v=9";
-import { writeStory, wishesFor, KINDS, PLACES, WISHES } from "./story.mjs?v=1";
+import { writeStory, wishesFor, KINDS, PLACES, WISHES, storyFromText, guessHero, checkPages } from "./story.mjs?v=2";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
 
@@ -1334,19 +1343,30 @@ function buildBookIntro(el) {
   // Someone who brought a photo is the hero, until they pick another.
   if (me && !choice.kindPicked) choice.kind = "me";
   if (choice.kind === "me" && !me) choice.kind = null;
+  const own = choice.mode === "own";
   const wishes = new Set(pairs().flatMap(([k, p]) => wishesFor(k, p)));
   if (choice.wish && !wishes.has(choice.wish)) choice.wish = null;
 
-  el.innerHTML = `<h2>Make a picture book</h2><p>Pick a hero, where they live and what they wish for.
-    This page writes the story and draws every page, right here — nothing to download, nothing sent.</p>`;
+  el.innerHTML = `<h2>Make a picture book</h2><p>${own
+    ? "Write or paste your story. This page splits it into pages and shows what each one will draw — your words stay exactly as you wrote them."
+    : "Pick a hero, where they live and what they wish for. This page writes the story"} and draws every page, right here — nothing to download, nothing sent.</p>`;
+  const tabs = document.createElement("div"); tabs.className = "chips mode-tabs"; tabs.setAttribute("role", "tablist");
+  for (const [mode, label] of [["make", "Make one for me"], ["own", "Write my own"]]) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.id = "mode-" + mode; b.setAttribute("role", "tab");
+    b.setAttribute("aria-pressed", String((choice.mode || "make") === mode));
+    b.addEventListener("click", () => { choice.mode = mode; buildBookIntro(el); });
+    tabs.appendChild(b);
+  }
+  el.appendChild(tabs);
   const step = (title, ...parts) => {
     const s = document.createElement("div"); s.className = "step";
     const h = document.createElement("h3"); h.textContent = title;
     s.append(h, ...parts); el.appendChild(s); return s;
   };
-  const chips = (id, items, key) => {
+  const chips = (id, items, key, none = "Surprise me") => {
     const row = document.createElement("div"); row.className = "chips"; row.id = id;
-    for (const [value, label] of [[null, "Surprise me"], ...items]) {
+    for (const [value, label] of [[null, none], ...items]) {
       const b = document.createElement("button");
       b.type = "button"; b.textContent = label; b.dataset.value = value || "";
       b.setAttribute("aria-pressed", String(choice[key] === value));
@@ -1361,43 +1381,111 @@ function buildBookIntro(el) {
   const name = document.createElement("input");
   name.id = "hero-name"; name.maxLength = 40; name.autocomplete = "off";
   name.value = choice.name || (choice.kind === "me" && me && me.name) || "";
-  name.placeholder = choice.kind ? `Name, e.g. ${KINDS[choice.kind].names[0]}` : "Name (or leave it to us)";
-  name.addEventListener("input", () => { choice.name = name.value; });
+  name.placeholder = own ? "Name, or found in your story" :
+    choice.kind ? `Name, e.g. ${KINDS[choice.kind].names[0]}` : "Name (or leave it to us)";
+  name.addEventListener("input", () => { choice.name = name.value; if (own) guideSoon(); });
   const nameRow = document.createElement("label"); nameRow.className = "name-row";
   nameRow.append(Object.assign(document.createElement("span"), { textContent: "Called" }), name);
-  step("1 · Your hero", meNote(), chips("kinds", kinds, "kind"), nameRow);
-  step("2 · Where they live", chips("places", Object.entries(PLACES).map(([k, p]) => [k, p.label]), "place"));
-  step("3 · What they wish for", chips("wishes", Object.entries(WISHES)
-    .filter(([k]) => wishes.has(k)).map(([k, w]) => [k, w.label]), "wish"));
+  step("1 · Your hero", meNote(), chips("kinds", kinds, "kind", own ? "Find in my story" : "Surprise me"), nameRow);
+  if (own) {
+    const box = document.createElement("textarea");
+    box.id = "own-text"; box.rows = 9; box.value = choice.text || "";
+    box.placeholder = "Max and the Big Snow\n\nMax was a little dog who lived by the woods.\n\n" +
+      "One morning, snow covered everything…\n\n(A blank line starts a new page.)";
+    box.addEventListener("input", () => { choice.text = box.value; guideSoon(); });
+    const guide = document.createElement("div"); guide.id = "guide"; guide.setAttribute("aria-live", "polite");
+    step("2 · Your story", box, guide);
+    renderGuide();
+  } else {
+    step("2 · Where they live", chips("places", Object.entries(PLACES).map(([k, p]) => [k, p.label]), "place"));
+    step("3 · What they wish for", chips("wishes", Object.entries(WISHES)
+      .filter(([k]) => wishes.has(k)).map(([k, w]) => [k, w.label]), "wish"));
+  }
 
   const go = document.createElement("button");
   go.type = "button"; go.id = "write"; go.className = "primary";
-  go.textContent = booksMade ? "Write another book" : "Write my book";
+  go.textContent = own ? "Make my book" : booksMade ? "Write another book" : "Write my book";
   go.disabled = bookBusy !== null;
   go.addEventListener("click", makeBook);
   el.appendChild(go);
 }
 
+// The person's story as the book it will become: hero as chosen, or as the
+// text names them.
+function ownStory() {
+  let kind = choice.kind, name = (choice.name || "").trim();
+  if (kind === "me") name ||= (me && me.name) || "";
+  const guess = guessHero(choice.text || "");
+  let guessed = false;
+  if (!name && guess) { name = guess.name; guessed = true; }
+  if (!kind && guess && guess.kind && (!choice.name || guess.name === name)) { kind = guess.kind; guessed = true; }
+  const story = storyFromText(choice.text || "", { name, kind: kind || (name ? "child" : null) });
+  return { story, guessed };
+}
+
+let guideTimer = 0;
+const guideSoon = () => { clearTimeout(guideTimer); guideTimer = setTimeout(renderGuide, 200); };
+// The guide: what each page will draw, checked before anything is drawn.
+// It suggests; it never changes a word.
+function renderGuide() {
+  const el = $("guide");
+  if (!el) return;
+  el.textContent = "";
+  const line = (text, cls = "") => { const p = document.createElement("p"); p.className = "g " + cls; p.textContent = text; el.appendChild(p); return p; };
+  if (!(choice.text || "").trim()) { line("Your pages will be listed here, with what each one will draw.", "muted"); return; }
+  const { story, guessed } = ownStory();
+  const hero = story.cast[0];
+  line(`${story.pages.length} page${story.pages.length === 1 ? "" : "s"} · “${story.title}”` +
+    (hero ? ` · hero: ${hero.name}${hero.is !== "child" || choice.kind === "child" ? ` (${hero.is === "me" ? "you" : hero.is})` : ""}` +
+      (guessed ? " — found in your story; change it above" : "") : " · no hero yet: pick one above"), "head");
+  for (const n of story.notes) line(n, "warn");
+  if (hero && hero.is === "child" && !choice.kind) line(`What is ${hero.name}? Pick it above, or ${hero.name} is drawn as a child.`, "warn");
+  const checks = checkPages(story);
+  const missing = checks.map((c, i) => c.heroNamed ? 0 : i + 1).filter(Boolean);
+  if (hero && missing.length) line(`${hero.name} is not named on page${missing.length > 1 ? "s" : ""} ${missing.join(", ")} — ` +
+    `${hero.name} is still drawn there.`, "muted");
+  checks.forEach((c, i) => {
+    const row = line(`Page ${i + 1}: `, c.nothing ? "warn page" : "page");
+    row.dataset.page = i + 1;
+    row.append(c.nothing ? "nothing to draw here — a place or a thing helps (beach, forest, kitchen, a ball…)"
+      : "draws " + c.draws.join(" · "));
+  });
+}
+
 async function makeBook() {
   if (bookBusy) return;
   await meReady;
-  let { kind, place, wish } = choice;
-  if (kind === "me" && !me) kind = null;
-  // Whatever was left to us, picked so the wish fits.
-  const fits = pairs(kind, place).filter(([k, p]) => !wish || wishesFor(k, p).includes(wish));
-  if (fits.length) [kind, place] = fits[Math.floor(Math.random() * fits.length)];
-  const name = (choice.name || (kind === "me" && me && me.name) || "").trim();
-  const story = writeStory({ kind, place, wish, name,
-    seed: Number.isFinite(SEED) ? SEED + booksMade : Math.floor(Math.random() * 1e9) });
-  const hero = story.cast[0];
+  let story, hero, said;
+  if (choice.mode === "own") {
+    if (!(choice.text || "").trim()) {
+      renderGuide();
+      const g = $("guide"); if (g && g.firstChild) g.firstChild.textContent = "Write or paste a story first.";
+      return;
+    }
+    story = ownStory().story;
+    hero = story.cast[0];
+    said = `Your story: “${story.title}”${hero ? `, with ${hero.name}` : ""}`;
+  } else {
+    let { kind, place, wish } = choice;
+    if (kind === "me" && !me) kind = null;
+    // Whatever was left to us, picked so the wish fits.
+    const fits = pairs(kind, place).filter(([k, p]) => !wish || wishesFor(k, p).includes(wish));
+    if (fits.length) [kind, place] = fits[Math.floor(Math.random() * fits.length)];
+    const name = (choice.name || (kind === "me" && me && me.name) || "").trim();
+    story = writeStory({ kind, place, wish, name,
+      seed: Number.isFinite(SEED) ? SEED + booksMade : Math.floor(Math.random() * 1e9) });
+    hero = story.cast[0];
+    said = `${hero.name}, ${hero.is === "me" ? "you" : "a " + hero.is}, ${PLACES[story.choices.place].label}` +
+      ` — wishes to ${WISHES[story.choices.wish].label}`;
+  }
 
-  addMsg("user", `${hero.name}, ${hero.is === "me" ? "you" : "a " + hero.is}, ${PLACES[story.choices.place].label}` +
-    ` — wishes to ${WISHES[story.choices.wish].label}`, "Book");
+  addMsg("user", said, "Book");
   const out = addMsg("assistant", "");
   const status = document.createElement("p");
   status.className = "note book-status";
   status.textContent = "Drawing the book…";
   out.body.appendChild(status);
+  for (const n of story.notes || []) showNote(out.body, n);
 
   bookBusy = ["drawing…", "busy"]; stopFlag = false;
   if ($("write")) $("write").disabled = true;

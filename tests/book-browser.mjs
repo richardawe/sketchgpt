@@ -146,9 +146,32 @@ try {
     assert.equal(await second.locator('.art svg').count(), 7);
     assert.match(await second.locator('.page-text').nth(1).textContent(), /sea/, 'the farm and the wish were kept');
 
+    // ---- Write my own: split, checked, drawn — and never rewritten --------------
+    const OWN = 'Max and the Big Snow\n\nMax was a little dog who lived in a small house by the woods.\n\n' +
+      'One morning, Max ran out into the snow.\n\nHe was cold! It was very cold.\n\n' +
+      'Max went home to his warm bed.';
+    await tapOrClick('#mode-own');
+    await tapOrClick('#kinds [data-value=""]');
+    await page.fill('#own-text', OWN);
+    await page.waitForFunction(() => document.querySelectorAll('#guide .g.page').length === 4);
+    const guide = await page.locator('#guide .g').allTextContents();
+    assert.match(guide[0], /4 pages · “Max and the Big Snow” · hero: Max \(dog\) — found in your story/, guide[0]);
+    assert.match(guide.find(g => g.startsWith('Page 3')), /nothing to draw here/, 'a page with nothing to draw was not flagged');
+    assert.match(guide.find(g => g.startsWith('Page 4')), /draws .*bed/);
+    await tapOrClick('#write');
+    await page.waitForFunction(() => document.querySelectorAll('.book .book-actions').length === 3 &&
+      !document.querySelector('#write').disabled);
+    const mine = page.locator('.msg.assistant .book').last();
+    assert.equal(await mine.locator('.cover h2').textContent(), 'Max and the Big Snow');
+    assert.deepEqual(await mine.locator('.page-text').evaluateAll(p => p.slice(0, 4).map(x => x.textContent.trim())),
+      OWN.split('\n\n').slice(1), 'the person\'s words were changed');
+    assert.equal(await mine.locator('.art svg').count(), 5, 'every page and the cover get a picture');
+    assert.equal(seen.lib, 0, `${who}: writing your own book fetched the model library`);
+    await tapOrClick('#mode-make');
+
     // ---- Nothing typed is stored ----------------------------------------------------
     const stored = await page.evaluate(() => JSON.stringify(localStorage));
-    for (const secret of ['Pip', 'leftover'])
+    for (const secret of ['Pip', 'leftover', 'Big Snow'])
       assert.ok(!stored.includes(secret), `"${secret}" is in localStorage`);
 
     // ---- Layout: the book gets the screen ------------------------------------------

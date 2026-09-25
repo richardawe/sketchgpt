@@ -28,7 +28,7 @@
 // Same choices and seed, same book, on every device. "Another version" is a
 // new seed.
 
-import { PAGES } from "./book.mjs?v=9";
+import { PAGES, planFromWords, drawAs } from "./book.mjs?v=9";
 
 // ---- What the person chooses ------------------------------------------------
 
@@ -316,6 +316,136 @@ export function writeStory({ kind, name, place, wish, seed = Date.now() } = {}) 
     drawn: pages.map(p => p.marked),
     choices: { kind, name, place, wish, seed, helper: helperKind, problem: w.problems.indexOf(problem) },
   };
+}
+
+// ---- A story the person writes (stage 3) --------------------------------------
+//
+// Someone writes or pastes their own story; the page splits it into pages,
+// asks who the hero is, and shows what each page will draw BEFORE drawing
+// it. It never rewrites a word: the page corrects the model, never the person.
+
+// What a share link holds (web/share.mjs LIMITS): 8 pages of 600 characters.
+export const OWN = { pages: 8, text: 600, title: 120 };
+
+// Sentences, the unit a long page is broken at. "Mr." does not end one.
+const TITLES = /\b(Mr|Mrs|Ms|Dr|St|Mt|Prof|Capt)\.$/;
+function sentences(text) {
+  const out = [];
+  for (const piece of String(text).trim().split(/(?<=[.!?…]["'’”)]?)\s+/)) {
+    if (out.length && TITLES.test(out.at(-1))) out[out.length - 1] += " " + piece;
+    else if (piece) out.push(piece);
+  }
+  return out;
+}
+
+// Sentences into pages of about `per`, none over the limit. A single sentence
+// longer than a page is cut at a word — said in `notes`, never silently.
+function group(sents, per, notes) {
+  const pages = [];
+  let cur = "";
+  for (let sn of sents) {
+    if (sn.length > OWN.text) {
+      notes.push("A sentence was longer than a page, so it was split.");
+      while (sn.length > OWN.text) {
+        const cut = sn.lastIndexOf(" ", OWN.text - 1);
+        const at = cut > 0 ? cut : OWN.text;
+        if (cur) { pages.push(cur); cur = ""; }
+        pages.push(sn.slice(0, at).trim()); sn = sn.slice(at).trim();
+      }
+    }
+    const next = cur ? cur + " " + sn : sn;
+    if (cur && (next.length > OWN.text || sentences(cur).length >= per)) { pages.push(cur); cur = sn; }
+    else cur = next;
+  }
+  if (cur) pages.push(cur);
+  return pages;
+}
+
+/**
+ * The person's text as a title and pages. Paragraphs are pages when there are
+ * 2–8 of them and each fits; otherwise the sentences are grouped into about
+ * six pages. More than a book holds keeps the first eight pages and says so.
+ */
+export function splitPages(raw) {
+  const notes = [];
+  let text = String(raw || "").replace(/\r\n?/g, "\n").replace(/[ \t]+/g, " ").trim();
+  let title = "";
+  const lines = text.split("\n");
+  // A short first line with no full stop is a title — shown, so it can be changed.
+  if (lines.length > 1 && lines[0].trim().length <= 60 && !/[.!?,;:]$/.test(lines[0].trim()) && lines.slice(1).join("").trim()) {
+    title = lines[0].trim().replace(/^#+\s*/, "").slice(0, OWN.title);
+    text = lines.slice(1).join("\n").trim();
+  }
+  let paras = text.split(/\n\s*\n/).map(p => p.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean);
+  // One line per paragraph, with no blank lines between: still paragraphs.
+  if (paras.length === 1 && text.split("\n").filter(l => l.trim()).length >= 3)
+    paras = text.split("\n").map(l => l.trim()).filter(Boolean);
+  let pages;
+  if (paras.length >= 2 && paras.length <= OWN.pages && paras.every(p => p.length <= OWN.text)) pages = paras;
+  else {
+    const all = paras.flatMap(sentences);
+    const per = Math.max(1, Math.ceil(all.length / 6));
+    pages = paras.length > OWN.pages || paras.length < 2 ? group(all, per, notes) : paras.flatMap(p => group(sentences(p), per, notes));
+  }
+  if (pages.length > OWN.pages) {
+    notes.push(`That is more than a book holds, so only the first ${OWN.pages} pages are used.`);
+    pages = pages.slice(0, OWN.pages);
+  }
+  return { title, pages, notes };
+}
+
+const SIZE = "(?:(?:little|young|small|big|tiny|old|brave|clever|kind|shy|happy|sleepy|curious|friendly)\\s+)*";
+const can = kind => !!drawAs({ is: kind });
+const STARTERS = /^(The|A|An|One|Once|Then|But|And|So|When|It|He|She|They|There|In|On|At|After|Soon|Just|Every|That|This|What|Where|Why|How|We|You|Her|His|Their|My|Our|Its|Now|Next|Later|Finally|At|Suddenly|All|Some|No|Yes|Oh|Mr|Mrs|Ms|Dr|I)$/;
+/**
+ * Who the hero is, when the text says so plainly: "a dog named Max", "Max the
+ * dog", "Max was a little dog". Only when the kind has a picture; otherwise
+ * the name alone, and the person is asked. It is a suggestion in the builder,
+ * never applied without being shown.
+ */
+export function guessHero(text) {
+  const t = String(text || "");
+  const found = [
+    [...t.matchAll(new RegExp(`\\b(?:[Aa]|[Aa]n|[Tt]he)\\s+${SIZE}([a-z]+)\\s+(?:named|called)\\s+([A-Z][\\w'-]+)`, "g"))].map(m => [m[2], m[1]]),
+    [...t.matchAll(new RegExp(`\\b([A-Z][\\w'-]+)\\s+(?:is|was)\\s+(?:a|an)\\s+${SIZE}([a-z]+)`, "g"))].map(m => [m[1], m[2]]),
+    [...t.matchAll(new RegExp(`\\b([A-Z][\\w'-]+),?\\s+the\\s+${SIZE}([a-z]+)\\b`, "g"))].map(m => [m[1], m[2]]),
+  ].flat().filter(([name]) => !STARTERS.test(name));
+  // The hero is the one the story names most: "a robin called Rosie" once
+  // does not make Rosie the hero of Max's story.
+  const mentions = name => (t.match(new RegExp("\\b" + name + "\\b", "g")) || []).length;
+  const withKind = found.filter(([, kind]) => can(kind)).sort((a, b) => mentions(b[0]) - mentions(a[0]))[0];
+  if (withKind) return { name: withKind[0], kind: withKind[1] };
+  // Otherwise the capitalised word said most often that is not a word that
+  // merely starts sentences.
+  const counts = new Map();
+  for (const m of t.matchAll(/\b([A-Z][a-z][\w'-]*)/g)) if (!STARTERS.test(m[1])) counts.set(m[1], (counts.get(m[1]) || 0) + 1);
+  const best = [...counts].sort((a, b) => b[1] - a[1])[0];
+  return best && best[1] >= 2 ? { name: best[0], kind: null } : found.length ? { name: found[0][0], kind: null } : null;
+}
+
+/** A person's story as a book: { title, cast, pages, notes }. */
+export function storyFromText(text, { name = "", kind = null } = {}) {
+  const { title, pages, notes } = splitPages(text);
+  name = String(name || "").replace(/\s+/g, " ").trim().slice(0, 40);
+  const cast = name ? [{ name, is: kind || "child" }] : [];
+  if (name && kind && !can(kind)) notes.push(`There is no ${kind} picture, so ${name} is drawn as a stand-in.`);
+  return { title: title || (name ? `${name}'s Story` : "My Story"), cast, pages, notes };
+}
+
+/**
+ * What each page will draw, before anything is drawn — the guide under the
+ * text box. Every row is something the page can check mechanically.
+ */
+export function checkPages(story) {
+  const hero = story.cast[0];
+  const heroWords = hero ? hero.name.toLowerCase().split(/\s+/) : [];
+  return story.pages.map(text => {
+    const draws = planFromWords(text, story).map(e => e.replace(/\s+x\d+$/, ""));
+    const lower = text.toLowerCase();
+    return { draws, nothing: !draws.length,
+      heroNamed: !hero || heroWords.some(w => new RegExp("\\b" + w.replace(/[^a-z0-9'-]/g, "") + "\\b").test(lower)),
+      tooLong: text.length > OWN.text };
+  });
 }
 
 export { PAGES };

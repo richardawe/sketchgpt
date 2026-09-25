@@ -134,3 +134,95 @@ test("a rule-written book survives a share link", async () => {
   assert.deepEqual(back.pages.map(p => p.text), s.pages);
   assert.deepEqual(back.cast, s.cast);
 });
+
+// ---- A story the person writes (stage 3) ---------------------------------------
+
+import { splitPages, guessHero, storyFromText, checkPages, OWN } from "../web/story.mjs";
+
+const MAX = `Max and the Big Snow
+
+Max was a little dog who lived in a small house by the woods.
+
+One morning, snow covered everything. Max had never seen snow.
+
+He ran outside and jumped in it. It was cold!
+
+A robin called Rosie showed him how to slide down the hill.
+
+They played until the sun went down, then Max went home to his warm bed.`;
+
+test("paragraphs are pages, and a short first line is the title", () => {
+  const s = splitPages(MAX);
+  assert.equal(s.title, "Max and the Big Snow");
+  assert.equal(s.pages.length, 5);
+  assert.equal(s.pages[2], "He ran outside and jumped in it. It was cold!");
+  assert.deepEqual(s.notes, []);
+});
+
+test("the person's words are kept exactly: only split, never changed", () => {
+  const s = splitPages(MAX);
+  const words = t => t.replace(/\s+/g, " ").trim();
+  assert.equal(words([s.title, ...s.pages].join(" ")), words(MAX));
+});
+
+test("one block of text is grouped into about six pages, at sentence ends", () => {
+  const blob = "Once there was a cat named Luna. Luna lived in a tall tower. " +
+    Array.from({ length: 14 }, (_, i) => `She watched bird number ${i + 1}.`).join(" ") + " The end.";
+  const s = splitPages(blob);
+  assert.ok(s.pages.length >= 5 && s.pages.length <= 7, `${s.pages.length} pages`);
+  assert.ok(s.pages.every(p => /[.!?]$/.test(p)), "a page ended mid-sentence");
+  assert.equal(s.title, "", "a sentence is not a title");
+});
+
+test("lines without blank lines between them are still paragraphs", () => {
+  assert.equal(splitPages("Pip woke up.\nPip ate breakfast.\nPip went to the sea.").pages.length, 3);
+});
+
+test("too much for a book: eight pages kept, and said", () => {
+  // Twelve short paragraphs fit a book when grouped: nothing is lost.
+  const many = Array.from({ length: 12 }, (_, i) => `Page ${i + 1} is here.`).join("\n\n");
+  const m = splitPages(many);
+  assert.ok(m.pages.length <= OWN.pages);
+  assert.equal(m.pages.join(" "), Array.from({ length: 12 }, (_, i) => `Page ${i + 1} is here.`).join(" "));
+  assert.deepEqual(m.notes, []);
+  // Thirty long ones do not: the first eight pages, and the book says so.
+  const long = Array.from({ length: 30 }, (_, i) => `Part ${i + 1}. ` + "The dog ran on and on. ".repeat(12)).join("\n\n");
+  const s = splitPages(long);
+  assert.equal(s.pages.length, OWN.pages);
+  assert.match(s.notes.join(), /first 8 pages/);
+  const huge = "word ".repeat(400) + ".";
+  const h = splitPages(huge);
+  assert.ok(h.pages.every(p => p.length <= OWN.text), "a page over the share limit");
+  assert.match(h.notes.join(), /longer than a page/);
+});
+
+test("the hero is found when the story says it plainly, and it is the one named most", () => {
+  assert.deepEqual(guessHero(MAX), { name: "Max", kind: "dog" }, "a robin called Rosie is not the hero of Max's story");
+  assert.deepEqual(guessHero("The dragon called Ember slept."), { name: "Ember", kind: "dragon" });
+  assert.deepEqual(guessHero("Ellie, the elephant, was sad."), { name: "Ellie", kind: "elephant" });
+  assert.deepEqual(guessHero("Zoe likes cake. Zoe is kind."), { name: "Zoe", kind: null }, "a name alone, when that is all");
+  assert.equal(guessHero("Once upon a time. Then it rained. It was sad."), null, "sentence starters are not names");
+  // A kind with no picture is not guessed: the person is asked instead.
+  assert.deepEqual(guessHero("Lulu was a little llama. Lulu ran."), { name: "Lulu", kind: null });
+});
+
+test("the guide says what each page draws, and which pages draw nothing", () => {
+  const story = storyFromText(MAX, guessHero(MAX));
+  const c = checkPages(story);
+  assert.deepEqual(c.map(x => x.nothing), [false, false, true, false, false]);
+  assert.ok(c[3].draws.includes("robin") && c[3].draws.includes("hill"), c[3].draws.join());
+  assert.deepEqual(c.map(x => x.heroNamed), [true, true, false, false, true]);
+  assert.ok(!c[0].draws.includes("dog"), "the hero is drawn as the hero, not listed as a thing");
+});
+
+test("a person's book fits a share link, whoever the hero is", async () => {
+  for (const hero of [{ name: "Max", kind: "dog" }, { name: "Kate", kind: "me" }, { name: "Lulu", kind: "llama" }, {}]) {
+    const s = storyFromText(MAX, hero);
+    const book = { title: s.title, cast: s.cast, voice: "", cover: [],
+      pages: s.pages.map(text => ({ text, things: wordsOnlyPlan(text, s).entries })) };
+    const back = await decodeBook(await encodeBook(book));
+    assert.deepEqual(back.pages.map(p => p.text), s.pages);
+    assert.deepEqual(back.cast, s.cast);
+  }
+  assert.match(storyFromText(MAX, { name: "Lulu", kind: "llama" }).notes.join(), /no llama picture/);
+});
