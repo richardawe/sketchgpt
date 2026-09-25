@@ -203,7 +203,7 @@ test("the hero is found when the story says it plainly, and it is the one named 
   assert.deepEqual(guessHero("Zoe likes cake. Zoe is kind."), { name: "Zoe", kind: null }, "a name alone, when that is all");
   assert.equal(guessHero("Once upon a time. Then it rained. It was sad."), null, "sentence starters are not names");
   // A kind with no picture is not guessed: the person is asked instead.
-  assert.deepEqual(guessHero("Lulu was a little llama. Lulu ran."), { name: "Lulu", kind: null });
+  assert.deepEqual(guessHero("Lulu was a little yeti. Lulu ran."), { name: "Lulu", kind: null });
 });
 
 test("the guide says what each page draws, and which pages draw nothing", () => {
@@ -216,7 +216,7 @@ test("the guide says what each page draws, and which pages draw nothing", () => 
 });
 
 test("a person's book fits a share link, whoever the hero is", async () => {
-  for (const hero of [{ name: "Max", kind: "dog" }, { name: "Kate", kind: "me" }, { name: "Lulu", kind: "llama" }, {}]) {
+  for (const hero of [{ name: "Max", kind: "dog" }, { name: "Kate", kind: "me" }, { name: "Lulu", kind: "yeti" }, {}]) {
     const s = storyFromText(MAX, hero);
     const book = { title: s.title, cast: s.cast, voice: "", cover: [],
       pages: s.pages.map(text => ({ text, things: wordsOnlyPlan(text, s).entries })) };
@@ -224,5 +224,5 @@ test("a person's book fits a share link, whoever the hero is", async () => {
     assert.deepEqual(back.pages.map(p => p.text), s.pages);
     assert.deepEqual(back.cast, s.cast);
   }
-  assert.match(storyFromText(MAX, { name: "Lulu", kind: "llama" }).notes.join(), /no llama picture/);
+  assert.match(storyFromText(MAX, { name: "Lulu", kind: "yeti" }).notes.join(), /no yeti picture/);
 });

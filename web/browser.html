@@ -461,7 +461,7 @@
     <button type="button" class="primary" id="load">Download &amp; load model</button>
     <div id="bar"><div id="barfill"></div></div>
     <p class="autonote" id="autonote" hidden></p>
-    <p class="credit">Inference by <a href="https://webllm.mlc.ai/" target="_blank" rel="noopener">WebLLM</a> · weights from Hugging Face · illustrations by <a href="https://github.com/jdecked/twemoji" target="_blank" rel="noopener">Twemoji</a> (CC-BY 4.0)</p>
+    <p class="credit">Inference by <a href="https://webllm.mlc.ai/" target="_blank" rel="noopener">WebLLM</a> · weights from Hugging Face · illustrations by <a href="https://github.com/jdecked/twemoji" target="_blank" rel="noopener">Twemoji</a> (CC-BY 4.0) and <a href="https://github.com/microsoft/fluentui-emoji" target="_blank" rel="noopener">Fluent Emoji</a> (MIT)</p>
   </section>
 </div></div>
 
@@ -2062,7 +2062,7 @@ async function showBook(state, out, { plan = null, status = null, shared = false
   });
   const end = sheet(book, "end");
   end.innerHTML = `<p class="page-text">The End</p><p class="credit">Story and pictures by sketchgpt, ` +
-    `in this browser · illustrations from Twemoji (CC-BY 4.0)</p>`;
+    `in this browser · illustrations from Twemoji (CC-BY 4.0) and Fluent Emoji (MIT)</p>`;
 
   async function drawPage(i) {
     const pg = sheets[i], page = state.pages[i];

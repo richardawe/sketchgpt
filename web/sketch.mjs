@@ -861,7 +861,8 @@ export function renderSketch(container, raw, { rough = null, art = null, onEdit 
   // downloaded drawing carries it wherever it goes.
   if (usedArt) {
     const desc = svgNode(doc, "desc");
-    desc.textContent = "Illustrations from Twemoji (c) Twitter, Inc and other contributors, CC-BY 4.0 — https://github.com/jdecked/twemoji";
+    desc.textContent = "Illustrations from Twemoji (c) Twitter, Inc and other contributors, CC-BY 4.0 — https://github.com/jdecked/twemoji" +
+      " — and Fluent Emoji (c) Microsoft, MIT — https://github.com/microsoft/fluentui-emoji";
     svg.insertBefore(desc, svg.children[1] || null);
   }
 

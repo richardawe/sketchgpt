@@ -389,7 +389,7 @@ node scripts/storybook.mjs            # a book from a real model; needs Ollama
 node scripts/book-bench.mjs qwen3:0.6b # Book's prompt, every page drawn by the page's code
 node scripts/desk-bench.mjs qwen3:0.6b     # the retired Desk's prompts
 node scripts/build-stamps.mjs         # regenerates web/stamps.mjs from Lucide
-node scripts/build-art.mjs            # regenerates web/art.mjs from Twemoji
+node scripts/build-art.mjs            # regenerates web/art.mjs from Twemoji and Fluent Emoji
 ```
 
 Set `PLAYWRIGHT_MODULE` to Playwright's `index.mjs` if it is not installed
@@ -527,6 +527,10 @@ docs/customising.md       how to change what the model does
 - **[Twemoji](https://github.com/jdecked/twemoji)** (graphics CC-BY 4.0,
   © Twitter, Inc and other contributors) — the illustrations sketches are drawn
   from, vendored as path data in `web/art.mjs` and credited inside every SVG.
+- **[Fluent Emoji](https://github.com/microsoft/fluentui-emoji)** (MIT, © Microsoft)
+  — its "Flat" style fills what Twemoji's list lacks: animals like the llama and
+  otter, and the set dressing backgrounds are made of. Vendored beside Twemoji
+  in `web/art.mjs`, credited the same way.
 - **[Lucide](https://lucide.dev)** (ISC) — the icon geometry behind sketch
   stamps a noun has no illustration for, vendored as path data in `web/stamps.mjs`.
 - **[rough.js](https://roughjs.com)** (MIT) — the hand-drawn line, vendored

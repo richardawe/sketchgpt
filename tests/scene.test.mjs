@@ -43,9 +43,10 @@ test("setting words shape the backdrop instead of being printed", () => {
 
 test("things with no drawing stay words, never the nearest icon", () => {
   // "cow" was this test's example until the illustrations drew one.
-  const llama = parseEntry("llama x2");
+  // "llama" was this test's example until Fluent Emoji drew one.
+  const llama = parseEntry("yeti x2");
   assert.equal(llama.stamp, null);
-  assert.equal(llama.said, "llama");
+  assert.equal(llama.said, "yeti");
   assert.equal(parseEntry("cow x2").stamp, "cow");
 });
 

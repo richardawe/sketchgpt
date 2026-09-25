@@ -57,3 +57,20 @@ test("the licence travels with the art", () => {
   assert.match(readFileSync(new URL("../web/browser.html", import.meta.url), "utf8"), /Twemoji<\/a> \(CC-BY 4\.0\)/,
     "the page does not credit the illustrations");
 });
+
+test("a second library, Fluent Emoji, fills what Twemoji's list lacks — and takes no word Twemoji draws", () => {
+  for (const w of ["llama", "otter", "flamingo", "potted plant", "framed picture", "log", "coral", "nest"])
+    assert.ok(ART[resolveStamp(w)], `${w} does not draw (got ${resolveStamp(w)})`);
+  // Its 32-unit box rides along as a per-shape scale, so every picture is 36 units.
+  assert.ok(ART.llama.every(s => /^scale\(1\.125\)/.test(s[3] || "")), "a Fluent shape is not scaled to the 36-unit box");
+  assert.equal(resolveStamp("cow"), "cow");
+  assert.ok(!ART.cow.some(s => /scale\(1\.125\)/.test(s[3] || "")), "a Twemoji picture was replaced");
+});
+
+test("both libraries are credited where the art is", () => {
+  const head = readFileSync(new URL("../web/art.mjs", import.meta.url), "utf8").slice(0, 600);
+  assert.match(head, /Twemoji.*CC-BY 4\.0/s);
+  assert.match(head, /Fluent Emoji.*MIT/s);
+  const sketch = readFileSync(new URL("../web/sketch.mjs", import.meta.url), "utf8");
+  assert.match(sketch, /Fluent Emoji \(c\) Microsoft, MIT/);
+});

@@ -12,6 +12,13 @@
 // https://github.com/jdecked/twemoji — credited on the page, in the README,
 // and inside every downloaded SVG.
 //
+// A second library fills what Twemoji's list does not have: Fluent Emoji's
+// "Flat" style (MIT, (c) Microsoft, https://github.com/microsoft/fluentui-emoji),
+// which is flat colour like Twemoji and draws the same way. It adds animals
+// (llama, otter, flamingo…) and the set dressing backgrounds need (a potted
+// plant, a framed picture, a log, coral, a nest). Its 32-unit box is scaled
+// to Twemoji's 36 per shape, so the renderer sees one kind of picture.
+//
 // Run:  NODE_PATH=<dir with node_modules containing svg-path-bbox> node scripts/build-art.mjs
 // Needs network access to cdn.jsdelivr.net; the output is committed.
 import { writeFile } from "node:fs/promises";
@@ -124,6 +131,28 @@ const ART = [
   ["puzzle", "1f9e9", "jigsaw"], ["teddy-bear", "1f9f8", "teddybear", "toy"], ["telescope", "1f52d"],
 ];
 
+// [name, Fluent Emoji folder, ...aliases] — only names Twemoji's list lacks.
+const FLUENT_CDN = "https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets";
+const FLUENT = [
+  // animals
+  ["llama", "Llama", "alpaca"], ["sloth", "Sloth"], ["otter", "Otter"], ["flamingo", "Flamingo"],
+  ["beaver", "Beaver"], ["peacock", "Peacock"], ["seal", "Seal"], ["koala", "Koala"], ["panda", "Panda"],
+  ["hippo", "Hippopotamus", "hippopotamus"], ["rhino", "Rhinoceros", "rhinoceros"], ["gorilla", "Gorilla"],
+  ["bat", "Bat"], ["crocodile", "Crocodile", "alligator"], ["badger", "Badger"], ["raccoon", "Raccoon"],
+  ["skunk", "Skunk"], ["turkey", "Turkey"], ["bison", "Bison", "buffalo"], ["orangutan", "Orangutan"],
+  ["squid", "Squid"], ["lobster", "Lobster"], ["jellyfish", "Jellyfish"], ["ant", "Ant"], ["worm", "Worm"],
+  ["spider", "Spider"], ["wolf", "Wolf"], ["boar", "Boar"], ["goose", "Goose"], ["dove", "Dove"],
+  ["mammoth", "Mammoth"], ["dodo", "Dodo"], ["poodle", "Poodle"],
+  // set dressing: the small things a background is made of
+  ["potted-plant", "Potted plant", "pottedplant", "houseplant"], ["framed-picture", "Framed picture", "picture", "painting2"],
+  ["wood", "Wood", "log", "logs"], ["herb", "Herb", "fern"], ["clover", "Four leaf clover", "shamrock"],
+  ["fallen-leaf", "Fallen leaf"], ["hibiscus", "Hibiscus"], ["cherry-blossom", "Cherry blossom"],
+  ["lotus", "Lotus"], ["hyacinth", "Hyacinth", "lavender"], ["coral", "Coral"], ["nest", "Nest with eggs", "eggs"],
+  ["mirror", "Mirror"], ["ladder", "Ladder"], ["bucket", "Bucket", "pail"], ["brick", "Bricks", "bricks", "wall"],
+  ["couch-lamp", "Couch and lamp", "livingroom"], ["shopping-cart", "Shopping cart", "trolley"],
+  ["hut-fluent", "Hut"], ["sunrise", "Sunrise over mountains"], ["milky-way", "Milky way"],
+];
+
 const shapes = [];
 function toPath(el) {
   const num = n => Number((el.match(new RegExp(`\\b${n}="([-\\d.]+)"`)) || [])[1] || 0);
@@ -137,15 +166,20 @@ function toPath(el) {
 }
 
 const art = {}, names = {};
-let bytes = 0, missing = [];
-for (const [name, file, ...aliases] of ART) {
-  const res = await fetch(`${CDN}/${file}.svg`);
-  if (!res.ok) { missing.push(`${name} (${file})`); continue; }
+let bytes = 0, missing = [], fluentCount = 0;
+const fluentFile = folder => `${FLUENT_CDN}/${encodeURIComponent(folder)}/Flat/${folder.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_flat.svg`;
+const sources = [...ART.map(([name, file, ...aliases]) => ({ name, url: `${CDN}/${file}.svg`, aliases, scale: 1 })),
+  ...FLUENT.map(([name, folder, ...aliases]) => ({ name, url: fluentFile(folder), aliases, scale: 36 / 32, fluent: true }))];
+for (const { name, url, aliases, scale, fluent } of sources) {
+  if (art[name]) { console.warn(`  skip: ${name} is already drawn`); continue; }
+  const res = await fetch(url);
+  if (!res.ok) { missing.push(`${name} (${url.split("/assets/").pop() || url})`); continue; }
   const svg = await res.text();
   if (/<use|Gradient|<mask|<clipPath/.test(svg)) console.warn(`  note: ${name} uses features the renderer draws flat`);
   const list = [];
   for (const el of svg.match(/<(path|circle|ellipse|rect|polygon|polyline)\b[^>]*>/g) || []) {
-    const fill = (el.match(/\bfill="([^"]+)"/) || [])[1] || "#000";
+    // Fluent's <svg> says fill="none": a shape with no fill of its own is not drawn.
+    const fill = (el.match(/\bfill="([^"]+)"/) || [])[1] || (fluent ? "none" : "#000");
     if (fill === "none") continue;
     const d = toPath(el);
     if (!d) continue;
@@ -154,22 +188,29 @@ for (const [name, file, ...aliases] of ART) {
       const [x0, y0, x1, y1] = svgPathBbox(d);
       // Small details are drawn crisp: wobbling a 2-unit eye at scene scale
       // smudged every face in the prototype.
-      small = Math.max(x1 - x0, y1 - y0) < 7;
+      small = Math.max(x1 - x0, y1 - y0) * scale < 7;
     } catch {}
     // A few pictures rotate single shapes (the carousel's poles, the UFO's
     // beams); the rotation rides along as a fourth element.
-    const transform = (el.match(/\btransform="([^"]+)"/) || [])[1];
+    // A Fluent shape carries the 32→36 scale as its transform.
+    const own = (el.match(/\btransform="([^"]+)"/) || [])[1];
+    const transform = scale !== 1 ? `scale(${scale})${own ? " " + own : ""}` : own;
     list.push(transform ? [d, fill, small ? 1 : 0, transform] : small ? [d, fill, 1] : [d, fill]);
   }
   art[name] = list;
   bytes += JSON.stringify(list).length;
-  names[name.replace(/[^a-z0-9]/g, "")] = name;
-  for (const a of aliases) names[a.replace(/[^a-z0-9]/g, "")] = name;
+  const key = w => w.replace(/[^a-z0-9]/g, "");
+  if (!fluent || !names[key(name)]) names[key(name)] = name;
+  // A second library never takes a word the first already draws.
+  for (const a of aliases) if (!fluent || !names[key(a)]) names[key(a)] = name;
+  if (fluent) fluentCount++;
 }
 
-const header = `// GENERATED by scripts/build-art.mjs from Twemoji ${VERSION} — do not edit by hand.
+const header = `// GENERATED by scripts/build-art.mjs from Twemoji ${VERSION} and Fluent Emoji — do not edit by hand.
 // Twemoji graphics (c) Twitter, Inc and other contributors, CC-BY 4.0:
 // https://github.com/jdecked/twemoji  https://creativecommons.org/licenses/by/4.0/
+// Fluent Emoji (Flat) (c) Microsoft Corporation, MIT licence:
+// https://github.com/microsoft/fluentui-emoji
 `;
 await writeFile(new URL("../web/art.mjs", import.meta.url), header +
   `// Each shape is [path, fill], [path, fill, 1] for a small detail drawn crisp,\n` +
@@ -179,6 +220,6 @@ await writeFile(new URL("../web/art-names.mjs", import.meta.url), header +
   `// Word -> art name. Small and loaded up front, so parsing can resolve a noun\n` +
   `// before the art itself (web/art.mjs, loaded lazily) has arrived.\n` +
   `export const ART_NAMES = ${JSON.stringify(names)};\n`);
-console.log(`web/art.mjs: ${Object.keys(art).length} pictures, ${(bytes / 1024).toFixed(0)} KB of shape data; ` +
+console.log(`web/art.mjs: ${Object.keys(art).length} pictures (${fluentCount} from Fluent Emoji), ${(bytes / 1024).toFixed(0)} KB of shape data; ` +
   `web/art-names.mjs: ${Object.keys(names).length} words`);
 if (missing.length) console.log(`missing from Twemoji ${VERSION}: ${missing.join(", ")}`);
