@@ -80,8 +80,13 @@ docs/storybook.md         a story written by the model, illustrated by the page 
 docs/story-rules.md       Book without the model — all six stages built: rules, no download, own story, scenery, pictures, GIF
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
-docs/film-plan.md         PLAN, nothing built: "Film" — user prose → 2-min 3D video, phone first, no model;
+docs/film-plan.md         "Film": user prose → 2-min 3D video, phone first, no model; stage 0 built, stages 1–6 planned;
                           mature tier only (explicit content is banned on GitHub — read before building)
+web/film-probe.html       Film stage 0: can this phone make a 2-minute 3D video? numbers in a copyable report
+web/film/probe.mjs        the probe's scene, rule-cut camera, painted-on clothes, soundtrack, video (three.js)
+web/film/assets/          CC0 people, 84 movements, a room, an HDRI (~6.9 MB) — regenerate, never hand-edit
+web/vendor/three.mjs      three.js 0.186.1 bundle; mediabunny-film.mjs = Book's writer + audio (scripts/film/vendor.mjs)
+scripts/film/             inventory.mjs (what a glTF pack contains), build-assets.mjs, vendor.mjs
 web/selfie.html           Draw me: a photo drawn as a moving caricature, GIF/sticker/SVG export (stage 1)
 web/face.mjs              selfie drawing: alignment, caricature rules, colour, hair, SVG, poses (pure)
 web/face-find.mjs         MediaPipe's face/hair/person models on LiteRT.js — never MediaPipe's runtime (it logs)
@@ -625,6 +630,12 @@ practical fine-tuning.
   has the reader on every page, blinking; shared links carry only "me" and
   show a stand-in child (`tests/me-browser.mjs`). The Book intro links to
   selfie.html.
+- **Film stage 0 is built and has never run on a phone** (`docs/film-plan.md`).
+  Open `film-probe.html` on the owner's iPhone, make the 2-minute video, copy
+  the report. That decides the phone budget before stage 1. Found building it:
+  the free Quaternius tiers are **two bodies, no clothes, no facial morphs**
+  (84 clips, which is plenty for a two-hander); clothes are painted on by skin
+  weight for now.
 - **Next idea: product specification manuals with diagrams.** Researched,
   nothing built. The design that follows from the findings above: the model
   fills a JSON plan (blocks, links, labels) and the page lays it out — elkjs

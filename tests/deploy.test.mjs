@@ -90,3 +90,18 @@ test("an updated worker deletes only its own old caches, never the model weights
   await work;
   assert.deepEqual(deleted, ["sketchgpt-v7"]);
 });
+
+test("film-probe.html is deployed with its module, every asset it loads, and its vendored files", async () => {
+  const { existsSync } = await import("node:fs");
+  assert.match(workflow, /cp web\/film-probe\.html\s/);
+  assert.match(workflow, /cp -r web\/film\s+_site\/film/);
+  const html = web("film-probe.html"), mod = web("film/probe.mjs");
+  assert.match(html, /"\.\/film\/probe\.mjs\?v=\d+"/);
+  const vendor = [...mod.matchAll(/"\.\.\/vendor\/([\w.-]+\.mjs)(?:\?v=\d+)?"/g)].map(m => m[1]);
+  assert.deepEqual(vendor.sort(), ["mediabunny-film.mjs", "three.mjs"]);
+  for (const v of vendor) assert.ok(existsSync(new URL(`../web/vendor/${v}`, import.meta.url)), `vendor/${v} missing`);
+  const assets = new Set([...mod.matchAll(/"([\w-]+\.(?:glb|hdr))"/g)].map(m => m[1]));
+  assert.ok(assets.size >= 9, `${assets.size} assets named`);
+  for (const a of assets) assert.ok(existsSync(new URL(`../web/film/assets/${a}`, import.meta.url)), `film/assets/${a} missing`);
+  assert.ok(existsSync(new URL("../web/film/assets/LICENSE.txt", import.meta.url)), "the assets say where they came from");
+});

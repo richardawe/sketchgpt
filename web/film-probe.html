@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Film probe</title>
+<meta name="description" content="Stage 0 of Film: can this device make a two-minute 3D video? Nothing is uploaded.">
+<style>
+  :root { --bg: #f6f2ea; --ink: #221e1a; --muted: #6f665c; --card: #fffdf8; --line: #ded6ca; --accent: #8a3b12; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #151311; --ink: #eee7dc; --muted: #a39888; --card: #1f1c19; --line: #36302a; --accent: #f0a070; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  p { margin: 0 0 12px; color: var(--muted); }
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  @media (min-width: 700px) { .stage { grid-template-columns: 300px minmax(0, 1fr); } }
+  canvas#out { width: 100%; max-width: 300px; aspect-ratio: 9 / 16; background: #000; border-radius: 10px; display: block; margin: 0 auto; }
+  canvas#gl { display: none; }
+  .controls { display: flex; flex-direction: column; gap: 8px; }
+  button, .dl { font: inherit; font-size: 16px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; text-align: left; text-decoration: none; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .status { min-height: 1.4em; font-size: 15px; }
+  progress { width: 100%; height: 10px; }
+  .report { margin-top: 12px; }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+  .warn { color: var(--accent); font-weight: 600; }
+  video { width: 100%; max-width: 300px; border-radius: 10px; display: block; margin: 8px auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Film probe</h1>
+  <p>Stage 0 of Film: can this device make a two-minute 3D video? It loads ~7 MB once (two people, 84 movements, a room, the light), then everything happens here. Nothing is uploaded.</p>
+  <p id="lastrun" class="warn" hidden></p>
+  <div class="stage">
+    <div>
+      <canvas id="out" width="720" height="1280"></canvas>
+      <canvas id="gl"></canvas>
+    </div>
+    <div class="controls">
+      <button id="load" class="primary">Load the scene</button>
+      <button id="preview" disabled>1. Preview for 15 seconds</button>
+      <button id="record" disabled>Record a line (optional, your voice)</button>
+      <button id="make" disabled>2. Make the 2-minute video</button>
+      <button id="cancel" hidden>Stop</button>
+      <progress id="prog" value="0" max="1" hidden></progress>
+      <div class="status" id="status"></div>
+      <div id="result"></div>
+    </div>
+  </div>
+  <div class="report">
+    <button id="copy" disabled>Copy the report</button>
+    <pre id="report">No numbers yet.</pre>
+  </div>
+</main>
+<script type="module">
+import { setup, frameFn, makeVideo, RUN_KEY } from "./film/probe.mjs?v=1";
+
+const $ = id => document.getElementById(id);
+const q = new URLSearchParams(location.search);
+const SECONDS = Math.max(1, Math.min(300, +q.get("seconds") || 120));
+const FPS = Math.max(6, Math.min(60, +q.get("fps") || 24));
+const WIDTH = Math.max(180, Math.min(1080, +q.get("width") || 720));
+const HEIGHT = Math.round(WIDTH * 16 / 9);
+const SHADOWS = q.get("shadows") !== "0";
+$("make").textContent = `2. Make the ${SECONDS >= 60 ? (SECONDS / 60).toFixed(SECONDS % 60 ? 1 : 0) + "-minute" : SECONDS + "-second"} video`;
+
+const report = { page: "film-probe v1", when: new Date().toISOString(), settings: { seconds: SECONDS, fps: FPS, size: `${WIDTH}x${HEIGHT}`, shadows: SHADOWS } };
+const show = () => { $("report").textContent = JSON.stringify(report, null, 2); $("copy").disabled = false; };
+const status = t => { $("status").textContent = t; };
+const safe = f => { try { return f(); } catch { return null; } };
+
+// The device, as far as the page can see it.
+report.device = {
+  ua: navigator.userAgent, dpr: devicePixelRatio, screen: `${screen.width}x${screen.height}`,
+  cores: navigator.hardwareConcurrency || null, memoryGB: navigator.deviceMemory || null,
+  webcodecs: typeof VideoEncoder !== "undefined", wakeLock: "wakeLock" in navigator,
+};
+
+// If the last run never finished, the tab died (or was closed). Say how far it got.
+const last = safe(() => JSON.parse(localStorage.getItem(RUN_KEY) || "null"));
+if (last && !last.finished) {
+  $("lastrun").hidden = false;
+  $("lastrun").textContent = `The last video run stopped at frame ${last.frame} of ${last.total} (${(last.frame / last.fps).toFixed(1)} s of video, ${Math.round(last.elapsedMs / 1000)} s in, ${last.hidden ? "the page had been in the background" : "the page was in front"}). It's in the report.`;
+  report.previousRunDied = last;
+  show();
+}
+
+let ctx3 = null, recorded = null, cancelled = false;
+
+$("load").onclick = async () => {
+  $("load").disabled = true; status("Loading… (~7 MB, once)");
+  try {
+    const gl = safe(() => { const c = document.createElement("canvas").getContext("webgl2"); const d = c.getExtension("WEBGL_debug_renderer_info"); return { renderer: d ? c.getParameter(d.UNMASKED_RENDERER_WEBGL) : c.getParameter(c.RENDERER), maxTexture: c.getParameter(c.MAX_TEXTURE_SIZE) }; });
+    report.device.gpu = gl;
+    if (!gl) throw new Error("No WebGL2 on this browser.");
+    ctx3 = await setup($("gl"), $("out"), { width: WIDTH, height: HEIGHT, shadows: SHADOWS });
+    const info = ctx3.renderer.info;
+    report.load = { ms: Math.round(ctx3.loadMs), MB: +(ctx3.bytes / 1e6).toFixed(2), triangles: info.render.triangles, drawCalls: info.render.calls, textures: info.memory.textures, geometries: info.memory.geometries, clips: ctx3.world.clipNames.length };
+    frameFn(ctx3.renderer, ctx3.world, ctx3.camera, ctx3.ctx)(4.5);
+    status(`Loaded in ${(ctx3.loadMs / 1000).toFixed(1)} s. Preview first, then make the video.`);
+    $("preview").disabled = $("make").disabled = false;
+    $("record").disabled = !navigator.mediaDevices?.getUserMedia;
+    show();
+  } catch (e) {
+    report.loadError = String(e && e.stack || e); show();
+    status("Could not load: " + e.message); $("load").disabled = false;
+  }
+};
+
+// Preview: real time, as fast as the device manages. Frame times are the measure.
+$("preview").onclick = async () => {
+  $("preview").disabled = $("make").disabled = true;
+  const draw = frameFn(ctx3.renderer, ctx3.world, ctx3.camera, ctx3.ctx);
+  const times = [];
+  const start = performance.now();
+  let prev = start;
+  await new Promise(done => {
+    const tick = now => {
+      const t = (now - start) / 1000;
+      draw(t);
+      times.push(now - prev); prev = now;
+      status(`Preview ${t.toFixed(0)} / 15 s`);
+      if (t < 15) requestAnimationFrame(tick); else done();
+    };
+    requestAnimationFrame(tick);
+  });
+  const sorted = times.slice(5).sort((a, b) => a - b);
+  const pct = p => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
+  report.preview = { frames: times.length, fps: +(times.length / 15).toFixed(1), medianMs: +pct(0.5).toFixed(1), p95Ms: +pct(0.95).toFixed(1), worstMs: +sorted[sorted.length - 1].toFixed(1) };
+  status(`Preview: ${report.preview.fps} frames a second (median ${report.preview.medianMs} ms a frame).`);
+  $("preview").disabled = $("make").disabled = false;
+  show();
+};
+
+// The person's own voice: one line, kept in the tab, mixed into the video.
+$("record").onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const rec = new MediaRecorder(stream), chunks = [];
+    rec.ondataavailable = e => chunks.push(e.data);
+    const stopped = new Promise(r => rec.onstop = r);
+    rec.start();
+    $("record").textContent = "Recording… tap to stop (say: “You said you'd be gone by now.”)";
+    $("record").onclick = () => rec.stop();
+    await stopped;
+    stream.getTracks().forEach(t => t.stop());
+    const buf = await new Blob(chunks).arrayBuffer();
+    recorded = await new AudioContext().decodeAudioData(buf);
+    report.voice = { seconds: +recorded.duration.toFixed(2), mime: rec.mimeType };
+    $("record").textContent = `Recorded ${recorded.duration.toFixed(1)} s — it goes under her first line`;
+    $("record").disabled = true;
+    show();
+  } catch (e) { report.voiceError = String(e); show(); status("Recording failed: " + e.message); }
+};
+
+$("make").onclick = async () => {
+  $("make").disabled = $("preview").disabled = $("record").disabled = true;
+  $("cancel").hidden = false; $("prog").hidden = false; cancelled = false;
+  let lock = null, hiddenCount = 0;
+  const onVis = () => { if (document.hidden) hiddenCount++; };
+  document.addEventListener("visibilitychange", onVis);
+  try { lock = await navigator.wakeLock?.request("screen"); } catch {}
+  const run = { total: Math.round(SECONDS * FPS), frame: 0, fps: FPS, elapsedMs: 0, started: new Date().toISOString(), size: `${WIDTH}x${HEIGHT}`, finished: false, hidden: false };
+  const t0 = performance.now();
+  const heap = () => performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null;
+  let heapMax = heap();
+  try {
+    const r = await makeVideo({ ...ctx3, seconds: SECONDS, fps: FPS, voice: recorded,
+      onFrame: (f, total) => {
+        if (cancelled) throw new Error("stopped");
+        if (f % 24 === 0) {
+          run.frame = f; run.elapsedMs = Math.round(performance.now() - t0); run.hidden = hiddenCount > 0;
+          safe(() => localStorage.setItem(RUN_KEY, JSON.stringify(run)));
+          heapMax = Math.max(heapMax || 0, heap() || 0) || null;
+        }
+      },
+      onProgress: (k, ms) => { $("prog").value = k; const left = ms / k * (1 - k); status(`Making the video: ${Math.round(k * 100)}% — about ${Math.ceil(left / 1000)} s left`); } });
+    run.finished = true; safe(() => localStorage.setItem(RUN_KEY, JSON.stringify(run)));
+    report.video = { ok: true, container: r.ext, video: r.videoCodec, audio: r.audioCodec || "none (no encoder)", frames: r.frames,
+      seconds: SECONDS, wallSeconds: +(r.wallMs / 1000).toFixed(1), realtimeX: +((SECONDS * 1000) / r.wallMs).toFixed(2),
+      drawMsPerFrame: +(r.drawMs / r.frames).toFixed(1), encodeWaitMsPerFrame: +(r.encMs / r.frames).toFixed(1),
+      audioRenderMs: Math.round(r.audioMs), finalizeMs: Math.round(r.finalizeMs), MB: +(r.blob.size / 1e6).toFixed(2),
+      wentToBackground: hiddenCount, jsHeapMaxMB: heapMax, voiceLine: !!recorded };
+    const url = URL.createObjectURL(r.blob);
+    const name = `film-probe.${r.ext}`;
+    $("result").innerHTML = "";
+    const v = document.createElement("video"); v.src = url; v.controls = true; v.playsInline = true; $("result").append(v);
+    const a = document.createElement("a"); a.href = url; a.download = name; a.className = "dl"; a.textContent = `Save the video (${report.video.MB} MB)`; $("result").append(a);
+    if (navigator.canShare?.({ files: [new File([r.blob], name, { type: r.blob.type })] })) {
+      const s = document.createElement("button"); s.textContent = "Share the video"; s.onclick = () => navigator.share({ files: [new File([r.blob], name, { type: r.blob.type })] }).catch(() => {}); $("result").append(s);
+    }
+    status(`Done: ${SECONDS} s of video in ${report.video.wallSeconds} s (${report.video.realtimeX}× real time).`);
+  } catch (e) {
+    report.video = { ok: false, error: String(e && e.stack || e), reachedFrame: run.frame, of: run.total, wallSeconds: +((performance.now() - t0) / 1000).toFixed(1), wentToBackground: hiddenCount };
+    run.finished = true; safe(() => localStorage.setItem(RUN_KEY, JSON.stringify(run)));
+    status(e.message === "stopped" ? "Stopped." : "The video failed: " + e.message);
+  } finally {
+    document.removeEventListener("visibilitychange", onVis);
+    lock?.release?.();
+    $("cancel").hidden = true; $("prog").hidden = true;
+    $("make").disabled = $("preview").disabled = false;
+    show();
+  }
+};
+$("cancel").onclick = () => { cancelled = true; };
+$("copy").onclick = () => navigator.clipboard?.writeText($("report").textContent).then(() => { $("copy").textContent = "Copied"; setTimeout(() => $("copy").textContent = "Copy the report", 1500); });
+// For the tests and for looking at single frames: __probe.still(seconds).
+window.__probe = { report, get ready() { return !!ctx3; },
+  debug: t => { frameFn(ctx3.renderer, ctx3.world, ctx3.camera, ctx3.ctx)(t); const T = ctx3.T, out = {}; for (const [n, c] of Object.entries(ctx3.world.cast)) { const b = new T.Box3().setFromObject(c.body); out[n] = { min: b.min.toArray().map(v => +v.toFixed(2)), max: b.max.toArray().map(v => +v.toFixed(2)), head: c.head.getWorldPosition(new T.Vector3()).toArray().map(v => +v.toFixed(2)) }; } out.cam = ctx3.camera.position.toArray().map(v => +v.toFixed(2)); out.pieces = ctx3.world.scene.children.filter(o => o.type === 'Group' && !o.children.some(k => k.isSkinnedMesh)).flatMap(g => g.children).slice(0, 40).map(o => { const b = new T.Box3().setFromObject(o); return o.name + ' ' + b.min.toArray().map(v => v.toFixed(2)) + ' / ' + b.max.toArray().map(v => v.toFixed(2)); }); return out; },
+  still: t => { const shot = frameFn(ctx3.renderer, ctx3.world, ctx3.camera, ctx3.ctx)(t); return { shot, jpeg: $("out").toDataURL("image/jpeg", 0.85) }; } };
+</script>
+</body>
+</html>

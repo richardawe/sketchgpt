@@ -59,6 +59,8 @@ jobs:
           cp web/index.html   _site/ollama.html  # needs a local Ollama
           cp web/browser.html _site/browser.html # stable direct link
           cp web/selfie.html  _site/selfie.html  # Draw me: a photo drawn as a caricature
+          cp web/film-probe.html _site/film-probe.html  # Film stage 0: can this phone make a 2-minute 3D video?
+          cp -r web/film    _site/film          # its module and CC0 assets (~7 MB, loaded on tap)
           ls -la _site
 
       # NOTE: enablement cannot bootstrap Pages on its own here. Creating a

@@ -1,7 +1,9 @@
 # Film — a grown-up version of Book, without a model — a plan
 
-**Status: a plan, with the owner's first decisions made (end of this doc).
-Nothing is built. Stage 0 is next.**
+**Status: stage 0 is built and tested in headless Chromium, and has never run
+on a phone (`web/film-probe.html`, "Stage 0 as built" below). The free tiers
+turned out smaller than their "60–70%": two bodies, no clothes, no faces that
+move. Stages 1–6 are not built.**
 
 The owner said: "The general direction of this works, can we have an adult
 version? No AI, better and more realistic libraries, actual moving objects and
@@ -94,8 +96,8 @@ bundle's URLs are checked (`tests/face.test.mjs` already enforces this for
 | Job | Pick | Licence | Notes |
 |---|---|---|---|
 | Rendering, animation mixing, cameras | **three.js**, vendored, pinned, **WebGL2** | MIT | glTF, `AnimationMixer` cross-fades, skinned meshes. WebGL2 rather than WebGPU because every phone has it. No telemetry |
-| People | **Quaternius Universal Base Characters — free Standard tier** | CC0 | Rigged humanoids, hairstyles, ~13k triangles each, glTF. The free tier is ~60–70% of the kit, so **stage 0 lists exactly which bodies and hairstyles it contains** before anything depends on them |
-| Movement | **Quaternius Universal Animation Library 1 + 2 — free tier** | CC0 | Same rig as the characters, so any clip plays on any body. Free tier is again ~60–70%, so stage 0 lists the clips and the verb table is sized to what's actually there. A missing move falls back to the nearest one, and the page says so |
+| People | **Quaternius Universal Base Characters — free Standard tier** | CC0 | **Measured in stage 0: two bodies only** (Superhero female and male, ~13k triangles each; the Regular and Teen bodies are paid), 6 hairstyles, a beard and 2 eyebrow sets. No clothes, no facial morph targets. See "Stage 0 as built" |
+| Movement | **Quaternius Universal Animation Library 1 + 2 — free tier** | CC0 | Same rig as the characters, so any clip plays on any body (confirmed: bone names match exactly). **Measured: 84 clips** (list below). A missing move falls back to the nearest one, and the page says so |
 | Places, props | **Kenney** kits (furniture, city, interior), **Quaternius** environment packs, **Poly Haven** models | CC0 | Chosen for low triangle counts: phone first |
 | Light, sky | **Poly Haven** HDRIs (1k), **ambientCG** textures | CC0 | Lighting is most of what makes low-poly read as real. On phones, light is **baked** into each set, not computed per frame |
 | Compression | **meshoptimizer** (glTF), **KTX2/Basis Universal** textures via three's loaders | MIT / Apache-2.0 | Smaller downloads and far less GPU memory, which is what kills phone tabs |
@@ -156,6 +158,53 @@ lip-sync. Speech is carried by head and body motion and by cutting to the
 speaker. Stage 4 tests a jaw morph added to the free bodies in Blender (a
 one-time asset edit, still CC0), driven by the loudness of the person's own
 recording. That is amplitude, not AI.
+
+---
+
+## Bring your own character
+
+At step 2 (Cast), each name can use a built-in body, **or a character the
+person brings**. There are four ways in, from simplest to most work. Three
+use no machine learning; the one that does says so on the button.
+
+| Way in | What the person gives | What the page does | ML? |
+|---|---|---|---|
+| **Build one** | picks body, hairstyle, skin, hair, eye and clothes colours, height | recolours and scales a free Quaternius base. Saved in the tab by name, reusable in the next film | no |
+| **Your own 3D character** | a `.glb`/`.gltf` or `.vrm` file (VRoid Studio, Blender, any avatar tool that exports glTF) | maps its bones onto the Quaternius rig by name (Quaternius, Mixamo-style, VRM humanoid and Blender Rigify names are all known tables) and retargets the clips onto it (three.js `SkeletonUtils`; `@pixiv/three-vrm`, MIT, for VRM). Played exactly as given: the page doesn't restyle a person's character, the same rule as "the page corrects the model, never the person" | no |
+| **Your face on a body** | a photo, plus three taps: left eye, right eye, mouth | cuts an oval around those three points and puts it on a built body's head as a texture, with skin colour from the cheek between the taps. Flat, a bit like a mask, and honest about it | no |
+| **Your selfie drawing** (from `selfie.html`) | the drawing "Draw me" already made | its colours (skin, hair) and hairstyle choice go onto a built body. "Draw me" uses MediaPipe's models, so this button says **"uses on-device machine learning"** | **yes**, in selfie.html, not in Film |
+
+**Rules for a brought character:**
+
+- **Checked before use, against the phone budget.** File cap ~30 MB, read
+  from `file.size` before a byte is read. The triangle count and texture
+  memory are summed and compared with the scene budget. Over it: "This
+  character is 180k triangles; a phone manages ~40k per person. Use it on
+  desktop, or simplify it", never a crashed tab. The page won't silently
+  decimate someone's model.
+- **Bones that don't map are said, not guessed.** "No arm bones found: this
+  character can stand and turn but not gesture." A character with no
+  skeleton at all is still usable as a prop-like figure that slides and
+  turns, and the page says so.
+- **It stays in the tab.** Files and photos are never uploaded and never go
+  in a share link. A shared film shows a built stand-in with the same
+  colours, like Book's "me" → stand-in child. "Save" writes one file with the
+  character inside, the person's choice.
+- **Someone else's face is their consent, not the page's.** The photo button
+  says "Use a photo of yourself, or of someone who agreed". In tier 1,
+  violence against a real face is allowed with that notice. In tier 2 (if it
+  ever exists) photos and likenesses are refused outright (rule 2 above).
+- **Licences travel with files.** A VRM carries its author's terms in its
+  meta: licence, and whether violent or sexual use is allowed
+  (`violentUssageName`/`sexualUssageName` in VRM 0.x,
+  `allowExcessivelyViolentUsage`/`allowExcessivelySexualUsage` in 1.0). They
+  are **read and obeyed**: a VRM marked "no violent use" can't
+  be cast in a scene where it fights or dies, and the page says why.
+
+Built in stage 3 (Build one), stage 4 (face on a body; the selfie hand-off)
+and stage 6 (your own 3D file, since retargeting is its own stage of work
+and the free rig must be solid first). Stage 0 already loads one outside
+`.glb` to prove the bone-map idea.
 
 ---
 
@@ -238,6 +287,108 @@ photo never travel in a link. Fountain export, and Fountain paste
 recognised.
 
 ---
+
+## Stage 0 as built
+
+`web/film-probe.html` + `web/film/probe.mjs`. Deployed with the site, it is
+a page the owner opens on the phone. It loads ~6.9 MB once, then:
+
+1. **Preview for 15 seconds:** real-time playback, frame times recorded
+   (median, p95, worst).
+2. **Record a line** (optional): your voice, kept in the tab, mixed under the
+   woman's first line.
+3. **Make the 2-minute video:** 720×1280 portrait, 24 fps, 2,880 frames drawn
+   one at a time (not screen-recorded), subtitles burned in, a music bed and
+   room tone made on the page, encoded in the tab. MP4 (H.264 + AAC) where the
+   browser can, else WebM (VP9 + Opus). Wake lock held. Save or Share.
+4. **Copy the report:** device, GPU, load time and size, triangles and draw
+   calls, preview fps, render wall time and × real time, draw vs encode cost
+   per frame, file size, codecs, JS heap where exposed, and how many times the
+   page went to the background.
+5. **If the tab dies**, the next visit says how far it got ("stopped at frame
+   1200 of 2880, 185 s in, the page had been in the background"). Progress is
+   written every 24 frames. That sentence is the survival measurement.
+
+`?seconds=`, `?fps=`, `?width=` and `?shadows=0` shrink the job if the
+full one dies. That's how the phone budget gets found.
+
+The scene is 30 seconds looped to fill the length. Two people in a Kenney
+living room, lit by a Poly Haven HDRI plus one shadowed key light, 13
+movement segments with 0.35 s cross-fades, and 6 lines of dialogue. The
+camera cuts by rule: wide at the start and during walks, a two-shot between
+lines, and a close shot of whoever speaks, taken from the side they face.
+Every frame is a pure function of its time, so the preview and the video are
+the same pictures.
+
+### What the free tiers actually contain (`scripts/film/inventory.mjs`)
+
+| | Free Standard tier |
+|---|---|
+| Bodies | **2**: Superhero female, Superhero male. Muscular proportions; the man's shirt shows his abs through it. Regular and Teen bodies are in the paid Source tier only |
+| Hair | 6 styles (long, simple parted, buns, buzzed, buzzed female), a beard, 2 eyebrow sets. Grey textures made to be tinted, which works |
+| Clothes | **None.** The bodies come in underwear. Quaternius's only outfit kit (Modular Character Outfits) is **fantasy** (medieval), and compatible with this rig |
+| Faces | **No morph targets** on any mesh: no blinks, no mouths, no expressions |
+| Textures | 2048 px; two the `.gltf` files name are missing from the free zip (eye normal, one hair normal). The build finds or drops them |
+| Movement (84 clips) | Walk, Walk_Formal, Jog, Sprint, Crouch (idle, forward), Sitting (enter, idle, talking, exit), Idle, Idle_Talking, Idle_TalkingPhone, Idle_FoldArms, Idle_No (head shake), Yes (nod), Consume (drink/eat), Interact, PickUp_Table, Push, Walk_Carry, Driving, Dance, Punch (jab, cross), Melee hook, Hit (chest, head, knockback), Death01, LayToIdle (getting up), Pistol (idle, aim ×3, shoot, reload), Roll, Jump (start, loop, land), ClimbUp, Swim, Zombie ×3, plus sword, shield, spell, farming, torch and lantern moves |
+| Not there | Hug, kiss, point, wave, cry, lie down (only getting up), open a door (Interact stands in), sit on the floor, run scared, turn around |
+
+Only two bodies, and no faces that move, is a bigger gap than "60–70%"
+suggested. For drama it's enough to stage a two-hander (talk, argue, drink,
+phone, fight, shoot, die), but not a crowd or an embrace.
+
+**Clothes are painted on for now.** Each vertex is shirt, trousers or shoes
+by which bones move it (the skin weights), and a shader lays the colour over
+the skin texture. There's no download, and it reads as a fitted outfit from
+a distance and as a bodysuit up close. The real fix is a stage 2 decision:
+(a) the fantasy outfits recoloured (wrong period), (b) Quaternius's older
+**Ultimate Modular Men/Women** packs (CC0, modern clothes, but a different
+rig, so clips are retargeted with `SkeletonUtils.retargetClip`), or (c) the
+paid Source tier (still no modern clothes, so it doesn't help here).
+
+### Sizes (phone first)
+
+| File | MB |
+|---|---|
+| three.js bundle (`vendor/three.mjs`, everything exported) | 0.82 (0.21 gzipped) |
+| Mediabunny with audio (`vendor/mediabunny-film.mjs`) | 0.26 (0.06 gzipped) |
+| woman.glb, man.glb (1024 px WebP textures, meshopt) | 0.33 + 0.31 |
+| hair ×3 + beard | 0.32 |
+| moves-1.glb + moves-2.glb (84 clips, no mesh) | 2.17 + 2.29 |
+| room.glb (19 Kenney pieces) | 0.07 |
+| lebombo_1k.hdr | 1.48 |
+| **Total loaded by the probe** | **6.87** |
+
+Per frame: 72k triangles (with the shadow pass), ~120 draw calls, 33 textures.
+Animations are two-thirds of the download. A film would load only the clips
+its story uses: the 13 the probe plays are well under 1 MB.
+
+### Tested here, and not tested
+
+**Tested** (`tests/film-probe-browser.mjs`, touch screen, SwiftShader,
+mutation-checked: no sound, no dead-run notice, a run never marked finished,
+and a single shot for everything each fail it):
+
+- the page loads everything, with 84 clips;
+- the shots follow the rules;
+- a frame is really drawn;
+- a 3-second video comes out as WebM/VP9 + Opus, plays for 3.02 s at
+  180×320, and its sound decodes;
+- a dead run is reported on the next visit;
+- no page errors, and no navigation.
+
+`tests/deploy.test.mjs` checks that the page, its module, every asset it
+names and both bundles are deployed. `tests/face.test.mjs` already scans the
+new bundles for logging endpoints (none).
+
+**Not tested:** everything the stage exists for. On the owner's iPhone:
+
+- preview fps;
+- whether 2,880 frames at 720p finish, and in how long;
+- whether the tab survives;
+- the MP4 + AAC path, which headless Chromium here cannot encode;
+- whether the file plays in Photos and shares to Messages.
+
+SwiftShader has no GPU, so its speed says nothing about a phone's.
 
 ## What is not known, and how each gets known
 

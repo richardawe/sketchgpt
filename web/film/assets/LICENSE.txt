@@ -1,0 +1,16 @@
+Film stage 0 assets. All CC0 1.0 (public domain dedication), rebuilt from the
+free downloads by scripts/film/build-assets.mjs (textures cut to 1024 px and
+WebP, geometry and animation meshopt-compressed; nothing else changed).
+
+woman.glb, man.glb            Quaternius — Universal Base Characters [Standard]
+hair-long.glb, hair-parted.glb,
+hair-buns.glb, beard.glb      Quaternius — Universal Base Characters [Standard]
+moves-1.glb                   Quaternius — Universal Animation Library [Standard]
+moves-2.glb                   Quaternius — Universal Animation Library 2 [Standard]
+                              https://quaternius.com  (CC0 1.0)
+room.glb                      Kenney — Furniture Kit 2.0, 19 pieces merged
+                              https://kenney.nl/assets/furniture-kit  (CC0 1.0)
+lebombo_1k.hdr                Poly Haven — "Lebombo" by Greg Zaal, 1k, unchanged
+                              https://polyhaven.com/a/lebombo  (CC0 1.0)
+
+https://creativecommons.org/publicdomain/zero/1.0/
