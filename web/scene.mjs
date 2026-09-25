@@ -65,9 +65,16 @@ const SETTINGS = {
   harbor: "water", coast: "water", sand: "water", seaside: "water",
   street: "road", road: "road", city: "road", town: "road", traffic: "road",
   night: "night", dark: "night", midnight: "night", evening: "dusk", sunset: "dusk", dusk: "dusk",
-  sky: "none", grass: "none", ground: "none", field: "none", garden: "none", park: "none",
-  farm: "none", meadow: "none", campsite: "none", camping: "none", countryside: "none",
-  village: "none", day: "none", sunny: "none", rainy: "rain", weather: "none",
+  sky: "none", grass: "none", ground: "none", garden: "none",
+  campsite: "none", camping: "none", day: "none", sunny: "none", rainy: "rain", weather: "none",
+  // Settings with a backdrop of their own (web/sketch.mjs drawBackdrops):
+  // rolling hills, a far treeline, snow on the ground, a town's skyline, and
+  // a room — the one place that is not outdoors.
+  field: "hills", farm: "hills", meadow: "hills", countryside: "hills", park: "hills", hills: "hills",
+  forest: "forest", woods: "forest", jungle: "forest",
+  snow: "snow", snowy: "snow", winter: "snow", ice: "snow",
+  village: "town", town: "town", city: "town",
+  room: "room", bedroom: "room", kitchen: "room", indoors: "room", inside: "room", bathroom: "room", classroom: "room",
 };
 
 // Things there is only ever one of, or never many. Measured: "5 suns", and
@@ -147,6 +154,8 @@ const BIG = new Set(["house", "house-garden", "hut", "building", "store", "schoo
   "tree-palm", "christmas-tree", "bridge", "fuel", "train-front", "tram", "bus", "truck", "tractor",
   "fire-engine", "beach-umbrella", "giraffe", "elephant", "dinosaur", "t-rex", "dragon"]);
 const SETTING = new Set(["waves-horizontal", "road"]);   // drawn as backdrop, not as a stamp
+// Big outdoor things that are never inside a room.
+const OUTDOORS = new Set(Array.from(BIG).filter(s => !/^(giraffe|elephant|dinosaur|t-rex|dragon|christmas-tree|fountain|statue)$/.test(s)));
 
 // Sizes in grid units. The page owns these for the same reason it owns the
 // coordinates: a 1.7B model sized a cat as big as the house it sat beside.
@@ -170,7 +179,7 @@ const SIZE = {
   helicopter: 14, ufo: 14, kite: 9, parachute: 12, planet: 12, comet: 10,
   "house-garden": 28, hut: 20, circus: 28, stadium: 32, fountain: 18, "ferris-wheel": 32,
   "roller-coaster": 32, carousel: 24, statue: 26, crane: 30, island: 30, volcano: 38,
-  "christmas-tree": 24, "beach-umbrella": 18, "fire-engine": 20, ambulance: 18, taxi: 16,
+  "christmas-tree": 24, "beach-umbrella": 18, bed: 30, sofa: 30, armchair: 18, chair: 14, "lamp-floor": 20, "fire-engine": 20, ambulance: 18, taxi: 16,
   "police-car": 16, motorbike: 12, tram: 20, canoe: 14, speedboat: 16, surfer: 13, swimmer: 12,
   girl: 10, boy: 10, child: 10, me: 15, runner: 12, cyclist: 13, dancer: 12, farmer: 13, cook: 13, astronaut: 13, santa: 14, snowman: 16,
   family: 16, picnic: 9, "christmas": 24, pumpkin: 9, fireworks: 16, sparkler: 8,
@@ -264,7 +273,15 @@ export function composeScene(plan) {
   const water = settings.has("water") ||
     entries.some(e => e.stamp && (WATER.has(e.stamp) || e.stamp === "waves-horizontal" || e.place === "water")) ||
     /beach|sea|ocean|lake|harbou?r|river|coast/.test(lower);
-  const road = settings.has("road") || all.includes("road") || /street|road|city|town/.test(lower);
+  const road = settings.has("road") || all.includes("road") || /street|road/.test(lower);
+  // The new backdrops, from the list or from the page's own words. A room is
+  // indoors: its sky is only what the window shows.
+  // A bed is indoors too: "Max went home to his warm bed" was drawn on grass.
+  const room = settings.has("room") || all.includes("bed") || /\b(bedroom|kitchen|bathroom|classroom|living room|indoors|inside|(?:in|into|to|on) (?:his|her|their|my|your|a|the) (?:warm |cosy |cozy |little |own |big )?bed|under the covers)\b/.test(lower);
+  const snow = !room && (settings.has("snow") || /\b(snow\w*|winter|icy|frozen)\b/.test(lower));
+  const forest = !room && (settings.has("forest") || /\b(forest|woods|jungle)\b/.test(lower));
+  const town = !room && (settings.has("town") || /\b(town|city|village)\b/.test(lower));
+  const hills = !room && !town && (settings.has("hills") || /\b(farm|field|meadow|countryside|hills?|park)\b/.test(lower));
 
   // With water, the picture is laid out the way people draw a beach or a
   // lakeside: sky, then the water, then the shore in front. Boats sit on the
@@ -272,13 +289,20 @@ export function composeScene(plan) {
   // FRONT, and a camp by a lake came out with the lake between you and it.
   const beach = water && (/beach|sand|coast|seaside/.test(lower) ||
     entries.some(e => /beach|sand/.test(e.said)) || settingsSaid.some(w => /beach|sand|coast|seaside/.test(w)));
-  const horizon = water ? 46 : 62;      // where the sky ends
-  const shore = water ? 68 : horizon;   // where the land in front begins
+  const horizon = room ? 70 : water ? 46 : 62;      // where the sky (or the wall) ends
+  const shore = water && !room ? 68 : horizon;   // where the land in front begins
   const out = [];
   out.push(night ? "sky night" : rain ? "sky rain" : dusk ? "sky dusk" : "sky day");
-  if (water) out.push(`water ${horizon}`);
-  out.push(`${beach ? "sand" : "ground"} ${shore}`);
-  if (road && !water) out.push(`road ${horizon + 20}`);
+  if (room) out.push(`room ${horizon}`);
+  else {
+    // Far things first: they stand on the horizon, behind everything.
+    if (hills) out.push(`hills ${horizon}`);
+    if (forest) out.push(`forest ${horizon}`);
+    if (town) out.push(`town ${horizon}`);
+    if (water) out.push(`water ${horizon}`);
+    out.push(`${beach ? "sand" : snow ? "snow" : "ground"} ${shore}`);
+    if (road && !water) out.push(`road ${horizon + 20}`);
+  }
 
   const sky = [], far = [], back = [], front = [], sea = [], labels = [];
   for (const e of entries) {
@@ -299,6 +323,14 @@ export function composeScene(plan) {
   // Sky: the sun or moon takes a corner; stars scatter; the rest share a band.
   // In daylight a leaked moon or stars are dropped rather than drawn beside
   // the sun; night is decided above, from the whole list.
+  // Indoors the sky is the window's: a sun or a bird is not drawn on the wall,
+  // and nor is a house, a tree or a bus — "went home to his bed" drew a house
+  // standing on the bedroom floor.
+  if (room) {
+    sky.splice(0); far.splice(0);
+    for (const list of [back, front]) for (let i = list.length - 1; i >= 0; i--)
+      if (OUTDOORS.has(list[i].stamp)) list.splice(i, 1);
+  }
   const lights = sky.filter(s => (s.stamp === "sun" && !rain) || (s.stamp === "moon" && night));
   const stars = night ? sky.filter(s => s.stamp === "star") : [];
   const skipped = sky.filter(s => (!night && (s.stamp === "moon" || s.stamp === "star")) ||
@@ -310,7 +342,7 @@ export function composeScene(plan) {
     out.push(cmd(s.stamp, x, setting ? horizon - 8 : 15, sizeOf(s.stamp) * (setting ? 1.3 : 1), tint(s)));
   });
   // A sunset needs its sun even when the list forgot it.
-  if (dusk && !lights.length) out.push(cmd("sun", 76, horizon - 8, sizeOf("sun") * 1.3, tint({ stamp: "sun" })));
+  if (dusk && !lights.length && !room) out.push(cmd("sun", 76, horizon - 8, sizeOf("sun") * 1.3, tint({ stamp: "sun" })));
   for (const s of stars) {
     out.push(cmd("star", 6 + rand() * 88, 5 + rand() * (horizon - 30),
       sizeOf("star") * (0.7 + rand() * 0.6), tint(s)));
@@ -362,4 +394,30 @@ export function composeScene(plan) {
   }
 
   return { t: title, c: out, drawn: entries.filter(e => e.stamp).length, unknown: labels.map(l => l.said) };
+}
+
+/**
+ * Where a page is, from its own words — the place, not the time of day. A
+ * page that names no place is still where the page before it was: "Max ran
+ * down to the beach" and then "He splashed in the waves" is the same beach,
+ * though the second page never says so. Returned as entries composeScene
+ * reads as settings.
+ */
+export function placeOf(text, { wishes = false } = {}) {
+  // "Pip wants to see the sea" puts nobody at the sea: a place in a wish, a
+  // dream or a "never" is not where the page is (the same line animate.mjs
+  // draws between a deed and a wish). `wishes` counts them anyway, to ask
+  // whether a page mentions a place at all.
+  const t = String(text).toLowerCase().split(/(?<=[.!?])\s+/)
+    .filter(x => wishes || !/\b(wants?|wanted|dreams?|dreamed|dreamt|wish(?:es|ed)?|hopes?|never|not|can't|cannot|if only|would like|longs? to)\b/.test(x))
+    .join(" ");
+  const out = [];
+  if (/\b(bedroom|kitchen|bathroom|classroom|living room|indoors|inside|(?:in|into|to|on) (?:his|her|their|my|your|a|the) (?:warm |cosy |cozy |little |own |big )?bed)\b/.test(t)) return ["room"];
+  if (/\b(beach|seaside|shore|sand)\b/.test(t)) out.push("beach");
+  else if (/\b(sea|ocean|waves|lake|river|pond|harbou?r)\b/.test(t)) out.push("sea");
+  if (/\b(forest|woods|jungle)\b/.test(t)) out.push("forest");
+  if (/\b(snow\w*|winter|icy|frozen)\b/.test(t)) out.push("snow");
+  if (/\b(town|city|village)\b/.test(t)) out.push("town");
+  else if (/\b(farm|field|meadow|countryside|hills?|park)\b/.test(t)) out.push("farm");
+  return out;
 }

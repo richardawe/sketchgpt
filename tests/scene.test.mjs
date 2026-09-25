@@ -8,7 +8,7 @@
 // sun on the grass; a leaked moon turned a sunny party into night).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseEntry, composeScene, looksLikeCoordinates, scenePrompt } from "../web/scene.mjs?v=9";
+import { parseEntry, composeScene, looksLikeCoordinates, scenePrompt, placeOf } from "../web/scene.mjs?v=10";
 import { parseSketch, GRID } from "../web/sketch.mjs?v=9";
 
 const plan = (t, c) => composeScene({ t, c });
@@ -30,7 +30,8 @@ test("nouns are read left to right, past words that are not things", () => {
 
 test("setting words shape the backdrop instead of being printed", () => {
   for (const [entry, setting] of [["beach", "water"], ["sand", "water"], ["lake x2", "water"],
-                                  ["street x2", "road"], ["farm", "none"], ["green grass", "none"]])
+                                  ["street x2", "road"], ["farm", "hills"], ["green grass", "none"],
+                                  ["forest", "forest"], ["snow", "snow"], ["town", "town"], ["bedroom", "room"]])
     assert.equal(parseEntry(entry).setting, setting, entry);
   // The stamp matcher's prefix rule once turned "sky" into a building, via
   // the "skyscraper" alias.
@@ -157,4 +158,45 @@ test("the scene prompt teaches counts as xN and keeps night out of the example",
   assert.match(p, /x3/);
   assert.match(p, /Only put a moon or stars in a night picture/);
   assert.doesNotMatch(p.split("Draw a quiet harbour")[1], /moon|star/, "the example's sky would leak into daytime scenes");
+});
+
+// ---- Scenery (docs/story-rules.md, stage 4) ----------------------------------------
+test("the page's words choose its backdrop: hills, forest, snow, town, a room", () => {
+  const has = (t, c, cmd) => plan(t, c).c.some(x => x.startsWith(cmd + " "));
+  assert.ok(has("Pip lives on a busy farm.", ["dog"], "hills"));
+  assert.ok(has("The forest was dark and quiet.", ["owl"], "forest"));
+  assert.ok(has("Snow covered everything.", ["dog"], "snow"));
+  assert.ok(!has("Snow covered everything.", ["dog"], "ground"), "snow is the ground, not grass under it");
+  assert.ok(has("Lila lives in a busy town.", ["girl"], "town"));
+  assert.ok(has("Max went home to his warm bed.", ["dog", "bed"], "room"));
+  assert.ok(has("In the kitchen, Mum made a cake.", ["cake"], "room"));
+  // Plain words get the plain backdrop, as before.
+  const plain = plan("Pip found a ball.", ["ball"]).c;
+  assert.ok(!plain.some(x => /^(hills|forest|snow|town|room) /.test(x)), plain.join(" | "));
+});
+
+test("indoors, the sky is only the window: no sun, bird or sunset on the wall", () => {
+  const c = plan("As the sun set, Max curled up in his bed with a bird on the sill.", ["dog", "bed", "sun", "bird x2"]);
+  assert.ok(c.c.includes("room 70"), c.c.join(" | "));
+  const names = stamps(c).map(x => x.text);
+  assert.ok(!names.includes("sun") && !names.includes("bird"), names.join(" "));
+  assert.ok(!c.c.some(x => /^(ground|sand|water|hills) /.test(x)), "outdoor ground drawn indoors");
+});
+
+test("a room has no house, tree or bus in it, and its bed is bed-sized", () => {
+  const c = plan("Max went home to his warm bed.", ["house", "tree x2", "bus", "bed", "dog"]);
+  const names = stamps(c).map(x => x.text);
+  assert.deepEqual(names.sort(), ["bed", "dog"], names.join(" "));
+  assert.ok(stamps(c).find(x => x.text === "bed").args[2] >= 25, "a doll's-house bed");
+});
+
+test("where a page is, and what is only wished for", () => {
+  assert.deepEqual(placeOf("Pip lives on a busy farm."), ["farm"]);
+  assert.deepEqual(placeOf("Max ran down to the beach."), ["beach"]);
+  assert.deepEqual(placeOf("The snowy forest was quiet."), ["forest", "snow"]);
+  assert.deepEqual(placeOf("Max curled up in his warm bed by the sea."), ["room"], "a bed is indoors, whatever is outside");
+  // A wish is not a place: Pip on the farm, wanting the sea, is on the farm.
+  assert.deepEqual(placeOf("Pip has never seen the sea. More than anything, Pip wants to see it."), []);
+  assert.deepEqual(placeOf("Pip wants to see the sea.", { wishes: true }), ["sea"]);
+  assert.deepEqual(placeOf("He splashed about."), []);
 });

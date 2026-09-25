@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { PAGES, STORY_SCHEMA, SHAPE, storyMessages, parseStory, unshape, pageMessages, nameWords,
          planFromWords, fixPagePlan, wordsOnlyPlan, coverPlan, drawAs } from "../web/book.mjs?v=9";
 import { resolveStamp, parseSketch } from "../web/sketch.mjs?v=9";
-import { composeScene } from "../web/scene.mjs?v=9";
+import { composeScene } from "../web/scene.mjs?v=10";
 
 const story = (pages, extra = {}) => JSON.stringify({ title: "Pip and the Sea",
   cast: [{ name: "Pip", is: "dog" }], pages, ...extra });

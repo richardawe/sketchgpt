@@ -18,6 +18,9 @@ import { sentences } from "./voice.mjs?v=10";
 
 // What a thing does when nothing in the story tells it to do anything.
 const KINDS = [
+  // The backdrop's own things (web/sketch.mjs): a window stays put, snow falls.
+  ["still", /^window$/],
+  ["fall", /^snowflake$/],
   ["fly", /^(bird|owl|eagle|parrot|bee|butterfly|bug|plane|helicopter|ufo|kite|balloon|parachute)$/],
   ["swim", /^(fish|tropical-fish|whale|dolphin|shark|octopus)$/],
   ["drift", /^cloud/],
@@ -119,6 +122,9 @@ function idle(el, kind, i, [x, , size]) {
     case "glow": return loop(el, [{ transform: "scale(1) rotate(0deg)", transformOrigin: "50% 50%" },
       { transform: "scale(1.07) rotate(8deg)", transformOrigin: "50% 50%" }], 3000, d);
     case "twinkle": return loop(el, [{ opacity: 1 }, { opacity: 0.45 }], 900 + d, d);
+    case "fall": return el.animate([{ transform: "translate(0px, -12px)", opacity: 0.4 }, { transform: "translate(6px, 14px)", opacity: 1 }],
+      { duration: 3200, iterations: Infinity, direction: "alternate", easing: "ease-in-out" });
+    case "still": return null;
     case "sway": return loop(el, [{ transform: "rotate(-2.5deg)" }, { transform: "rotate(2.5deg)" }], 2200 + d, d);
     case "flicker": return loop(el, [{ transform: "scaleY(1)" }, { transform: "scaleY(1.12)" }], 260 + d / 6, d);
     case "rock": return loop(el, [{ transform: "rotate(-4deg) translateY(0px)" }, { transform: "rotate(4deg) translateY(-4px)" }], 1800, d);
@@ -226,6 +232,13 @@ export function animatePicture(svg, { text = "", story = { cast: [] }, camera = 
           if (anim && k < doing.length - 1) try { await anim.finished; } catch { return; }
         }
       })();
+    }
+    // Depth: the far layers (hills, trees, a skyline) move less than the
+    // picture as the camera moves in, the way the distance does.
+    for (const far of svg.querySelectorAll('[data-layer="far"]')) {
+      far.style.transformBox = "fill-box"; far.style.transformOrigin = "50% 100%";
+      keep(far.animate([{ transform: "scale(1) translateX(0px)" }, { transform: "scale(0.965) translateX(-6px)" }],
+        { duration: 9000, iterations: Infinity, direction: "alternate", easing: "ease-in-out" }));
     }
     // A slow camera: in toward the hero and back, like a picture-book film.
     const [hx, hy] = heroNode ? heroNode.dataset.at.split(" ").map(Number) : [200, 200];

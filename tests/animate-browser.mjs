@@ -84,6 +84,13 @@ try {
     assert.match(made[5], /Moving: Pip \(dog\): swim/, made[5]);
     assert.match(made[3], /Bird \(bird\): fly/, made[3]);
     assert.match(made[2], /Pip \(dog\): run/, made[2]);
+    // Scenery: page 3 names no place, so it is still on the farm (a wish for
+    // the sea on page 2 does not move it), and the far hills move less than
+    // the picture — depth.
+    assert.match(made[2], /Still at the farm/, made[2]);
+    assert.doesNotMatch(made[1], /Still at/, 'a page that mentions a place is not carried over');
+    assert.ok(await page.evaluate(() => { const far = document.querySelector('.book .sheet:nth-of-type(2) [data-layer="far"]');
+      return far && far.getAnimations().length > 0; }), 'the far hills do not move');
     assert.doesNotMatch(made[1], /Pip \(dog\)/, 'a wish is not a deed: page 2 should not move Pip');
     // The zoom is on the picture's box, not redrawn inside the SVG.
     assert.ok(await page.evaluate(() => [...document.querySelectorAll('.book .art > svg')]

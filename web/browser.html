@@ -486,7 +486,7 @@
 // service worker falls back with ignoreSearch, so offline still finds them.
 import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, loadArt, estimateTokens,
          readDrawing, registerFigure } from "./sketch.mjs?v=9";
-import { scenePrompt, composeScene, looksLikeCoordinates } from "./scene.mjs?v=9";
+import { scenePrompt, composeScene, looksLikeCoordinates, placeOf } from "./scene.mjs?v=10";
 import { wordsOnlyPlan, coverPlan } from "./book.mjs?v=9";
 import { writeStory, wishesFor, KINDS, PLACES, WISHES, storyFromText, guessHero, checkPages } from "./story.mjs?v=2";
 const LIB = new URLSearchParams(location.search).get("lib")
@@ -1493,10 +1493,17 @@ async function makeBook() {
   // The book as data: what a share link carries and what an edit changes.
   const state = { title: story.title, cast: story.cast,
     pages: story.pages.map(text => ({ text, things: null })), cover: null, voice: "" };
+  // A page that names no place is where the page before it was (placeOf).
+  // Pages are planned in order, so the last place named is carried forward.
+  let place = [];
   try {
     await showBook(state, out, { status, plan: async text => {
       const fixed = wordsOnlyPlan(text, state);
-      return { things: fixed.entries, how: "Drawn from the words on this page." +
+      const own = placeOf(text);
+      const carried = placeOf(text, { wishes: true }).length ? [] : place;
+      if (own.length) place = own;
+      return { things: [...fixed.entries, ...carried], how: "Drawn from the words on this page." +
+        (carried.length ? ` Still at the ${carried.join(" and ")}, like the page before.` : "") +
         (fixed.fixes.length ? ` The page: ${fixed.fixes.join("; ")}.` : "") };
     } });
     booksMade++;

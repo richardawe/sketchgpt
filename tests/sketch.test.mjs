@@ -354,3 +354,12 @@ test('a style preference rides along with the sketch prompt', () => {
   const plan = planSketchTurn([{ role: 'user', content: 'a cat' }], 4096, 'minimal, few lines');
   assert.match(plan.messages[0].content, /Style preference: minimal, few lines/);
 });
+
+test('the new backdrops parse as backdrops, and one number is what makes them so', () => {
+  const d = parseSketch(JSON.stringify({ t: 'x', c: ['sky day', 'hills 62', 'forest 62', 'town 62', 'snow 62', 'room 70', 'cat 50 50 20'] }));
+  assert.deepEqual(d.commands.filter(c => c.tool === 'backdrop').map(c => c.kind), ['sky', 'hills', 'forest', 'town', 'snow', 'room']);
+  assert.equal(d.commands.find(c => c.kind === 'room').args[0], 70);
+  // Three numbers are still a stamp: "forest 30 60 20" draws trees.
+  const s = parseSketch(JSON.stringify({ t: 'x', c: ['forest 30 60 20'] }));
+  assert.equal(s.commands[0].tool, 'stamp');
+});

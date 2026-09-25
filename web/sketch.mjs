@@ -278,7 +278,7 @@ const clamp = n => Math.max(0, Math.min(GRID, n));
 // They are drawn first, as hatched washes, so everything else sits on them.
 // "water" and "road" are also stamps — one number means a backdrop, three
 // mean a stamp.
-const BACKDROP = new Set(["ground", "sand", "water", "sea", "road"]);
+const BACKDROP = new Set(["ground", "sand", "water", "sea", "road", "snow", "hills", "forest", "town", "room"]);
 
 function parseCommand(line) {
   const parts = line.trim().split(/[\s,]+/);
@@ -612,9 +612,10 @@ function drawFigure(doc, parent, figure, { args: [x, y, size], text }) {
 // reads as backdrop and never competes with the ink.
 function drawBackdrops(doc, parent, rc, backdrops, seed) {
   const s = n => n * SCALE;
-  const ground = backdrops.find(b => b.kind === "ground" || b.kind === "sand");
+  const ground = backdrops.find(b => b.kind === "ground" || b.kind === "sand" || b.kind === "snow");
   const water = backdrops.find(b => b.kind === "water");
-  const land = s(ground ? ground.args[0] : 62);
+  const room = backdrops.find(b => b.kind === "room");
+  const land = s(ground ? ground.args[0] : room ? room.args[0] : 62);
   // The sky ends where the first thing below it starts: water if there is
   // any above the land, otherwise the land itself.
   const skyline = water && s(water.args[0]) < land ? s(water.args[0]) : land;
@@ -645,6 +646,39 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
     parent.append(node);
   };
   const skyline_d = y => `M 0 ${y + 2} Q ${CANVAS / 3} ${y - 6} ${CANVAS / 2} ${y} T ${CANVAS} ${y - 1}`;
+  // A filled shape in the backdrop's flat-wash style, in its own layer:
+  // "far" things move less than the picture when it moves (web/animate.mjs).
+  const layer = (name, thing = null) => {
+    const g = svgNode(doc, "g", { "data-layer": name });
+    if (thing) g.setAttribute("data-thing", thing);
+    parent.append(g);
+    return g;
+  };
+  const shape = (g, d, fill, opacity, stroke = null) => {
+    const node = rc
+      ? rc.path(d, { seed, fill, fillStyle: "solid", stroke: stroke || "none", strokeWidth: 1.2, roughness: 1 })
+      : svgNode(doc, "path", { d, fill, stroke: stroke || "none" });
+    node.setAttribute("opacity", opacity);
+    g.append(node);
+  };
+  const sky = backdrops.find(b => b.kind === "sky");
+  const skyText = sky ? sky.text : "day";
+
+  // Indoors: a wall, a floor, and a window that shows the sky.
+  if (room) {
+    const floor = s(room.args[0]);
+    wash(0, 0, CANVAS, floor, "#f1e2c6", 0.9);
+    wash(0, floor, CANVAS, CANVAS - floor, "#c99b6d", 0.8);
+    line(`M 0 ${floor} L ${CANVAS} ${floor}`, INK, 1.8);
+    for (let y = floor + 26; y < CANVAS; y += 30) line(`M 0 ${y} L ${CANVAS} ${y}`, "#8a6444", 1, 0.5);
+    const glass = { night: "#26345f", dusk: "#e9b07e", rain: "#9aa3ae" }[skyText] || "#bfe0f5";
+    const win = layer("far", "window");
+    shape(win, "M 250 50 L 350 50 L 350 150 L 250 150 Z", glass, 0.9, INK);
+    if (skyText === "night") shape(win, "M 322 76 a 9 9 0 1 0 0.1 0 Z", "#f6e7a1", 0.95);
+    else if (skyText === "day") shape(win, "M 262 108 q 10 -12 22 -4 q 10 -10 20 2 q 8 8 -4 12 l -34 0 q -10 -2 -4 -10 Z", "#ffffff", 0.9);
+    line("M 300 50 L 300 150 M 250 100 L 350 100", INK, 2.2);
+    return;
+  }
 
   for (const b of backdrops.filter(b => b.kind === "sky")) {
     if (b.text === "night") wash(0, 0, CANVAS, skyline, "#26345f", 0.78);
@@ -653,6 +687,50 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
       wash(0, 0, CANVAS, skyline, "#8f97a3", 0.3);
       wash(0, 0, CANVAS, skyline, "#5f6b7a", rc ? 0.45 : 0, { gap: 11, angle: -70 });
     } else wash(0, 0, CANVAS, skyline, "#bfe0f5", 0.45);
+  }
+  // The sky's own small things, free: soft clouds by day, stars at night.
+  // Tagged so they move — clouds drift, stars twinkle.
+  if (skyText === "day") for (const [cx, cy, k] of [[70 + rand() * 60, 34 + rand() * 20, 1], [230 + rand() * 90, 22 + rand() * 24, 0.8]]) {
+    const g = layer("sky", "cloud");
+    g.setAttribute("data-at", `${cx.toFixed(1)} ${cy.toFixed(1)} ${(60 * k).toFixed(1)}`);
+    shape(g, `M ${cx - 30 * k} ${cy} q ${10 * k} ${-18 * k} ${26 * k} ${-8 * k} q ${14 * k} ${-16 * k} ${30 * k} ${-2 * k} ` +
+      `q ${16 * k} ${2 * k} ${10 * k} ${12 * k} Z`, "#ffffff", 0.85);
+  }
+  if (skyText === "night") {
+    const g = layer("sky", "star");
+    g.setAttribute("data-at", `200 60 40`);
+    for (let i = 0; i < 16; i++) {
+      const x = 8 + rand() * (CANVAS - 16), y = 8 + rand() * (skyline - 40);
+      shape(g, `M ${x} ${y - 2.4} L ${x + 0.8} ${y - 0.8} L ${x + 2.4} ${y} L ${x + 0.8} ${y + 0.8} L ${x} ${y + 2.4} ` +
+        `L ${x - 0.8} ${y + 0.8} L ${x - 2.4} ${y} L ${x - 0.8} ${y - 0.8} Z`, "#fff6c8", 0.9);
+    }
+  }
+  // Far layers stand on the horizon, behind the ground.
+  const night = skyText === "night";
+  for (const b of backdrops.filter(b => b.kind === "hills")) {
+    const y = s(b.args[0]), g = layer("far");
+    shape(g, `M 0 ${y + 4} Q 60 ${y - 58} 140 ${y - 20} T 290 ${y - 34} T ${CANVAS} ${y - 14} L ${CANVAS} ${y + 4} Z`,
+      night ? "#3f5a4a" : "#9cc987", 0.75);
+    shape(g, `M 0 ${y + 4} Q 90 ${y - 26} 190 ${y - 8} T ${CANVAS} ${y - 22} L ${CANVAS} ${y + 4} Z`,
+      night ? "#35503f" : "#86bb72", 0.8);
+  }
+  for (const b of backdrops.filter(b => b.kind === "forest")) {
+    const y = s(b.args[0]), g = layer("far");
+    for (let x = -6; x < CANVAS + 10; x += 16 + rand() * 10) {
+      const h = 34 + rand() * 30, w = 13 + rand() * 7;
+      shape(g, `M ${x} ${y + 3} L ${x + w} ${y - h} L ${x + 2 * w} ${y + 3} Z`, night ? "#233b2c" : "#4d7c52", 0.8);
+    }
+  }
+  for (const b of backdrops.filter(b => b.kind === "town")) {
+    const y = s(b.args[0]), g = layer("far");
+    for (let x = 0; x < CANVAS; ) {
+      const w = 34 + rand() * 26, h = 40 + rand() * 70;
+      shape(g, `M ${x} ${y + 3} L ${x} ${y - h} L ${x + w - 4} ${y - h} L ${x + w - 4} ${y + 3} Z`, night ? "#4a4f6a" : "#c9c2bb", 0.85);
+      for (let wy = y - h + 10; wy < y - 12; wy += 16)
+        for (let wx = x + 7; wx < x + w - 14; wx += 12)
+          if (rand() > 0.35) shape(g, `M ${wx} ${wy} h 6 v 7 h -6 Z`, night ? "#f6d77a" : "#e9f2f8", 0.95);
+      x += w;
+    }
   }
   if (water) {
     const top = s(water.args[0]);
@@ -668,12 +746,25 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
     }
   }
   if (ground) {
-    const sand = ground.kind === "sand";
-    wash(0, land, CANVAS, CANVAS - land, sand ? "#ecd49a" : "#9fcf7f", sand ? 0.75 : 0.55);
+    const sand = ground.kind === "sand", snowy = ground.kind === "snow";
+    wash(0, land, CANVAS, CANVAS - land, sand ? "#ecd49a" : snowy ? "#f5f8fc" : "#9fcf7f", sand ? 0.75 : snowy ? 0.95 : 0.55);
     line(skyline_d(land), INK, 1.8);
+    if (snowy) {
+      // Snow: soft blue shadows on the ground, and flakes in the air.
+      for (let i = 0; i < 10; i++) {
+        const x = 8 + rand() * (CANVAS - 40), y = land + 16 + rand() * (CANVAS - land - 26);
+        line(`M ${x} ${y} q 14 -4 28 0`, "#a9bfd6", 1.4, 0.7);
+      }
+      const g = layer("sky", "snowflake");
+      g.setAttribute("data-at", `200 ${(land / 2).toFixed(1)} 30`);
+      for (let i = 0; i < 26; i++) {
+        const x = 6 + rand() * (CANVAS - 12), y = 6 + rand() * (land - 10);
+        shape(g, `M ${x} ${y} m -2.2 0 a 2.2 2.2 0 1 0 4.4 0 a 2.2 2.2 0 1 0 -4.4 0`, "#ffffff", 0.95, "#c9d6e3");
+      }
+    }
     // Grass is tufts, not a hatched field: a field of long parallel strokes
     // read as rain in the first screenshots.
-    if (!sand) {
+    else if (!sand) {
       const roads = backdrops.filter(b => b.kind === "road").map(b => s(b.args[0]));
       for (let i = 0; i < 16; i++) {
         const x = 8 + rand() * (CANVAS - 16), y = land + 14 + rand() * (CANVAS - land - 22);

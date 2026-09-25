@@ -18,7 +18,7 @@
 // page's own words and the cast — the page doing all of it.
 
 import { resolveStamp } from "./sketch.mjs?v=9";
-import { scenePrompt, parseEntry } from "./scene.mjs?v=9";
+import { scenePrompt, parseEntry } from "./scene.mjs?v=10";
 import { ART_NAMES } from "./art-names.mjs?v=8";
 
 export const PAGES = 6;
@@ -170,7 +170,7 @@ const PEOPLE = new Set(["user", "users", "baby", "family", "girl", "boy", "child
 // Words that set a scene, for building a picture straight from the page.
 const SETTING_WORDS = { sea: "sea", ocean: "sea", beach: "sand", sand: "sand", shore: "sand",
   waves: "sea", night: "moon", sunset: "sun", forest: "pine x3", woods: "pine x3",
-  garden: "flower x3", park: "tree x2", farm: "tractor", snow: "snowman", rain: "rain x2",
+  garden: "flower x3", park: "tree x2", farm: "tractor", snow: "snow", snowy: "snow", rain: "rain x2",
   castle: "castle", village: "house x3", town: "house x2", city: "building x3",
   // Water and roads are settings too — scene.mjs draws them as backdrop. A
   // page saying "a wide river is in the way" drew nothing at all before.
