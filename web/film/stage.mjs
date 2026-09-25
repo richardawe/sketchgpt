@@ -5,7 +5,7 @@
 // No model, no network after the assets. three.js (MIT), Quaternius (CC0),
 // Kenney (CC0), Poly Haven (CC0), Mediabunny (MPL-2.0). docs/film-plan.md.
 import * as T from "../vendor/three.mjs?v=1";
-import { placesAt, cameraFor, segIndex } from "../film.mjs?v=1";
+import { placesAt, cameraFor, segIndex } from "../film.mjs?v=2";
 
 const ASSETS = new URL("./assets/", import.meta.url).href;
 
@@ -288,11 +288,24 @@ export function frameFn(stage) {
 }
 
 // ---------------------------------------------------------------- sound
-// A music bed made on the page (no file): a slow minor pad and room tone, plus
-// any recorded voice clips at their times: [{ at, buffer }].
-export async function soundtrack(seconds, voices = []) {
+// The soundtrack, made on the page (no file): recorded voice clips at their
+// times, [{ at, buffer, rate }] (rate < 1 is a deeper voice), and, if asked
+// for, a music bed.
+export async function soundtrack(seconds, voices = [], { music = true } = {}) {
   const rate = 48000, ctx = new OfflineAudioContext(2, Math.ceil(seconds * rate), rate);
   const master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+  if (music) addMusic(ctx, master, seconds, rate);
+  for (const { at, buffer, rate: speed = 1 } of voices) {
+    if (at >= seconds) continue;
+    const v = ctx.createBufferSource(); v.buffer = buffer; v.playbackRate.value = speed;
+    const vg = ctx.createGain(); vg.gain.value = 1.6;
+    v.connect(vg).connect(ctx.destination); v.start(at);
+  }
+  return ctx.startRendering();
+}
+
+// A quiet bed: a slow minor pad and room tone. Film has it off unless asked for.
+function addMusic(ctx, master, seconds, rate) {
   const chords = [[220, 261.63, 329.63], [174.61, 220, 261.63], [196, 246.94, 293.66], [164.81, 196, 246.94]];
   const bar = 4;
   for (let t = 0, i = 0; t < seconds; t += bar, i++) {
@@ -309,13 +322,6 @@ export async function soundtrack(seconds, voices = []) {
   const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 400;
   const ng = ctx.createGain(); ng.gain.value = 0.02;
   n.connect(lp).connect(ng).connect(master); n.start(0); n.stop(seconds);
-  for (const { at, buffer } of voices) {
-    if (at >= seconds) continue;
-    const v = ctx.createBufferSource(); v.buffer = buffer;
-    const vg = ctx.createGain(); vg.gain.value = 1.6;
-    v.connect(vg).connect(ctx.destination); v.start(at);
-  }
-  return ctx.startRendering();
 }
 
 function sliceAudio(buf, from, to) {
@@ -326,7 +332,7 @@ function sliceAudio(buf, from, to) {
 }
 
 // ---------------------------------------------------------------- the video
-export async function makeVideo(stage, { seconds, fps, voices = [], onProgress, onFrame }) {
+export async function makeVideo(stage, { seconds, fps, voices = [], music = true, onProgress, onFrame }) {
   const mb = await import("../vendor/mediabunny-film.mjs?v=1");
   const { ctx } = stage;
   const W = ctx.canvas.width, H = ctx.canvas.height;
@@ -346,7 +352,7 @@ export async function makeVideo(stage, { seconds, fps, voices = [], onProgress, 
     asrc = new mb.AudioBufferSource({ codec: audioCodec, bitrate: 128e3 });
     output.addAudioTrack(asrc);
     const a0 = performance.now();
-    audio = await soundtrack(seconds, voices);
+    audio = await soundtrack(seconds, voices, { music });
     audioMs = performance.now() - a0;
   }
   await output.start();

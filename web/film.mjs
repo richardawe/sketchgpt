@@ -331,7 +331,7 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 /**
  * Timelines from a read story. Everyone who enters walks in from the door;
  * everyone else starts on a mark. Returns { people: { name: { timeline, mark } },
- * lines: [[start, end, name, text, how]], actions: [[start, end, name, move]],
+ * lines: [[start, end, name, text, how, key]], actions: [[start, end, name, move]],
  * scenes: [start…], length, over }.
  */
 export function block(story, { gap = 0.25 } = {}) {
@@ -374,18 +374,19 @@ export function block(story, { gap = 0.25 } = {}) {
     t += 2.0; // the wide shot that opens every scene
     for (const beat of scene.beats) {
       if (beat.kind === "line") {
-        const d = lineSeconds(beat.text);
+        // A recorded line lasts as long as the recording; otherwise it's read at WPM.
+        const d = beat.seconds > 0 ? Math.min(30, beat.seconds) + 0.15 : lineSeconds(beat.text);
         if (beat.speaker && people[beat.speaker]) {
           const st = state[beat.speaker];
           if (!st.here) { walkIn(beat.speaker); }
           seg(beat.speaker, t, st.seated ? CLIPS.talk[1] : CLIPS.talk[0], { at: st.at, sit: st.seated, face: face(beat.speaker) });
-          lines.push([+t.toFixed(3), +(t + d).toFixed(3), beat.speaker, beat.text, beat.how]);
+          lines.push([+t.toFixed(3), +(t + d).toFixed(3), beat.speaker, beat.text, beat.how, beat.key]);
           const s0 = t;
           t += d + gap;
           settle(beat.speaker, t);
           void s0;
         } else {
-          lines.push([+t.toFixed(3), +(t + d).toFixed(3), null, beat.text, beat.how]);
+          lines.push([+t.toFixed(3), +(t + d).toFixed(3), null, beat.text, beat.how, beat.key]);
           t += d + gap;
         }
         continue;
@@ -502,6 +503,32 @@ export function placesAt(film, t) {
     p.facing = Math.hypot(look[0] - p.at[0], look[1] - p.at[1]) > 0.02 ? Math.atan2(look[0] - p.at[0], look[1] - p.at[1]) : 0;
   }
   return out;
+}
+
+// ---------------------------------------------------------------- voices
+/** A character's voice: the same setting pitches the device voice (preview) and their recordings (video). */
+export const PITCH = {
+  natural: { tts: 1, rate: 1 },
+  deeper: { tts: 0.75, rate: 0.88 },
+  higher: { tts: 1.3, rate: 1.12 },
+};
+
+/**
+ * Where the speech is in a recording: [start, end] sample indices with the
+ * silence at either end cut, a little padding kept so no word is clipped.
+ * The level is relative to the loudest moment, so a quiet phone mic works.
+ */
+export function trimBounds(samples, rate, { floor = 0.06, pad = 0.08, window = 0.02 } = {}) {
+  const n = samples.length, w = Math.max(1, Math.round(window * rate));
+  let peak = 0;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(samples[i]));
+  if (peak < 1e-4) return null;                       // silence: nothing was said
+  const loud = i => { let m = 0; for (let j = i; j < Math.min(n, i + w); j++) m = Math.max(m, Math.abs(samples[j])); return m >= peak * floor; };
+  let a = 0, b = n;
+  while (a < n && !loud(a)) a += w;
+  while (b > a && !loud(Math.max(0, b - w))) b -= w;
+  const p = Math.round(pad * rate);
+  return [Math.max(0, a - p), Math.min(n, b + p)];
 }
 
 /** m:ss */

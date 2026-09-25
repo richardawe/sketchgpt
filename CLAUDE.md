@@ -649,7 +649,11 @@ practical fine-tuning.
 - **Film stages 0–1 are built and have never run on a phone** (`docs/film-plan.md`).
   Stage 1 (`film.html`) reads plain prose by rules — speakers from tags, the
   paragraph, then a marked "guessed" alternation; pronouns asked; the 180°
-  rule a test — and plays it in one living room.
+  rule a test — and plays it in one living room. **Voices:** record each line
+  (🎙, trimmed, tab only) and it is heard in the video; while watching, the
+  phone's voice speaks the rest, per-person voice + pitch; music off by
+  default. Unverified on iOS: on-cue `speak()` after an in-tap unlock (the
+  page falls back to "subtitles only" and says so).
   **Stage 0 is measured on the owner's iPhone: 2 minutes of 720p MP4 + AAC in
   43 s** (table row above). Still owed: preview fps, whether the MP4 plays in
   Photos and shares, and stage 1 (`film.html`) on the phone. Found building it:

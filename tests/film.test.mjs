@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { readStory, findCast, block, shotAt, cameraFor, placesAt, sideOf, clock, CLIPS, SAMPLE, LIMIT_SECONDS } from "../web/film.mjs";
+import { readStory, findCast, block, shotAt, cameraFor, placesAt, sideOf, clock, CLIPS, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds } from "../web/film.mjs";
 
 const P = { Maya: "she", Tom: "he", Sam: "they", Ruth: "she" };
 const beats = (text, pronouns = P) => readStory(text, { pronouns }).scenes.flatMap(s => s.beats);
@@ -190,4 +190,39 @@ test("fuzz: odd prose never throws, and every line is given to someone or explai
   const curly = lines(`“Curly quotes,” said Maya. “Work too.”`);
   assert.deepEqual(curly.map(l => [l.speaker, l.text]), [["Maya", "Curly quotes"], ["Maya", "Work too."]]);
   assert.deepEqual(lines(`Maya’s phone rang. “Yes?” she said.`).map(l => l.speaker), ["Maya"]);
+});
+
+test("a recorded line lasts as long as its recording, and the scene moves up or down to fit", () => {
+  const story = readStory(SAMPLE, { pronouns: P });
+  const first = story.scenes[0].beats.find(b => b.kind === "line");
+  first.key = "0:x";
+  const before = block(story);
+  first.seconds = 6.5;
+  const after = block(story);
+  const [a, b, , , , key] = after.lines[0];
+  assert.equal(key, "0:x", "each line carries its key to the video's voice track");
+  assert.ok(Math.abs(b - a - 6.65) < 1e-6, `${b - a}`);
+  const shift = (b - a) - (before.lines[0][1] - before.lines[0][0]);
+  assert.ok(Math.abs(after.lines[1][0] - before.lines[1][0] - shift) < 1e-6, "later lines move by the difference");
+  assert.ok(Math.abs(after.length - before.length - shift) < 0.01);
+  first.seconds = 999;
+  assert.ok(block(story).lines[0][1] - block(story).lines[0][0] <= 30.2, "a runaway recording is capped");
+});
+
+test("silence is trimmed from both ends of a take, relative to its loudest moment", () => {
+  const rate = 1000, s = new Float32Array(3000);
+  for (let i = 1000; i < 2000; i++) s[i] = 0.02 * Math.sin(i);   // a quiet voice, 1 s in
+  for (let i = 0; i < 3000; i++) s[i] += 0.0003;                  // room noise
+  const [a, b] = trimBounds(s, rate);
+  assert.ok(a >= 900 && a <= 1000, `start ${a}`);
+  assert.ok(b >= 2000 && b <= 2100, `end ${b}`);
+  assert.equal(trimBounds(new Float32Array(500), rate), null, "a silent take is no take");
+});
+
+test("one pitch setting shapes both the phone's voice and the recording", () => {
+  for (const [name, p] of Object.entries(PITCH)) {
+    assert.ok(p.tts > 0 && p.tts <= 2, name);
+    assert.ok(p.rate > 0.5 && p.rate < 1.5, name);
+    assert.equal(Math.sign(p.tts - 1), Math.sign(p.rate - 1), `${name} moves both the same way`);
+  }
 });

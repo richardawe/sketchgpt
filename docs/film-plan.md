@@ -524,6 +524,56 @@ to anyone but the page's tests, and real writers' prose: the rules are
 tested on sentences written for the tests. Stage 3's corpus count is where
 that gets measured.
 
+## Voices (built after the owner heard only a hum)
+
+The owner's first phone video had "no voice, just a humming sound". That was
+as built: the hum was the page's own music bed, and every line was a subtitle.
+Two things were built in answer, at the owner's choice:
+
+- **Your own voice, in the video.** Every line in Check has 🎙 Record, ▶
+  (listen back) and ✕. A take is:
+  - trimmed of silence at both ends (`trimBounds`, relative to the take's
+    loudest moment, so a quiet phone mic works);
+  - kept in the tab only (never stored, never uploaded, gone on reload);
+  - used as the line's length (`beat.seconds`), so the scene moves to fit it;
+  - placed at its line in the video's soundtrack.
+
+  Lines not recorded are silent in the video, and the page says how many are
+  heard ("2 of 4 lines are heard; record the rest").
+- **The phone's voice, while watching.** Each person gets a different device
+  voice by default and a **pitch** (natural / deeper / higher; "he" defaults
+  to deeper). Choosing either says "This is Maya" in it. One setting pitches
+  both the device voice and that person's recordings (`PITCH`: speech pitch
+  0.75/1/1.3, playback rate 0.88/1/1.12). Recorded lines play the recording
+  instead.
+  - Speech is unlocked inside the Play tap (a silent utterance and an
+    AudioContext resume), because iOS speaks only what a tap asked for. Each
+    line is then spoken on cue.
+  - The scene holds at a line's start while the previous line is still being
+    spoken, so speech never runs ahead of the picture.
+  - A browser that doesn't start speaking within 2.5 s is marked "subtitles
+    only" instead of holding the scene for ever.
+- **Music is off by default**, a checkbox away. The probe keeps it, because it
+  measures the audio encoder.
+
+**Tested** (`tests/film-browser.mjs`, Chromium's fake microphone and a
+stand-in `speechSynthesis`; mutation-checked: video without the recording, no
+phone voice, pitch ignored, a take that doesn't set the line's length, music
+on by default):
+
+- a take is recorded and heard back, and its line lasts as long as it does;
+- in the preview, the recorded line plays the take, and every other line is
+  spoken, in order, in its speaker's voice and pitch;
+- in the video, the take is loud during its line, and it is silent after.
+
+Unit tests cover the trimming, the timing shift, and the pitch table.
+
+**Not tested:** whether iOS Safari speaks the later, on-cue lines after the
+in-tap unlock. Book queued every sentence inside the tap because a later
+`speak()` "can be refused". If an iPhone refuses, the page falls back to
+subtitles only and says so. Also untested: the iPhone microphone through
+MediaRecorder (Safari records `audio/mp4`), and which voices an iPhone offers.
+
 ## What is not known, and how each gets known
 
 - **What the free tiers actually contain.** Stage 0's inventory. The kits
