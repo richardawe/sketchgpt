@@ -15,7 +15,7 @@
 const INK = "#2b2622", PAPER = "#fbf6ea";
 
 // The words under the picture, wrapped to the width.
-function caption(ctx, text, x, y, width, lineHeight) {
+export function caption(ctx, text, x, y, width, lineHeight) {
   const lines = [];
   let line = "";
   for (const word of String(text).split(/\s+/).filter(Boolean)) {
@@ -28,7 +28,7 @@ function caption(ctx, text, x, y, width, lineHeight) {
 }
 
 // One pose of the live SVG, as a standalone SVG string.
-function pose(svg) {
+export function pose(svg) {
   const copy = svg.cloneNode(true);
   const live = [svg, ...svg.querySelectorAll("*")], still = [copy, ...copy.querySelectorAll("*")];
   live.forEach((el, i) => {
@@ -44,12 +44,15 @@ function pose(svg) {
   return new XMLSerializer().serializeToString(copy);
 }
 
-async function draw(ctx, xml, size) {
+export async function draw(ctx, xml, size, x = 0, y = 0) {
   const img = new Image();
   img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml);
   await img.decode();
-  ctx.drawImage(img, 0, 0, size, size);
+  ctx.drawImage(img, x, y, size, size);
 }
+
+/** Every animation on a picture, the picture itself (the camera) included. */
+export const animationsOf = svg => [svg, ...svg.querySelectorAll("*")].flatMap(el => el.getAnimations ? el.getAnimations() : []);
 
 /**
  * The GIF of one page: its picture, moving, with its words underneath.
@@ -57,7 +60,7 @@ async function draw(ctx, xml, size) {
  */
 export async function pageGif(svg, text, { size = 360, frames = 20, loopMs = 2400, from = 2200 } = {}) {
   const { GIFEncoder, quantize, applyPalette } = await import("./vendor/gifenc.mjs");
-  const anims = [svg, ...svg.querySelectorAll("*")].flatMap(el => el.getAnimations ? el.getAnimations() : []);
+  const anims = animationsOf(svg);
   const was = anims.map(a => [a, a.currentTime, a.playState]);
   anims.forEach(a => a.pause());
   const canvas = document.createElement("canvas");

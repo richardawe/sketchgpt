@@ -1836,7 +1836,7 @@ function bookActions(book) {
       const was = gif.textContent;
       gif.disabled = true; gif.textContent = "Making the GIF…";
       try {
-        const { pageGif } = await import("./gif.mjs?v=1");
+        const { pageGif } = await import("./gif.mjs?v=2");
         const blob = await pageGif(sheet.querySelector(".art svg"), words);
         const name = (book.dataset.title || "book").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-") +
           (n ? `-page-${n}` : "-cover") + ".gif";
@@ -1847,6 +1847,24 @@ function bookActions(book) {
       finally { gif.disabled = false; gif.textContent = was; }
     });
     extra.push(gif);
+    // The whole book as a video (web/video.mjs): MP4 where the browser can
+    // make one, WebM otherwise; made in the tab, faster than real time.
+    const video = document.createElement("button");
+    video.type = "button"; video.className = "video"; video.textContent = "Save the book as a video";
+    video.addEventListener("click", async () => {
+      const was = video.textContent;
+      video.disabled = true; video.textContent = "Making the video…";
+      try {
+        const { bookVideo } = await import("./video.mjs?v=1");
+        const blob = await bookVideo(book, { onProgress: p => { video.textContent = `Making the video… ${Math.round(p * 100)}%`; } });
+        const ext = blob.type === "video/mp4" ? "mp4" : "webm";
+        await deliver(blob, (book.dataset.title || "book").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-") + "." + ext);
+        book.bar.note.textContent = `The book saved as a video (${ext.toUpperCase()}, ${(blob.size / 1e6).toFixed(1)} MB). ` +
+          "It is silent: a browser cannot record the device's voice.";
+      } catch (e) { book.bar.note.textContent = "Could not make the video: " + (e && e.message || e); }
+      finally { video.disabled = false; video.textContent = was; }
+    });
+    extra.push(video);
   }
   return bookBar(book, row, print, save, extra);
 }

@@ -52,7 +52,7 @@ try {
       fetched.push(name);
       if (url.pathname.startsWith('/vendor/'))       // gifenc, for "Save this page as a GIF"
         return r.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('../web' + url.pathname, import.meta.url), 'utf8') });
-      const file = /^(sketch|stamps|rough|book|story|picture|gif|scene|art|art-names|animate|voice|share)\.mjs$/.test(name) ? name : 'browser.html';
+      const file = /^(sketch|stamps|rough|book|story|picture|gif|video|scene|art|art-names|animate|voice|share)\.mjs$/.test(name) ? name : 'browser.html';
       await r.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
         body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
     });
@@ -163,6 +163,33 @@ try {
     assert.ok(await page.evaluate(() => document.querySelector('.book .sheet:nth-of-type(4) svg').getAnimations()
       .some(a => a.playState === 'running')), 'the page stopped moving after its GIF was made');
     console.log(`  GIF: ${frames.length} frames, ${Math.round(bytes.length / 1024)} KB, ${gifMs} ms`);
+
+    // ---- The whole book as a video: every sheet, moving, a real file ------------
+    const v0 = Date.now();
+    const [videoFile] = await Promise.all([page.waitForEvent('download', { timeout: 180000 }),
+      book.locator('.more-panel button.video').click()]);
+    const videoMs = Date.now() - v0;
+    const vname = videoFile.suggestedFilename();
+    assert.match(vname, new RegExp('^' + STORY.title.replace(/\s+/g, '-') + '\\.(mp4|webm)$'), vname);
+    const vbytes = await readFile(await videoFile.path());
+    // MP4 has "ftyp" at byte 4; WebM starts with the EBML magic 1A 45 DF A3. (This Chromium build has no
+    // H.264 encoder, so it makes WebM; Chrome, Edge and Safari make MP4.)
+    assert.ok(vbytes.subarray(4, 8).toString() === 'ftyp' || vbytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])),
+      'not an MP4 or a WebM');
+    // Played back in the page: 8 sheets (cover, 6 pages, The End) at 4 s each, 2.5 s for the end.
+    const meta = await page.evaluate(async b64 => {
+      const v = document.createElement('video'); v.muted = true;
+      v.src = 'data:' + (b64.startsWith('AAAA') ? 'video/mp4' : 'video/webm') + ';base64,' + b64;
+      await new Promise((ok, no) => { v.onloadedmetadata = ok; v.onerror = () => no(new Error('the video does not play')); });
+      if (!isFinite(v.duration)) { v.currentTime = 1e6; await new Promise(r => { v.ontimeupdate = r; }); }
+      return { duration: v.duration, w: v.videoWidth, h: v.videoHeight };
+    }, vbytes.toString('base64'));
+    assert.deepEqual([meta.w, meta.h], [540, 720]);
+    assert.ok(Math.abs(meta.duration - (7 * 4 + 2.5)) < 1.2, `the video is ${meta.duration} s long`);
+    assert.match(await book.locator('.book-top .share-note').textContent(), /saved as a video \((MP4|WEBM), .* silent/);
+    assert.ok(await page.evaluate(() => document.querySelector('.book .sheet:nth-of-type(4) svg').getAnimations()
+      .some(a => a.playState === 'running')), 'the book stopped moving after its video was made');
+    console.log(`  video: ${vname.split('.').pop()}, ${meta.duration.toFixed(1)} s, ${(vbytes.length / 1e6).toFixed(1)} MB, made in ${videoMs} ms`);
     await book.locator('.book-bar .more-btn').click();
 
     // ---- Printing stops everything still, then it moves again -------------------

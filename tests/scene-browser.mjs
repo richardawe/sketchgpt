@@ -39,7 +39,7 @@ try {
       const url = new URL(route.request().url());
       if (url.pathname === '/mock.mjs') return route.fulfill({ contentType: 'text/javascript', body: stub });
       const name = url.pathname.replace(/^.*\//, '');
-      const file = /^(sketch|stamps|rough|book|story|picture|gif|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
+      const file = /^(sketch|stamps|rough|book|story|picture|gif|video|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
       await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
         body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
     });

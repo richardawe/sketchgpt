@@ -43,6 +43,7 @@ jobs:
           cp web/story.mjs  _site/story.mjs     # Book's stories, written by rules
           cp web/picture.mjs _site/picture.mjs  # your own picture as the hero
           cp web/gif.mjs    _site/gif.mjs       # a moving page as a GIF
+          cp web/video.mjs  _site/video.mjs     # the book as a video (vendor/mediabunny.mjs)
           cp web/scene.mjs  _site/scene.mjs
           cp web/art.mjs    _site/art.mjs
           cp web/art-names.mjs _site/art-names.mjs
