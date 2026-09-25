@@ -240,7 +240,7 @@ for (const [from, to] of Object.entries(ART_NAMES)) NORMAL.set(from, to);
  */
 export function registerFigure(word) { NORMAL.set(word, word); }
 
-export function resolveStamp(word) {
+export function resolveStamp(word, { phrase = false } = {}) {
   const key = String(word).toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!key) return null;
   for (const form of [key, key.replace(/(ies)$/, "y"), key.replace(/e?s$/, "")]) {
@@ -253,10 +253,19 @@ export function resolveStamp(word) {
   // And a word may extend a known one only by a suffix or by another known
   // word ("pinetree"): "fairy" is not "fair" + y — a fairy hero was about to
   // be drawn as a ferris wheel on every page — nor "carpet" a car.
+  // Two known words make a compound, and an English compound is the kind of
+  // thing its LAST word is: a lighthouse is a house, not a light bulb (drawn
+  // as one on desktop, where the scene prompt's own example says
+  // "lighthouse"), a starfish a fish. Unless the first word already names a
+  // kind of the second: a pinetree is a pine. A `phrase` is several words run
+  // together by scene.mjs ("cake on table" → "caketable"), and there the
+  // first word is the thing.
   for (const [norm, name] of NORMAL) {
     const tail = key.slice(norm.length);
-    if (norm.length > 3 && key.startsWith(norm) &&
-        (/^(s|es|ing|ed|er|ers)$/.test(tail) || NORMAL.has(tail))) return name;
+    if (norm.length > 3 && key.startsWith(norm)) {
+      if (/^(s|es|ing|ed|er|ers)$/.test(tail)) return name;
+      if (NORMAL.has(tail)) return phrase || name.includes(tail) ? name : NORMAL.get(tail);
+    }
     if (key.length >= 5 && norm.startsWith(key)) return name;
   }
   return null;

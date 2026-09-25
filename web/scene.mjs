@@ -109,7 +109,7 @@ export function parseEntry(raw) {
   if (nouns.every(w => SETTINGS[w])) {
     return { stamp: null, said: nouns.join(" "), count: 1, colour, place, setting: SETTINGS[nouns[0]], scale };
   }
-  let stamp = resolveStamp(nouns.join(""));
+  let stamp = resolveStamp(nouns.join(""), { phrase: nouns.length > 1 });
   for (let i = 0; !stamp && i < nouns.length; i++) {
     if (SETTINGS[nouns[i]] && nouns.length > 1) continue;
     stamp = resolveStamp(nouns[i]);

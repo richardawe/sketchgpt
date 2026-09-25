@@ -359,6 +359,7 @@ desktop now gets Qwen3-1.7B wherever it fits at a 2048 context or more.
 ```bash
 node --test tests/sketch.test.mjs     # format, stamps, clamping, budget
 node --test tests/book.test.mjs       # the story parser and the page's picture rules
+node --test tests/story.test.mjs      # stories by rules: the picture, the help and the animation, every combination
 node --test tests/desk.test.mjs       # the retired Desk's planner, for its bench
 node --test tests/retrieval.test.mjs  # the retired Work-mode retrieval, for the bench
 node tests/sketch-browser.mjs         # needs Playwright + Chromium

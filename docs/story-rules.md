@@ -1,6 +1,6 @@
 # Book without the model — a plan
 
-**Status: plan only. Nothing here is built. The owner's decisions are at the end.** Written after the owner's report:
+**Status: stage 1 (rule-written stories) is built and tested, but not yet in the app; the rest is plan. The owner's decisions are at the end.** Written after the owner's report:
 "The AI isn't doing much on this app, its story generation is faulty and never
 good." The ask: write the story with deterministic rules in the browser; let
 people write or paste their own story with the page guiding them; better
@@ -169,6 +169,73 @@ run it on 8 rule-written books against the 0.6B's shaped stories and a few
 is **sameness**: a second question in the scoring asks "have you read this one
 already?" across 8 books from the same choices. If sameness is bad, the fix is
 more patterns per slot, not the model.
+
+### Stage 1 as built
+
+`web/story.mjs` has 17 hero kinds (including "me"), 7 places, 6 wishes (see the
+sea, find something lost, make a friend, be brave in the dark, fly, grow a
+flower), 11 problems and 29 helpers. `writeStory(choices)` returns the book,
+plus the words each page marks to be drawn, so the tests can hold the page to
+them. Nothing in the app calls it yet; wiring it in is stage 2.
+
+**Checked for every combination** (`tests/story.test.mjs`, 119 hero × place
+pairs, every wish that fits, 12 seeds each, 7,800 books, under 4 s). Each
+check is mutation-tested: break the rule and the test fails.
+
+- 6 pages, each within the share link's limits, the hero named on every page.
+- **The picture draws exactly the marked words.** Unmarked words that would
+  have drawn something were caught this way: "waves at the others" → a sea,
+  "one night" → a moon, "plants the seed" → a plant, "at home" → a house,
+  "dancing" → a dancer, "tea" → a cup.
+- Every marked word has a picture, and no picture is the hero alone.
+- The helper can do what the problem needs, lives in that place, and is
+  never the hero's own kind. The hero cannot solve the problem alone: a dog is
+  not stuck at a river, and a dragon never wishes to fly.
+- The animation acts out deeds, never wishes. The hero acts on page 3 (tries)
+  and page 5 (works), and never on page 2 (wants).
+- Same choices and seed, same book. A rule book survives a share link.
+
+**Measured** (`scripts/story-rules-bench.mjs`), against the four real Qwen3
+books in `scripts/demo-books/` written with Book's own prompt:
+
+| | Books | Pages naming the hero | Pictures of only the hero | Stray drawings |
+|---|---|---|---|---|
+| Qwen3 (0.6B phone ×2, 1.7B desktop ×2) | 4 | 21 / 24 | 4 | not countable |
+| Rules | 32 | 192 / 192 | 0 | 0 |
+
+| Idea | Versions from one set of choices (1000 seeds) | Identical pages, average pair of 8 books |
+|---|---|---|
+| a little dog who has never seen the sea | 278 | 0.4 of 6 |
+| a young dragon who is afraid of the dark | 355 | 0.5 of 6 |
+| a girl who plants a magic seed | 837 | 0.5 of 6 |
+| a robot who wants a friend | 910 | 0.2 of 6 |
+
+**What those numbers do not say:** identical *pages* are rare, but the frames
+repeat ("Just then, Owl…", "jumps for joy", "safe and sound"). Someone who
+reads five books from the same choices will notice. That is the sameness to
+judge by reading, and the reason "Say it differently" stays on the list.
+
+**Not yet done:** the blind read. `docs/story-rules-bench/read.md` holds eight
+books (four by the model, four by the rules, shuffled and unlabelled); score
+them 0–3 before opening `key.json`. It is not blind for whoever wrote the rules,
+so no score is recorded here yet. Stage 1 is done when the owner has read it.
+
+**Found on the way, and fixed for every book, not just rule books:**
+
+- `lighthouse` was drawn as a **light bulb**, the prefix matcher again.
+  A compound of two known words is now the kind of thing its last word is
+  (lighthouse → house, starfish → fish), unless the first word already names
+  a kind of the second (pinetree → pine). Phrases that scene.mjs runs
+  together ("cake on table") keep their first word.
+- **"buses", "bushes", "foxes" never drew**: `planFromWords` stripped only
+  the "s". `-es` plurals are now tried too.
+- **River, lake, pond, road and street** in a page's words are now drawn as
+  its setting (water or road). A page saying "a wide river is in the way" drew
+  nothing before.
+- Two traps for any template, kept out of the word lists: a **teddy is drawn
+  as a bear**, so a bear hero's lost teddy vanished into its own picture; and
+  a helper named "Bird" takes the word "birds" as its name, so a flock of
+  birds went undrawn.
 
 ---
 

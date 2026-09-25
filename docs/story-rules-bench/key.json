@@ -1,0 +1,50 @@
+[
+ {
+  "book": "A",
+  "source": "model: qwen3:1.7b, desktop, scripts/demo-books/seed.json",
+  "idea": "a girl who plants a magic seed",
+  "title": "Lily and the Magic Seed"
+ },
+ {
+  "book": "B",
+  "source": "rules: {\"kind\":\"dog\",\"name\":\"Max\",\"place\":\"farm\",\"wish\":\"sea\",\"seed\":0,\"helper\":\"horse\",\"problem\":0}",
+  "idea": "a little dog who has never seen the sea",
+  "title": "Max Goes to the Sea"
+ },
+ {
+  "book": "C",
+  "source": "rules: {\"kind\":\"robot\",\"name\":\"Beep\",\"place\":\"town\",\"wish\":\"friend\",\"seed\":0,\"helper\":\"bird\",\"problem\":1}",
+  "idea": "a robot who wants a friend",
+  "title": "A Friend for Beep"
+ },
+ {
+  "book": "D",
+  "source": "model: qwen3:1.7b, desktop, scripts/demo-books/dog-shaped.json",
+  "idea": "a little dog who has never seen the sea",
+  "title": "The Little Dog and the Sea"
+ },
+ {
+  "book": "E",
+  "source": "rules: {\"kind\":\"dragon\",\"name\":\"Ember\",\"place\":\"forest\",\"wish\":\"dark\",\"seed\":0,\"helper\":\"owl\",\"problem\":0}",
+  "idea": "a young dragon who is afraid of the dark",
+  "title": "Ember Is Brave"
+ },
+ {
+  "book": "F",
+  "source": "rules: {\"kind\":\"girl\",\"name\":\"Maya\",\"place\":\"garden\",\"wish\":\"grow\",\"seed\":0,\"helper\":\"bird\",\"problem\":0}",
+  "idea": "a girl who plants a magic seed",
+  "title": "Maya's Little Seed"
+ },
+ {
+  "book": "G",
+  "source": "model: qwen3:0.6b, phone, scripts/demo-books/dragon.json",
+  "idea": "a young dragon who is afraid of the dark",
+  "title": "The Dragon Who Wasafraid of the Dark"
+ },
+ {
+  "book": "H",
+  "source": "model: qwen3:0.6b, phone, scripts/demo-books/dog-phone.json",
+  "idea": "a little dog who has never seen the sea",
+  "title": "The Dog Who Never Saw the Sea"
+ }
+]

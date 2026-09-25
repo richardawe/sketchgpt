@@ -32,6 +32,8 @@ web/index.html            local chat against Ollama — development only
 web/sketch.mjs            sketch format, context budget, SVG rendering
 web/book.mjs              Book (the default mode) — story prompt + parser, and the page's
                           picture rules (continuity: hero on every page, names are not things)
+web/story.mjs             a picture-book story written by RULES, no model — hero, place, wish;
+                          every drawable word [marked] so tests hold the picture to it (not wired in yet)
 web/scene.mjs             scene mode (desktop) — the model lists things, the page places them
 web/art.mjs               generated Twemoji illustrations (CC-BY 4.0) — never edit by hand
 web/art-names.mjs         generated word -> illustration map — never edit by hand
@@ -59,6 +61,7 @@ scripts/storybook.mjs        write a six-page story + scene plans with a real mo
 scripts/storybook-render.mjs lay a written story out as a printable picture book
 scripts/book-bench.mjs       Book's real story prompt through real models, every page drawn by the page's code
 scripts/story-pass-bench.mjs does a second pass make a story make sense? (no — the page's per-page shape does)
+scripts/story-rules-bench.mjs rule stories vs the model's real books, counted; writes a blind reading sheet
 scripts/vram-probe/       measure what a model really allocates (no GPU needed)
 models/model-pin.json     exact layer digests for reproducible weights
 docs/customising.md       what small models can and cannot do, with measurements
@@ -70,7 +73,7 @@ docs/desk.md              what replaced it — five tools benched, two shipped, 
                           (Desk itself was then replaced by Book)
 docs/sketch-scenes.md     why desktop sketches stopped asking for coordinates
 docs/storybook.md         a story written by the model, illustrated by the page — what broke
-docs/story-rules.md       PLAN, not built: Book without the model — rule-written or pasted stories, better scenery, sharing
+docs/story-rules.md       Book without the model — stage 1 (rule stories) built; pasted stories, scenery, sharing planned
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
 web/selfie.html           Draw me: a photo drawn as a moving caricature, GIF/sticker/SVG export (stage 1)
@@ -142,6 +145,7 @@ serves **4-bit**, and that gap explains most surprises.
 | **One picture must never cost the book** | First phone run of Book mode (Qwen3-0.6B, iPhone, 1024 ctx): the story came back, then page one's picture held only sky and ground, the renderer refused it ("did not return a drawing in the expected format"), and the error replaced the whole book. Causes found with `scripts/book-bench.mjs`: a hero with no illustration (fairy, witch, knight, grandma… — 0 of 96 bench pages, so rare but real), and the prefix matcher drawing "fairy" as a **ferris wheel** (fair + y). Fixed: heroes without a picture get a stand-in person, said under the picture; a word extends a known one only by a suffix or a known word; a scenery-only page is drawn; a picture that still fails leaves its page's words and a note. The bench also showed "happy", "love" and "friend" drawn as an emoji face, a heart and a child — feelings are no longer drawn. |
 | **The page must pick a model the browser can store** | "Models not downloading on desktop": a desktop with fp16 gets Qwen3-1.7B, a 990 MB download; a browser offering less room (nearly full disk, private window) ran it to 89% and then refused to store it, although the card already knew the quota and warned. Reproduced on the live site with real WebLLM. The auto-pick now skips a preferred model whose download will not fit in the browser's free storage (unless already cached) and says so: "Qwen3 1.7B would not fit: this browser has room for ~952 MB". **Confirmed by the owner on their desktop: models now download and it works.** |
 | **A second pass does not fix a small model's story; the page's shape does** | "The stories are not that coherent." Measured before building (`scripts/story-pass-bench.mjs`, Qwen3-0.6B, 8 stories per approach, scored blind 0–3): one pass 5/24, write-then-revise 6, plan-then-write 11, **one line per page saying what it is for (at home → wants → tries and fails → help → works → ending) 15/24, 7 of 8 coherent, none broken**, one call, ~80 extra prompt tokens. A 0.6B cannot see what is wrong with its own story; it can fill a structure it is handed. As general advice the same shape scored 8. It leaks: the model copies the labels into the text and writes "the hero", so `unshape()` strips them on the page. `docs/storybook.md`. |
+| **Rules write a story the page can check; a model's can only be read** | The owner: the model's stories were "faulty and never good". `web/story.mjs` writes the six pages from word lists, and because every drawable word is marked, a test holds 7,800 books (every combination, 12 seeds) to it: the picture draws exactly the marked words, the helper can do what the problem needs, and the animation acts out deeds, not wishes. Against the four real Qwen3 books: hero named on 192/192 pages vs 21/24, 0 pictures of only the hero vs 4. What rules cost is sameness: 278–910 versions per set of choices and 0.2–0.5 identical pages per pair of books, but the frames repeat. Writing the tests found three matcher bugs that affected model books too: lighthouse → light bulb, "buses" never drawn, rivers and roads never drawn. `docs/story-rules.md`. |
 | **A library can log even when the page never asks it to** | MediaPipe's `tasks-vision` runtime POSTs usage statistics to Google from every task it creates. The owner's rule is **use nothing that logs**, not "block it". MediaPipe's models (weights) are kept; they run on LiteRT.js, whose every URL was checked. `tests/face.test.mjs` fails on any logging endpoint in `web/vendor/`. Read a vendored bundle's URLs before shipping it. |
 | **Skin colour: both obvious rules were wrong** | On 9 public-domain portraits: sampling lit pixels drew a dark-skinned woman several shades lighter; the whole-face median drew two side-lit people near-black; "the lit half" drew almost everyone lighter, since even studio portraits differ 12–25 L* between halves. Shipped: the median of face skin without *deep* shadow (>25 L* below the lit half), lightness kept exactly. A judgement for people to review, printed by `scripts/face-bench.mjs`. `docs/selfie.md`. |
 

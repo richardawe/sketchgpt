@@ -228,6 +228,16 @@ test("'fairy' is not a ferris wheel: a word extends a known one only by a suffix
   assert.equal(resolveStamp("sailboats"), "sailboat");
   assert.equal(resolveStamp("boating"), "sailboat");
   assert.equal(resolveStamp("pinetree"), "tree-pine");
+  // A compound is its last word: the scene prompt's harbour example says
+  // "lighthouse", and it was drawn as a light bulb.
+  assert.equal(resolveStamp("lighthouse"), "house");
+  assert.equal(resolveStamp("starfish"), "fish");
+});
+
+test("rivers, lakes and roads in a page's words are drawn as its setting", () => {
+  assert.deepEqual(planFromWords("A wide river is in the way.", pip), ["sea"]);
+  assert.deepEqual(planFromWords("The ball floats on the lake.", pip), ["ball", "sea"]);
+  assert.deepEqual(planFromWords("Pip runs down the road.", pip), ["road"]);
 });
 
 test("'grass' is grass, not a label reading 'gras' (Qwen3-1.7B book, page 1)", () => {

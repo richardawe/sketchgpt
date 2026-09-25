@@ -171,7 +171,10 @@ const PEOPLE = new Set(["user", "users", "baby", "family", "girl", "boy", "child
 const SETTING_WORDS = { sea: "sea", ocean: "sea", beach: "sand", sand: "sand", shore: "sand",
   waves: "sea", night: "moon", sunset: "sun", forest: "pine x3", woods: "pine x3",
   garden: "flower x3", park: "tree x2", farm: "tractor", snow: "snowman", rain: "rain x2",
-  castle: "castle", village: "house x3", town: "house x2", city: "building x3" };
+  castle: "castle", village: "house x3", town: "house x2", city: "building x3",
+  // Water and roads are settings too — scene.mjs draws them as backdrop. A
+  // page saying "a wide river is in the way" drew nothing at all before.
+  river: "sea", lake: "sea", pond: "sea", road: "road", street: "road" };
 
 // The words of a name that identify it. "The Sun", "Mr. Whiskers" and "Sir
 // Tink" were matched on "The", "Mr" and "Sir" at first — "the" is on every
@@ -224,7 +227,9 @@ export function planFromWords(text, story = { cast: [] }) {
   const found = [];
   for (const raw of String(text).toLowerCase().match(/[a-z]+/g) || []) {
     if (raw.length < 3) continue;
-    const w = raw.replace(/(ies)$/, "y").replace(/s$/, "");
+    // "buses", "bushes", "foxes": an -es plural loses both letters.
+    const es = /(s|x|z|ch|sh)es$/.test(raw) ? raw.slice(0, -2) : null;
+    const w = es && ART_NAMES[es] ? es : raw.replace(/(ies)$/, "y").replace(/s$/, "");
     if (ABSTRACT.has(raw) || ABSTRACT.has(w)) continue;
     // The word as written when it has a picture: "grass" minus its s was
     // "gras", which has none, and was printed on the page as a label.
