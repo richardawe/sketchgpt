@@ -257,6 +257,11 @@
   .me-note a.photo { font-weight: 600; color: var(--ink); }
   #write { padding: 11px 22px; font-size: 15px; margin: 4px 0 8px; }
   .intro .me-note { margin: 0 auto 10px; }
+  .include-me { display: block; text-align: center; font: 13.5px var(--font, sans-serif); color: var(--muted); margin: 6px 0 0; }
+  .me-note label.photo { text-decoration: underline; cursor: pointer; }
+  .me-note .ask { color: var(--err); font-weight: 600; }
+  .pic-thumb { max-width: 56px; max-height: 64px; border-radius: 8px; background: #fbf8f2; display: block; }
+  #pic-how { flex-basis: 100%; }
   .mode-tabs { margin: 0 auto 16px; }
   #own-text { display: block; width: 100%; max-width: 560px; margin: 0 auto; padding: 10px 12px; border-radius: 12px;
               border: 1px solid var(--line-2); background: var(--panel); color: var(--ink); font-family: inherit;
@@ -485,9 +490,10 @@
 // kills the whole page. Bump it whenever a module's exports change. The
 // service worker falls back with ignoreSearch, so offline still finds them.
 import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, loadArt, estimateTokens,
-         readDrawing, registerFigure } from "./sketch.mjs?v=9";
+         readDrawing, registerFigure, resolveStamp } from "./sketch.mjs?v=9";
 import { scenePrompt, composeScene, looksLikeCoordinates, placeOf } from "./scene.mjs?v=10";
-import { wordsOnlyPlan, coverPlan } from "./book.mjs?v=9";
+import { wordsOnlyPlan, coverPlan, drawAs } from "./book.mjs?v=9";
+import * as picture from "./picture.mjs?v=1";
 import { writeStory, wishesFor, KINDS, PLACES, WISHES, storyFromText, guessHero, checkPages } from "./story.mjs?v=2";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
@@ -689,7 +695,7 @@ async function loadMe() {
   try { got = await face.decodeMe(frag); }
   catch (e) { try { sessionStorage.removeItem(ME_KEY); } catch {} console.warn("me:", e.message); return; }
   registerFigure("me");
-  me = { name: got.name,
+  me = { name: got.name, frag,
     figure: { svg: face.renderPortrait(got.data, { figure: true, seed: 3, idPrefix: "me-" }) },
     thumb: face.renderPortrait(got.data, { seed: 3, credit: false, idPrefix: "thumb-" }) };
   showIntro();
@@ -710,9 +716,70 @@ function forgetMe() {
   try { sessionStorage.removeItem(ME_KEY); } catch {}
   showIntro();
 }
+// ---- A picture of your own as the hero (web/picture.mjs) ---------------------
+// A pet, a drawing, a photo cut out: drawn on every page in place of the
+// hero's illustration. For this tab only, like the drawing above, and never
+// in a share link — a link carries the hero's kind, and the recipient sees
+// the drawn one.
+const PIC_KEY = "sketchgpt.pic";
+let pic = null;          // { url, w, h, how, figure, said }
+let picSource = null;    // the picture before it was prepared, in memory only
+let picWorking = false;
+function loadPic() {
+  try {
+    const o = JSON.parse(sessionStorage.getItem(PIC_KEY) || "null");
+    if (o) pic = { ...o, figure: picture.figureOf(o.url, o.w, o.h) };
+  } catch { try { sessionStorage.removeItem(PIC_KEY); } catch {} }
+}
+async function preparePic(how) {
+  picWorking = true; showIntro();
+  try {
+    const got = await picture.prepare(picSource, how);
+    pic = { ...got, how, figure: picture.figureOf(got.url, got.w, got.h) };
+    try { sessionStorage.setItem(PIC_KEY, JSON.stringify({ url: got.url, w: got.w, h: got.h, how, said: got.said })); }
+    catch { pic.said = (pic.said ? pic.said + " " : "") + "It is too big to keep if you reload the page."; }
+    // A person cut out is a person; anything else, the reader says what it is.
+    if (how === "person" && !choice.kind) choice.kind = "child";
+  } catch (e) { pic = { error: e.message }; }
+  picWorking = false; showIntro();
+}
+function forgetPic() {
+  pic = null; picSource = null;
+  try { sessionStorage.removeItem(PIC_KEY); } catch {}
+  showIntro();
+}
+
 function meNote() {
   const d = document.createElement("div");
   d.className = "me-note";
+  if (!me && (pic || picWorking)) {
+    if (picWorking) { d.textContent = "Getting your picture ready…"; return d; }
+    if (pic.error) {
+      d.textContent = pic.error + " ";
+      const b = document.createElement("button"); b.type = "button"; b.textContent = "Try another"; b.addEventListener("click", forgetPic);
+      d.append(b); return d;
+    }
+    const t = document.createElement("img");
+    t.className = "pic-thumb"; t.src = pic.url; t.alt = "Your picture";
+    const p = document.createElement("span");
+    p.textContent = `Your picture is the hero of your next book` +
+      (choice.kind ? `, as ${choice.kind === "child" ? "a child" : "a " + choice.kind}.` : " — say what it is below.") +
+      (pic.said ? " " + pic.said : "");
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = "Not this picture"; b.addEventListener("click", forgetPic);
+    d.append(t, p, b);
+    if (picSource) {
+      const row = document.createElement("div"); row.className = "chips"; row.id = "pic-how";
+      for (const [how, label] of [["paper", "Take the paper away"], ["person", "Cut out the person"], ["keep", "Keep it as it is"]]) {
+        const c = document.createElement("button"); c.type = "button"; c.textContent = label; c.dataset.value = how;
+        c.setAttribute("aria-pressed", String(pic.how === how));
+        c.addEventListener("click", () => preparePic(how));
+        row.appendChild(c);
+      }
+      d.appendChild(row);
+    }
+    return d;
+  }
   if (me) {
     const t = document.createElement("span");
     t.className = "me-thumb"; t.innerHTML = me.thumb;           // our own drawing, from checked numbers
@@ -722,8 +789,18 @@ function meNote() {
     b.type = "button"; b.textContent = "Not me"; b.addEventListener("click", forgetMe);
     d.append(t, p, b);
   } else {
-    d.innerHTML = `<span><a class="photo" href="./selfie.html">Use a photo of me</a> — drawn on this device, ` +
-      `never uploaded. Or pick a hero:</span>`;
+    d.innerHTML = `<span><a class="photo" href="./selfie.html">Draw me from a photo</a> · ` +
+      `<label class="photo" for="pic-file">Use a picture</label> — a pet, a drawing, a photo. ` +
+      `It stays on this device. Or pick a hero:</span><input type="file" id="pic-file" accept="image/*" hidden>`;
+    d.querySelector("#pic-file").addEventListener("change", async e => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      try {
+        picSource = await picture.readPicture(file);
+        const data = picSource.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, picSource.width, picSource.height).data;
+        await preparePic(picture.looksLikePaper(data, picSource.width, picSource.height) ? "paper" : "keep");
+      } catch (err) { pic = { error: err.message }; showIntro(); }
+    });
   }
   return d;
 }
@@ -1468,6 +1545,13 @@ async function makeBook() {
   } else {
     let { kind, place, wish } = choice;
     if (kind === "me" && !me) kind = null;
+    // A picture of their own is only drawn right if we know what it is: a
+    // photo of a cat must not become the hero of a book about a dragon.
+    if (!kind && pic && pic.figure && !me) {
+      const hint = $("intro") && $("intro").querySelector(".me-note span");
+      if (hint) { hint.textContent = "What is your picture? Pick it below, then Write."; hint.classList.add("ask"); }
+      return;
+    }
     // Whatever was left to us, picked so the wish fits.
     const fits = pairs(kind, place).filter(([k, p]) => !wish || wishesFor(k, p).includes(wish));
     if (fits.length) [kind, place] = fits[Math.floor(Math.random() * fits.length)];
@@ -1492,7 +1576,9 @@ async function makeBook() {
   paintStatus();
   // The book as data: what a share link carries and what an edit changes.
   const state = { title: story.title, cast: story.cast,
-    pages: story.pages.map(text => ({ text, things: null })), cover: null, voice: "" };
+    pages: story.pages.map(text => ({ text, things: null })), cover: null, voice: "",
+    // The pictures this book draws with — kept with the book, never in a link.
+    figures: figuresFor(story.cast) };
   // A page that names no place is where the page before it was (placeOf).
   // Pages are planned in order, so the last place named is carried forward.
   let place = [];
@@ -1654,18 +1740,18 @@ function sheet(book, cls) {
 // it, and the error ended the whole book with five pages of text unshown.
 // A page with only scenery now shows its scenery, and a picture that cannot
 // be drawn at all leaves its page's words in place and says so.
-async function drawInto(box, title, entries, { withMe = true } = {}) {
+async function drawInto(box, title, entries, { figures = null } = {}) {
   try {
-    // The reader's figure only in books written in this tab; anywhere else
-    // "me" is the stand-in child.
-    const useMe = withMe && me;
-    if (!useMe) entries = entries.map(e => e.replace(/\bme\b/g, "child"));
+    // The reader's figure only where the book has it — books made in this
+    // tab, or a shared book whose sender included it; anywhere else "me" is
+    // the stand-in child.
+    if (!figures || !figures.me) entries = entries.map(e => e.replace(/\bme\b/g, "child"));
     const a = await loadArt();
-    const art = useMe ? { ART: a.ART, ART_BOX: a.ART_BOX, FIGURES: { me: me.figure } } : a;
+    const art = figures ? { ART: a.ART, ART_BOX: a.ART_BOX, FIGURES: figures } : a;
     const composed = composeScene({ t: title, c: entries });
     renderSketch(box, JSON.stringify({ t: composed.t, c: composed.c }),
       { rough: await loadRough(ROUGH), art, spread: false, scenery: true });
-    if (useMe) startBlinking();
+    if (figures && figures.me) startBlinking();
     return true;
   } catch (e) {
     box.classList.add("pending");
@@ -1673,6 +1759,19 @@ async function drawInto(box, title, entries, { withMe = true } = {}) {
     console.warn("picture failed:", e.message, entries);
     return false;
   }
+}
+
+// Which pictures a new book draws with: the reader's drawing for "me", and
+// their own picture for the hero, in place of the hero's illustration.
+function figuresFor(cast) {
+  const f = {};
+  if (me && cast.some(c => c.is === "me")) f.me = me.figure;
+  const hero = cast[0];
+  if (pic && pic.figure && hero && hero.is !== "me") {
+    const stamp = resolveStamp(drawAs(hero) || "");
+    if (stamp) f[stamp] = pic.figure;
+  }
+  return Object.keys(f).length ? f : null;
 }
 
 // The book as its own file: the pages and the book's styles, nothing else.
@@ -1926,7 +2025,7 @@ async function showBook(state, out, { plan = null, status = null, shared = false
     const pg = sheets[i], page = state.pages[i];
     pg.art.textContent = ""; pg.art.className = "art";
     setText(pg.p, page.text);
-    await drawInto(pg.art, page.text, page.things, { withMe: !shared });
+    await drawInto(pg.art, page.text, page.things, { figures: state.figures });
     const motion = bringToLife(pg.s, pg.art, page.text);
     pg.madeText.textContent = how[i] + (motion && motion.said.length ? ` Moving: ${motion.said.join("; ")}.` : "");
     if (!pg.made.isConnected) pg.s.appendChild(pg.made);
@@ -1935,7 +2034,7 @@ async function showBook(state, out, { plan = null, status = null, shared = false
     if (!state.cover) { coverArt.remove(); return; }
     if (!coverArt.isConnected) cover.appendChild(coverArt);
     coverArt.textContent = ""; coverArt.className = "art";
-    await drawInto(coverArt, state.title + " " + state.pages[0].text, state.cover, { withMe: !shared });
+    await drawInto(coverArt, state.title + " " + state.pages[0].text, state.cover, { figures: state.figures });
     bringToLife(cover, coverArt, "");
   }
 
@@ -1971,6 +2070,17 @@ async function showBook(state, out, { plan = null, status = null, shared = false
   const hint = document.createElement("span"); hint.textContent = "Tap Edit on a page, or on the cover.";
   editRow.append(hint, undoBtn);
   bar.parentElement.insertBefore(editRow, note);
+  // The reader's drawing travels in the link only if they say so. A photo or
+  // a picture never does: whoever opens the link sees the drawn hero.
+  if (!shared && me && me.frag && state.cast.some(c => c.is === "me")) {
+    const row = document.createElement("label"); row.className = "include-me";
+    const box = document.createElement("input"); box.type = "checkbox"; box.id = "include-me";
+    row.append(box, " Put my drawing in the link (never the photo)");
+    box.addEventListener("change", async () => { state.me = box.checked ? me.frag : undefined; await refreshLink();
+      note.textContent = box.checked ? "Your drawing is in the link now: anyone who opens it sees you." :
+        "Your drawing is out of the link: whoever opens it sees a drawn child."; });
+    bar.parentElement.insertBefore(row, note);
+  }
   // Editing is a mode: the edit buttons, "How this picture was made" and Undo
   // show only while it is on.
   editBtn.addEventListener("click", () => {
@@ -1997,8 +2107,10 @@ async function showBook(state, out, { plan = null, status = null, shared = false
   shareBtn.addEventListener("click", () => {
     if (!link) return;
     const kb = (link.length / 1024).toFixed(1);
+    const kept = state.figures && Object.keys(state.figures).some(k => k !== "me");
     const said = `The whole book is in the link (${kb} KB). Nothing is uploaded: whoever opens it gets the book ` +
-      `redrawn on their own device, with no model to download.`;
+      `redrawn on their own device, with no model to download.` +
+      (kept ? ` Your picture stays on this device: they see a drawn ${state.cast[0].is}.` : "");
     if (navigator.share) {
       navigator.share({ title: state.title, text: `“${state.title}” — a picture book`, url: link })
         .then(() => { note.textContent = said; }, () => {});
@@ -2390,6 +2502,7 @@ function boot() {
   restore();
   syncMode();
   meReady = loadMe().catch(e => console.warn("me:", e.message));
+  loadPic();
   // Fetched now rather than on first use, so switching to Sketch after the
   // model has loaded makes no request the privacy meter would have to list.
   loadRough(ROUGH);
@@ -2431,6 +2544,17 @@ async function openShared() {
     if (!share) throw new Error("The page could not load what it needs to open shared books. Reload to try again.");
     state = await share.decodeBook(location.hash);
     await meReady;
+    // The sender put their drawing in the link: this book, and only this
+    // book, draws it. Checked in full by decodeMe; a bad one is left out.
+    if (state.me) try {
+      const face = await import("./face.mjs?v=2");
+      const got = await face.decodeMe(state.me);
+      registerFigure("me");
+      // The pictures' lists were rebuilt from the words while "me" was not
+      // yet a picture here, so they said "child": rebuild them now it is.
+      state = await share.decodeBook(location.hash);
+      state.figures = { me: { svg: face.renderPortrait(got.data, { figure: true, seed: 3, idPrefix: "sent-" }) } };
+    } catch (e) { console.warn("shared drawing:", e.message); }
   } catch (e) { showNote(out.body, e.message); return; }
   if ($("intro")) $("intro").remove();
   await showBook(state, out, { shared: true });

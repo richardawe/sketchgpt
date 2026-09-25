@@ -598,7 +598,9 @@ function drawFigure(doc, parent, figure, { args: [x, y, size], text }) {
   const px = size * SCALE;
   const src = new DOMParser().parseFromString(figure.svg, "image/svg+xml").documentElement;
   const [, , fw, fh] = (src.getAttribute("viewBox") || "0 0 400 600").split(/\s+/).map(Number);
-  const k = px * 1.25 / fh;
+  // As tall as the thing it stands for, and never much wider: a landscape
+  // photo of a pet would otherwise fill the page.
+  const k = Math.min(px * 1.25 / fh, px * 1.6 / fw);
   const group = svgNode(doc, "g", {
     transform: `translate(${(x * SCALE - fw * k / 2).toFixed(1)} ${(y * SCALE + px / 2 - fh * k).toFixed(1)}) scale(${k.toFixed(4)})`,
     "data-thing": text, "data-figure": "1", "data-at": `${(x * SCALE).toFixed(1)} ${(y * SCALE).toFixed(1)} ${px.toFixed(1)}`

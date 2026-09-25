@@ -13,6 +13,7 @@
 // it as text, never markup.
 import { drawAs, nameWords, SHAPE, storyMessages, wordsOnlyPlan, coverPlan } from "./book.mjs?v=9";
 
+const ME = /^me=[zj][A-Za-z0-9_-]{16,24000}$/;
 export const LIMITS = { title: 120, name: 40, is: 20, pages: 8, text: 600, things: 24, thing: 48, voice: 80 };
 const str = (v, max) => (typeof v === "string" ? v : "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max);
 const list = (v, n, max) => (Array.isArray(v) ? v : []).slice(0, n * 4).map(x => str(x, max)).filter(Boolean).slice(0, n);
@@ -32,6 +33,10 @@ export function cleanBook(b) {
     pages,
     cover: list(b.cover, LIMITS.things, LIMITS.thing),
     voice: str(b.voice, LIMITS.voice),
+    // The reader's caricature (selfie.html), only when they chose to include
+    // it: its numbers, as selfie.html packs them — never a photo. Checked
+    // again, fully, by face.mjs decodeMe before anything is drawn.
+    ...(typeof b.me === "string" && ME.test(b.me) ? { me: b.me } : {}),
   };
 }
 
@@ -44,13 +49,13 @@ const pack = b => {
   const pages = b.pages.map(p => same(p.things, wordsOnlyPlan(p.text, b).entries) ? [p.text] : [p.text, p.things]);
   const firstThings = b.pages[0] ? b.pages[0].things : [];
   return { v: 1, t: b.title, c: b.cast.map(c => [c.name, c.is]), p: pages,
-    k: same(b.cover, coverPlan(b, firstThings)) ? undefined : b.cover, s: b.voice || undefined };
+    k: same(b.cover, coverPlan(b, firstThings)) ? undefined : b.cover, s: b.voice || undefined, m: b.me || undefined };
 };
 const unpack = o => {
   const book = { title: o.t, cast: (o.c || []).map(c => ({ name: c && c[0], is: c && c[1] })),
     // Empty pages go first, so page i of the link is page i of the book.
     pages: (Array.isArray(o.p) ? o.p : []).filter(p => Array.isArray(p) && str(p[0], LIMITS.text))
-      .map(p => ({ text: p[0], things: p[1] })), cover: o.k, voice: o.s };
+      .map(p => ({ text: p[0], things: p[1] })), cover: o.k, voice: o.s, me: o.m };
   const clean = cleanBook({ ...book, pages: book.pages.map(p => ({ ...p, things: p.things || [] })) });
   // Rebuild what was left out, from the cleaned words (the same code that made it).
   clean.pages.forEach((p, i) => { if (!Array.isArray(book.pages[i] && book.pages[i].things)) p.things = wordsOnlyPlan(p.text, clean).entries; });

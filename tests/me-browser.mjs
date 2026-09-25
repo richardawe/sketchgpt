@@ -83,11 +83,40 @@ if (process.env.SHOT) for (const i of [0, 2, 5]) {
   await sheet.screenshot({ path: `${process.env.SHOT}/book-${i}.png` });
 }
 
+// 3b. The drawing travels in a link only when the reader says so.
+await page.evaluate(() => { navigator.share = async d => { window.shared = d; }; });
+await page.tap(".book .share");
+await page.waitForFunction(() => window.shared);
+const plain = await page.evaluate(() => window.shared.url);
+await page.tap("#include-me");
+await page.waitForFunction(() => /drawing is in the link/.test(document.querySelector(".book .share-note").textContent));
+await page.evaluate(() => { window.shared = null; });
+await page.tap(".book .share");
+await page.waitForFunction(() => window.shared);
+const withMe = await page.evaluate(() => window.shared.url);
+const sizes = { plain: plain.length, withMe: withMe.length };
+console.log("  link sizes:", JSON.stringify(sizes));
+assert.ok(withMe.length > plain.length + 500, "the drawing is not in the link");
+assert.ok(withMe.length < 30000, `the link with the drawing is ${withMe.length} characters`);
+const friend = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+const fp = await friend.newPage();
+fp.on("pageerror", e => errors.push(e.message));
+await fp.goto(withMe);
+await fp.waitForFunction(() => document.querySelectorAll(".book .art svg").length >= 7, null, { timeout: 60000 });
+assert.ok(await fp.$$eval(".book .art", as => as.every(a => a.querySelector('[data-thing="me"][data-figure]'))),
+  "the sender's drawing is not on every page of the book they shared");
+// A new tab: going to a URL that differs only after the "#" is not a reload.
+const fp2 = await friend.newPage();
+await fp2.goto(plain);
+await fp2.waitForFunction(() => document.querySelectorAll(".book .art svg").length >= 7, null, { timeout: 60000 });
+assert.equal(await fp2.$$eval(".book [data-figure]", n => n.length), 0, "the drawing travelled without being asked to");
+await friend.close();
+
 // 4. A new tab has no hero.
 const other = await context.newPage();
 await other.goto(server.url);
 await other.waitForSelector("#intro .me-note", { timeout: 60000 });
-assert.match(await other.textContent("#intro .me-note"), /Use a photo of me/);
+assert.match(await other.textContent("#intro .me-note"), /Draw me from a photo · Use a picture/);
 assert.equal(await other.locator('#kinds [data-value="me"]').count(), 0, "a new tab offered a drawing it does not have");
 assert.equal(await other.evaluate(() => sessionStorage.getItem("sketchgpt.me")), null);
 
