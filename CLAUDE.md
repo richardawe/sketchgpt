@@ -55,7 +55,9 @@ scripts/record-demo.mjs   record clips of Book and Sketch mode, one per claim (P
                           FFMPEG=<ffmpeg-static binary> works — captions are drawn in the page)
 scripts/capture-book.mjs  capture a real model's story + page plans into scripts/demo-books/ for the clips
 scripts/demo-books/       real Qwen3 book output the clips replay — never hand-written
-media/tweets/             the Book-mode X thread (thread.md) and its five GIFs
+media/tweets/             X threads: thread.md (Book, GIFs 1–5), thread-2.md (6–9), thread-3.md (Book without
+                          the model, 10–14)
+scripts/record-thread-3.mjs  record GIFs 10–14 from the real page at 390×844 (no model, nothing stubbed)
 scripts/grounding-bench.mjs  does a small model invent answers about a document? (it does)
 scripts/retrieval-bench.mjs  BM25 (Work mode's) vs an embedder, same document, same queries
 scripts/lib/retrieval.mjs    the retired Work-mode BM25, kept for that bench
@@ -154,7 +156,7 @@ serves **4-bit**, and that gap explains most surprises.
 | **JSON-constrained output fixes shape and costs content** | `{"items":[…]}` gave 12/12 valid lists on every model — and the Qwen models dropped 2–3× more items, while SmolLM2 returned the schema's example (`"first task","second task"`). Rejected; the page splits prose into a list instead (`listFromProse`), merges duplicates, and cuts loops (`collapseRepeats`), saying so each time. |
 | **Coordinates collapse on real scenes, even at 1.7B** | Past "a house and a tree", Qwen3-1.7B looped (40 horizontal lines for "a city street"), copied the prompt's example stamp list in order for "a farm", and ran to y=245 on a 0–100 grid. `sketch-bench.mjs` never showed it — every request in it is simple. Scene mode (`web/scene.mjs`, desktop only): the model lists things (`cabin x1`, `tree x3`), the page places them. 0/7 loops, ~2 s instead of 9–50 s. `docs/sketch-scenes.md`. |
 | **A count after the noun gets read as an index** | `house 4` made the model number its entries — `palm 3, house 4, person 5, flower 6`. `x3` fixed most of it; the page caps the rest (`5 suns` → one). And the example's night sky leaked into daytime scenes until the example changed and the page ruled: a sun means day, rain means no sun. |
-| **Line icons read as a diagram; illustrations read as a picture** | Same scene plan, same placement: Lucide pictograms looked like "basic drawing", Twemoji redrawn in "ink and wash" (own colours, slight wobble, thin ink, tiny details crisp) looked illustrated. Twemoji beat Fluent Emoji, whose cow and person muddied when roughened; OpenMoji is share-alike. The model's job did not change — it still names a noun. `docs/sketch-scenes.md`. |
+| **Line icons read as a diagram; illustrations read as a picture** | Same scene plan, same placement: Lucide pictograms looked like "basic drawing", Twemoji redrawn in "ink and wash" (own colours, slight wobble, thin ink, tiny details crisp) looked illustrated. Twemoji beat Fluent Emoji, whose cow and person muddied when roughened; OpenMoji is share-alike. (Fluent Emoji *Flat* was later added as a second library, only for nouns Twemoji lacks and for scenery props — it never replaces a Twemoji word.) The model's job did not change — it still names a noun. `docs/sketch-scenes.md`. |
 | **A bigger vocabulary makes a loose matcher wrong** | With 485 words, the prefix rule drew a ship for "line" (via "liner") and a building for "sky" (via "skyscraper"). A known word may extend the model's word only when that word is at least five letters. |
 | **A story breaks continuity in ways a sketch never shows** | Across three model-written books: the prompt's example copied onto 5 of 18 vague pages, a dog named Ducky drawn as a duck, "he" drawn as a boy, the hero missing when the text used a pronoun. All fixed on the page — the cast is drawn on every page as the same picture, names are not nouns, stand-ins are dropped, and a near-empty plan is rebuilt from the page's own words. **The page owns continuity; the model is never trusted with it.** `docs/storybook.md`. |
 | **One picture must never cost the book** | First phone run of Book mode (Qwen3-0.6B, iPhone, 1024 ctx): the story came back, then page one's picture held only sky and ground, the renderer refused it ("did not return a drawing in the expected format"), and the error replaced the whole book. Causes found with `scripts/book-bench.mjs`: a hero with no illustration (fairy, witch, knight, grandma… — 0 of 96 bench pages, so rare but real), and the prefix matcher drawing "fairy" as a **ferris wheel** (fair + y). Fixed: heroes without a picture get a stand-in person, said under the picture; a word extends a known one only by a suffix or a known word; a scenery-only page is drawn; a picture that still fails leaves its page's words and a note. The bench also showed "happy", "love" and "friend" drawn as an emoji face, a heart and a child — feelings are no longer drawn. |
@@ -506,6 +508,16 @@ practical fine-tuning.
   privacy meter counted 11 of the page's own files when the offline worker took
   control after a stub model's instant load (warmWorker) — a harness race, not
   a visitor's, so the recorder now waits for the worker first.
+- **A sixth thread is drafted: `media/tweets/thread-3.md`, 9 tweets, GIFs 10–14**
+  (no download, write your own, your picture, scenery, whole-book video),
+  recorded by `scripts/record-thread-3.mjs` — real runs, nothing stubbed,
+  because Book has no model. Headless Chromium, so no speed claim; the
+  "child's drawing" is drawn by the script; the video clip is WebM (no H.264
+  here). GIFs 4.0–10.4 MB. Recording found one real bug: the privacy meter
+  counted the page's own lazily loaded code (mediabunny.mjs on Save video) as
+  sent. It now lists same-origin code files (`.mjs/.js/.wasm/.tflite/.css/.html`,
+  bare or `?v=N`) as "this page's own code" and does not count them; anything
+  else still counts (`tests/animate-browser.mjs`).
 - **Three X threads are drafted and none are posted.** The two older ones (a
   measurement-led one, and a user-benefit one covering device detection,
   privacy, formula rendering and storage control) are in session history. The

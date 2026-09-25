@@ -190,6 +190,13 @@ try {
     assert.ok(await page.evaluate(() => document.querySelector('.book .sheet:nth-of-type(4) svg').getAnimations()
       .some(a => a.playState === 'running')), 'the book stopped moving after its video was made');
     console.log(`  video: ${vname.split('.').pop()}, ${meta.duration.toFixed(1)} s, ${(vbytes.length / 1e6).toFixed(1)} MB, made in ${videoMs} ms`);
+    // The privacy meter: the page's own code, loaded when first used, is listed and not counted as sent…
+    assert.equal(await page.locator('#netn').textContent(), '0', 'the page loading its own video code counted as sent: ' +
+      await page.locator('#netlog').textContent());
+    assert.match(await page.locator('#netlog').textContent(), /mediabunny\.mjs {3}\(this page's own code\)/);
+    // …and anything else still is.
+    await page.evaluate(() => fetch('/not-code.txt').catch(() => {}));
+    await page.waitForFunction(() => document.querySelector('#netn').textContent === '1');
     await book.locator('.book-bar .more-btn').click();
 
     // ---- Printing stops everything still, then it moves again -------------------
