@@ -1637,19 +1637,29 @@ function startNetMeter(from = "the page loaded") {
   }
 }
 
+// The page's own code, fetched from its own site when a feature is first
+// used (the video writer, the GIF maker, the person cut-out's model files),
+// is listed but not counted as "sent": it is the page loading itself, and it
+// carries nothing of anyone's. Everything else — any other site, any file
+// that is not the page's own code — is counted. Before this, saving a video
+// showed "3" beside a caption saying nothing was uploaded.
+const ownCode = u => { try { const x = new URL(u); return x.origin === location.origin &&
+  /\.(m?js|wasm|tflite|css|html)$/.test(x.pathname) && (!x.search || /^\?v=\d+$/.test(x.search)); } catch { return false; } };
 function renderNet() {
-  const n = netSeen.length;
+  const sent = netSeen.filter(u => !ownCode(u)), own = netSeen.length - sent.length;
+  const n = sent.length;
   $("netn").textContent = String(n);
   $("net").classList.toggle("dirty", n > 0);
   $("net").title = n
     ? `${n} network request${n === 1 ? "" : "s"} since ${netFrom} — open the menu to see them`
-    : `No network requests since ${netFrom}`;
-  $("netinfo").innerHTML = n
+    : `No network requests since ${netFrom}` + (own ? ` (and ${own} of this page's own files loaded)` : "");
+  $("netinfo").innerHTML = (n
     ? `<b>${n} request${n === 1 ? "" : "s"}</b> since ${netFrom}:`
-    : `<b>0 requests</b> since ${netFrom}. Nothing you have made or typed has left this device.`;
-  $("netlog").hidden = !n;
-  $("netlog").textContent = netSeen.map(u => {
-    try { const x = new URL(u); return x.host + x.pathname; } catch { return u; }
+    : `<b>0 requests</b> since ${netFrom}. Nothing you have made or typed has left this device.`) +
+    (own ? `<br>${own} of this page's own files loaded from its site when first used — code, carrying nothing of yours:` : "");
+  $("netlog").hidden = !netSeen.length;
+  $("netlog").textContent = [...sent, ...netSeen.filter(ownCode).map(u => u + "   (this page's own code)")].map(u => {
+    try { const [url, note = ""] = u.split("   "); const x = new URL(url); return x.host + x.pathname + (note ? "   " + note : ""); } catch { return u; }
   }).join("\n");
 }
 
