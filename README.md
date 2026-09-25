@@ -159,6 +159,14 @@ the picture draws exactly those words, the help makes sense, and the animation
 acts out what happens, never what is only wished for. `docs/story-rules.md`
 has the design and the measurements.
 
+You can also **write or paste your own story**: the page splits it into
+pages, finds the hero, and shows what each page will draw before drawing it.
+It never changes a word. The hero can be **your own picture**: a pet, a
+child's drawing (the paper is taken away) or a photo (the person cut out).
+It stays in the tab and never goes in a link. Backgrounds follow the words
+(hills, forest, snow, a town, a room with a window) and carry from page to
+page. Any moving page can be **saved as a GIF** to send.
+
 The page still owns **continuity**: the hero is on every page as the same
 picture, a name is not a thing (a dog called Ducky is not a duck), and each
 picture is built from its page's own words. Books move, are read aloud in the
@@ -361,6 +369,8 @@ desktop now gets Qwen3-1.7B wherever it fits at a 2048 context or more.
 node --test tests/sketch.test.mjs     # format, stamps, clamping, budget
 node --test tests/book.test.mjs       # the story parser and the page's picture rules
 node --test tests/story.test.mjs      # stories by rules: the picture, the help and the animation, every combination
+node --test tests/picture.test.mjs    # your own picture: paper removal, cut-out, trimming
+node tests/picture-browser.mjs        # a drawing and a photo as the hero, on a touch screen
 node --test tests/desk.test.mjs       # the retired Desk's planner, for its bench
 node --test tests/retrieval.test.mjs  # the retired Work-mode retrieval, for the bench
 node tests/sketch-browser.mjs         # needs Playwright + Chromium

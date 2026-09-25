@@ -1,6 +1,6 @@
 # Book without the model — a plan
 
-**Status: stages 1 and 2 are built and tested: Book writes with rules and downloads no model. Pasted stories, scenery, pictures from photos of pets and drawings, and export are still plan. The owner's decisions are at the end.** Written after the owner's report:
+**Status: all six stages are built and tested (stages 1–2 live and confirmed on the owner's phone; 3–6 run only in emulation so far). The model-helper buttons are not built. The owner's decisions are at the end.**
 "The AI isn't doing much on this app, its story generation is faulty and never
 good." The ask: write the story with deterministic rules in the browser; let
 people write or paste their own story with the page guiding them; better
@@ -467,6 +467,72 @@ What changes elsewhere (for the stage that touches it):
   go through the builder instead.
 - `CLAUDE.md`: a findings row once stage 1 is measured, and the Book entries
   in the open threads.
+
+## Stages 3–6 as built
+
+**3 · Write or paste your own.** "Write my own" in the builder. `splitPages()`
+makes paragraphs into pages when there are 2–8 that fit, and otherwise groups
+the sentences into about six pages, never breaking one. A short first line
+with no full stop is the title. More than a book holds keeps the first eight
+pages and says so. `guessHero()` reads "a dog named Max", "Max the dog" and
+"Max was a little dog", and picks the one the story names most, so "a robin
+called Rosie" once does not become the hero of Max's story. The guide under
+the box lists each page and what it will draw, flags pages with nothing to
+draw, and names pages that never mention the hero. The person's words are
+kept exactly: a unit test joins the pages back together and compares them.
+
+**4 · Scenery.** The page's words now choose among hills (farm, field,
+park), a far treeline (forest, woods), snow on the ground, a town skyline,
+and a room (bedroom, kitchen, "in his bed") with a window showing the sky.
+Day skies get drifting clouds and night skies stars. Indoors there is no sun,
+bird, house or bus: "went home to his warm bed" had drawn a house on the
+bedroom floor. "Snow" is snowy ground, no longer a snowman. `placeOf()`
+carries a page's place to the next page that names none. A place inside a
+wish ("wants to see the sea") does not carry, because nobody is there yet.
+The book says so under each carried picture ("Still at the farm, like the
+page before"). Far layers move less than the camera, which gives depth.
+
+**5 · Your picture.** "Use a picture" in step 1 accepts a pet, a child's
+drawing or a photo, and prepares it in the tab (`web/picture.mjs`) in one of
+three ways:
+- A drawing loses its paper. This is a flood fill from the border, so a white
+  inside an outline stays white.
+- A photo can have its person cut out, using the person segmenter
+  `selfie.html` already vendors. That downloads about 13 MB from this site the
+  first time, and the privacy meter lists those files.
+- Anything can be kept as it is, with rounded corners.
+
+The picture replaces the hero's illustration on every page and the cover. The
+page asks what the picture is before writing. It is kept for the tab only
+(sessionStorage) and never goes in a link: the recipient sees the drawn hero,
+and the share note says so. The caricature can go in a link when the reader
+ticks "Put my drawing in the link": 7.9 KB against 0.6 KB for the same book
+without it.
+
+**6 · Export.** "Save this page as a GIF" is in the ⋯ menu (`web/gif.mjs`).
+Every animation is paused and stepped through time, each element's computed
+pose is copied onto a copy of the SVG and drawn to a canvas, and gifenc
+encodes the frames. The page's words go underneath. A page takes about 0.6 s
+and about 220 KB in headless Chromium. On a phone the GIF goes to the share
+sheet, elsewhere it downloads. It is silent, and the book says so. Video was
+not built: GIF covers "send a page", and a silent video adds little.
+
+**Tests added:** `tests/story.test.mjs` (splitting, the hero guess, the
+guide), `tests/scene.test.mjs` (each backdrop trigger, the room, `placeOf`
+and wishes), `tests/picture.test.mjs` (the pixel rules),
+`tests/picture-browser.mjs` (a drawing and a photo, the ask, the link), and
+additions to `book-browser` (own story), `animate-browser` (carry-over, depth,
+GIF) and `me-browser` (the opt-in link). Mutation checks:
+- the guide's "nothing to draw" row;
+- the picture drawn as the hero;
+- the drawing staying out of links;
+- the offline cache's own re-fetch not being counted by the privacy meter.
+
+**Not tested on a real phone:** everything in stages 3–6. Unknowns:
+- Safari's `createImageBitmap` orientation handling for phone photos.
+- LiteRT's person segmenter on an iPhone (the same unknown as `selfie.html`).
+- GIF time on a phone CPU.
+- Whether `navigator.share` with a GIF file opens the share sheet on iOS.
 
 ## Not known, and how each gets known
 

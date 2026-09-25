@@ -34,7 +34,10 @@ web/book.mjs              Book's picture rules (continuity: hero on every page, 
                           things); the old model story prompt + parser, kept for the benches
 web/story.mjs             Book's stories, written by RULES, no model — hero, place, wish;
                           every drawable word [marked] so tests hold the picture to it
-web/scene.mjs             scene mode (desktop) — the model lists things, the page places them
+web/picture.mjs           your own picture as the hero — paper removed, person cut out, or kept; tab only
+web/gif.mjs               a moving page as an animated GIF (frames stepped from its animations; gifenc)
+web/scene.mjs             places things and chooses the backdrop (hills, forest, snow, town, room);
+                          placeOf() carries a page's place to the next
 web/art.mjs               generated Twemoji illustrations (CC-BY 4.0) — never edit by hand
 web/art-names.mjs         generated word -> illustration map — never edit by hand
 web/stamps.mjs            generated Lucide path data — never edit by hand
@@ -73,7 +76,7 @@ docs/desk.md              what replaced it — five tools benched, two shipped, 
                           (Desk itself was then replaced by Book)
 docs/sketch-scenes.md     why desktop sketches stopped asking for coordinates
 docs/storybook.md         a story written by the model, illustrated by the page — what broke
-docs/story-rules.md       Book without the model — stages 1–2 built (rules; no download on open); more planned
+docs/story-rules.md       Book without the model — all six stages built: rules, no download, own story, scenery, pictures, GIF
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
 web/selfie.html           Draw me: a photo drawn as a moving caricature, GIF/sticker/SVG export (stage 1)
@@ -517,8 +520,13 @@ practical fine-tuning.
   the reader's photo), place, wish — and `web/story.mjs` writes the book.
   WebLLM itself is fetched only when Sketch is opened, or for "Rewrite with the
   model". A phone with no WebGPU makes books. The next stages are in
-  `docs/story-rules.md`: your own pasted story with a guide, better scenery,
-  pets and drawings as heroes, and export. **Never run on a real phone yet.**
+  `docs/story-rules.md`. The owner confirmed stages 1–2 on a real phone
+  ("Works"). **Stages 3–6 are built and never run on a real phone:** write or
+  paste your own story with a page-by-page guide; scenery (hills, forest,
+  snow, town, rooms; the place carried between pages; depth); your own picture
+  as the hero (tab only, never in a link; the caricature in a link only when
+  ticked, 7.9 KB); a page saved as a GIF. The model-helper buttons (ideas,
+  things to draw, say it differently) are planned and not built.
 - **In Sketch, the model downloads without a button press** — the owner's decision,
   reversing "silently pulling hundreds of MB is not ours to do". What is left
   of that rule: the card names model and size while it downloads, `?manual=1`
