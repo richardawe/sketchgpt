@@ -80,7 +80,8 @@ docs/storybook.md         a story written by the model, illustrated by the page 
 docs/story-rules.md       Book without the model — all six stages built: rules, no download, own story, scenery, pictures, GIF
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
-docs/film-plan.md         PLAN, nothing built: an adult "Film" mode — user screenplay → 2-min 3D video, no model
+docs/film-plan.md         PLAN, nothing built: "Film" — user prose → 2-min 3D video, phone first, no model;
+                          mature tier only (explicit content is banned on GitHub — read before building)
 web/selfie.html           Draw me: a photo drawn as a moving caricature, GIF/sticker/SVG export (stage 1)
 web/face.mjs              selfie drawing: alignment, caricature rules, colour, hair, SVG, poses (pure)
 web/face-find.mjs         MediaPipe's face/hair/person models on LiteRT.js — never MediaPipe's runtime (it logs)
