@@ -1,7 +1,8 @@
 # Film — a grown-up version of Book, without a model — a plan
 
-**Status: stages 0 and 1 are built and tested in headless Chromium. Neither
-has run on a phone.**
+**Status: stages 0 and 1 are built. Stage 0 has run on the owner's iPhone,
+which made the 2-minute 720p MP4 with sound in 43 s ("Stage 0 measured"
+below). Stage 1 has not run on a phone yet.**
 
 - Stage 0 is `web/film-probe.html`, a probe of what a phone can render.
 - Stage 1 is `web/film.html`: plain prose in, a 3D scene and its video out.
@@ -394,6 +395,48 @@ new bundles for logging endpoints (none).
 - whether the file plays in Photos and shares to Messages.
 
 SwiftShader has no GPU, so its speed says nothing about a phone's.
+
+## Stage 0 measured on the owner's iPhone (2026-09-25)
+
+The owner's report from `film-probe.html`, unedited settings: 120 s, 24 fps,
+720×1280, shadows on.
+
+| | |
+|---|---|
+| Device | iPhone, Safari 26.6.1 (the UA still says "iPhone OS 18_7": Safari 26 freezes that field), 4 cores, DPR 3, 430×932, "Apple GPU", max texture 16384. WebCodecs and wake lock present |
+| Load | 6.87 MB in **0.75 s** (cached or fast network); 72k triangles, 119 draw calls, 33 textures, 84 clips |
+| Video | **MP4, H.264 + AAC**: the path headless Chromium here can't test **works** |
+| Render | 2,880 frames in **43.1 s: 2.79× real time**. The tab survived, and never went to the background |
+| Per frame | draw **0.8 ms** (CPU side of the WebGL calls), **encode wait 13.5 ms** (GPU finish + readback + H.264). The encoder, not the scene, is the cost |
+| Audio | music bed rendered in 0.9 s; finalize 68 ms |
+| File | **27.1 MB** for 2:00 (3 Mbps video + 128 kbps AAC) |
+
+**What it means:**
+
+- **The phone-first gate passes with room to spare.** The budget in "Phone
+  first" was guessed to be tight: at most 4 people, baked light, blob shadows,
+  and scene-by-scene resumable rendering in case the tab died. None of it was
+  needed at this scene size. A 2-minute film takes under a minute on this
+  phone, with real-time shadows.
+- **The scene can grow before it matters.** Drawing is 0.8 ms of a ~15 ms
+  frame. More people, more props and a second set cost GPU time inside a
+  budget that isn't close yet. Measure again when stage 2 adds sets; don't
+  pre-optimise.
+- **The resumable render (stage 5) drops in priority.** A 43 s render is
+  short enough to redo. The wake lock and the "last run died at…" notice
+  stay; they're cheap, and a slower phone could still need them.
+- **27 MB is fine to save and too big for some chats.** WhatsApp and Messages
+  recompress. A lower-bitrate "for sharing" option (1.5 Mbps is about 14 MB)
+  is a small follow-up if it matters.
+
+**Still not measured:**
+
+- preview fps (the report has no `preview`: it wasn't run);
+- memory (Safari exposes no heap figure);
+- what happens if the screen locks mid-render;
+- whether the MP4 played in Photos and shared to Messages (the report can't
+  see that; the owner can say);
+- any phone older or smaller than this one.
 
 ## Stage 1 as built
 
