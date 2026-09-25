@@ -357,6 +357,7 @@ export function composeScene(plan) {
     const size = sized(s) * (0.9 + rand() * 0.25);
     out.push(cmd(s.stamp, s.x, horizon - size / 2 + 3, size, tint(s)));
   }
+  const decorAt = out.length;
 
   // Back row stands on the horizon; if it is crowded, a second row in front of
   // it, a little smaller — depth by overlap, which is how a hand draws it.
@@ -393,8 +394,39 @@ export function composeScene(plan) {
     out.push(cmd(s.stamp, s.x, Math.min(GRID - size / 2 - 1, base - size / 2), size, tint(s)));
   }
 
-  return { t: title, c: out, drawn: entries.filter(e => e.stamp).length, unknown: labels.map(l => l.said) };
+  // Set dressing: a few small things that belong to the place, at its edges
+  // and in the distance, so a page is a place and not a stage. Chosen by the
+  // place alone, so every page set there has the same ones — the farm keeps
+  // its barn from page to page. Behind everything the page's words asked for,
+  // and fewer on a busy page.
+  const place = room ? "room" : beach ? "beach" : water ? null : snow ? "snow" : forest ? "forest" :
+    town ? "town" : hills ? "hills" : "grass";
+  // Only around something: a plan with nothing drawable in it stays empty,
+  // so a model that drew nothing (Sketch) is still seen to have failed.
+  const dress = place && entries.some(e => e.stamp) ? DECOR[place] : [];
+  const have = new Set(out.map(c => c.split(" ")[0]));
+  const room4 = Math.max(1, 3 - Math.max(0, entries.length - 4));
+  const pickDecor = rng("decor:" + place);
+  const decor = dress.filter(([stamp]) => !have.has(stamp)).map(d => [pickDecor(), d]).sort((a, b) => a[0] - b[0])
+    .slice(0, room4).map(([, [stamp, x, y, size]]) => cmd(stamp, x, y === "h" ? horizon + 3 : y, size, NATURAL[stamp] && !ILLUSTRATED.has(stamp) ? NATURAL[stamp] : null));
+  out.splice(decorAt, 0, ...decor);
+
+  return { t: title, c: out, drawn: entries.filter(e => e.stamp).length, unknown: labels.map(l => l.said), decor: decor.length };
 }
+
+// What each place is dressed with: [stamp, x, y, size] — y "h" is just
+// below the horizon, where small things read as far away. Only things, never
+// animals or people: a picture's characters come from its words.
+const DECOR = {
+  // (Twemoji's "lamp" is an oil lamp, 🪔: it floated over the hero like a flame.)
+  room: [["framed-picture", 18, 28, 14], ["potted-plant", 7, 82, 13], ["teddy", 62, 94, 7], ["framed-picture", 42, 34, 8]],
+  beach: [["tree-palm", 7, 76, 20], ["beach-umbrella", 91, 79, 13], ["shell", 78, 95, 5], ["coral", 18, 94, 6]],
+  hills: [["house", 90, "h", 9], ["wheat", 9, "h", 8], ["sunflower", 97, 72, 7], ["tree-deciduous", 20, "h", 9]],
+  forest: [["mushroom", 9, 88, 6], ["wood", 90, 86, 9], ["herb", 20, 95, 7], ["fallen-leaf", 82, 96, 5]],
+  snow: [["tree-pine", 7, "h", 12], ["tree-pine", 93, "h", 10], ["wood", 88, 91, 8], ["house", 20, "h", 7]],
+  town: [["tree-deciduous", 5, "h", 12], ["mailbox", 95, 75, 7], ["store", 84, "h", 9]],
+  grass: [["tree-deciduous", 7, "h", 13], ["herb", 92, 92, 7], ["rock", 86, 95, 6], ["tulip", 16, 95, 5]],
+};
 
 /**
  * Where a page is, from its own words — the place, not the time of day. A

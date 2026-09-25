@@ -187,7 +187,8 @@ test("indoors, the sky is only the window: no sun, bird or sunset on the wall", 
 test("a room has no house, tree or bus in it, and its bed is bed-sized", () => {
   const c = plan("Max went home to his warm bed.", ["house", "tree x2", "bus", "bed", "dog"]);
   const names = stamps(c).map(x => x.text);
-  assert.deepEqual(names.sort(), ["bed", "dog"], names.join(" "));
+  for (const out of ["house", "tree-deciduous", "bus"]) assert.ok(!names.includes(out), names.join(" "));
+  assert.ok(names.includes("bed") && names.includes("dog"), names.join(" "));
   assert.ok(stamps(c).find(x => x.text === "bed").args[2] >= 25, "a doll's-house bed");
 });
 
@@ -200,4 +201,24 @@ test("where a page is, and what is only wished for", () => {
   assert.deepEqual(placeOf("Pip has never seen the sea. More than anything, Pip wants to see it."), []);
   assert.deepEqual(placeOf("Pip wants to see the sea.", { wishes: true }), ["sea"]);
   assert.deepEqual(placeOf("He splashed about."), []);
+});
+
+test("set dressing: each place gets a few of its own things, the same on every page, behind the story", () => {
+  const farm1 = plan("Max lives on a busy farm.", ["dog"]).c, farm2 = plan("On the farm, Max ran to the gate.", ["dog"]).c;
+  const decor = c => c.filter(x => /^(house|wheat|sunflower|tree-deciduous) /.test(x));
+  assert.ok(decor(farm1).length >= 2, farm1.join(" | "));
+  assert.deepEqual(decor(farm1), decor(farm2), "the farm is dressed differently on two of its pages");
+  // Behind the story: before the hero in drawing order.
+  assert.ok(farm1.indexOf(decor(farm1)[0]) < farm1.findIndex(x => x.startsWith("dog ")));
+  // A room has pictures on its wall; a beach its palm; never an animal or a person.
+  assert.ok(plan("Max went to his bedroom.", ["dog"]).c.some(x => x.startsWith("framed-picture ")));
+  const beach = plan("Max ran along the beach.", ["dog"]).c;
+  assert.ok(beach.some(x => /^(tree-palm|beach-umbrella|shell|coral) /.test(x)), beach.join(" | "));
+  for (const t of ["farm", "forest", "beach", "snow", "town", "bedroom", "garden"]) {
+    const c = plan(`Max in the ${t}.`, ["dog"]).c.filter(x => !x.startsWith("dog "));
+    assert.ok(!c.some(x => /^(cat|dog|cow|horse|pig|sheep|user|child|girl|boy|bird) /.test(x)), `${t}: ${c.join(" | ")}`);
+  }
+  // A busy page gets fewer: the story's things matter more than the scenery.
+  const busy = plan("On the farm.", ["dog", "cow", "pig", "sheep", "horse", "tractor", "hen"]);
+  assert.ok(busy.decor <= 1, `${busy.decor} props on a busy page`);
 });

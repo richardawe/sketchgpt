@@ -612,8 +612,31 @@ function drawFigure(doc, parent, figure, { args: [x, y, size], text }) {
 // The setting, drawn before anything else: a night sky, the ground, a sea, a
 // road. Hatched in light colour like a coloured pencil laid on its side, so it
 // reads as backdrop and never competes with the ink.
+// Gradient ids are unique on the page: a book holds many pictures in one
+// document, and a second picture reusing an id would paint with the first's.
+let gradientN = 0;
+
 function drawBackdrops(doc, parent, rc, backdrops, seed) {
   const s = n => n * SCALE;
+  // A vertical (or radial) gradient, defined inside this picture so a
+  // downloaded SVG or a GIF frame carries it along.
+  const svgRoot = parent.ownerSVGElement || parent;
+  let defs = svgRoot.querySelector("defs");
+  if (!defs) { defs = svgNode(doc, "defs"); svgRoot.prepend(defs); }
+  const gradient = (stops, radial = null) => {
+    const id = "bg" + (++gradientN);
+    const g = svgNode(doc, radial ? "radialGradient" : "linearGradient",
+      radial ? { id, cx: radial[0], cy: radial[1], r: radial[2] } : { id, x1: 0, y1: 0, x2: 0, y2: 1 });
+    for (const [offset, color, opacity = 1] of stops) g.append(svgNode(doc, "stop", { offset, "stop-color": color, "stop-opacity": opacity }));
+    defs.append(g);
+    return `url(#${id})`;
+  };
+  const fillRect = (x, y, w, hgt, fill, extra = {}) => {
+    if (hgt <= 0) return null;
+    const r = svgNode(doc, "rect", { x, y, width: w, height: hgt, fill, stroke: "none", ...extra });
+    parent.append(r);
+    return r;
+  };
   const ground = backdrops.find(b => b.kind === "ground" || b.kind === "sand" || b.kind === "snow");
   const water = backdrops.find(b => b.kind === "water");
   const room = backdrops.find(b => b.kind === "room");
@@ -669,10 +692,20 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
   // Indoors: a wall, a floor, and a window that shows the sky.
   if (room) {
     const floor = s(room.args[0]);
-    wash(0, 0, CANVAS, floor, "#f1e2c6", 0.9);
-    wash(0, floor, CANVAS, CANVAS - floor, "#c99b6d", 0.8);
+    const evening = skyText === "night" || skyText === "dusk";
+    // A painted wall, lighter where the window's light falls; a skirting
+    // board; floorboards that darken toward the front; a rug.
+    fillRect(0, 0, CANVAS, floor, gradient(evening ? [[0, "#d9c6a5"], [1, "#b89c78"]] : [[0, "#f6ead2"], [1, "#e8d3ad"]]));
+    for (let x = 18; x < CANVAS; x += 36) line(`M ${x} 6 L ${x} ${floor - 16}`, evening ? "#a88c68" : "#e2cda5", 1.2, 0.6);
+    fillRect(0, floor - 14, CANVAS, 14, "#fbf6ea");
+    line(`M 0 ${floor - 14} L ${CANVAS} ${floor - 14}`, INK, 1.2, 0.6);
+    fillRect(0, floor, CANVAS, CANVAS - floor, gradient([[0, "#d6ab7c"], [1, "#a8764a"]]));
     line(`M 0 ${floor} L ${CANVAS} ${floor}`, INK, 1.8);
     for (let y = floor + 26; y < CANVAS; y += 30) line(`M 0 ${y} L ${CANVAS} ${y}`, "#8a6444", 1, 0.5);
+    for (let i = 0; i < 6; i++) { const y = floor + 10 + i * 30, x = 30 + rand() * 300; line(`M ${x} ${y} L ${x} ${y + 26}`, "#8a6444", 1, 0.4); }
+    const rug = layer("mid");
+    shape(rug, `M 60 ${CANVAS - 30} Q 200 ${CANVAS - 62} 340 ${CANVAS - 30} Q 200 ${CANVAS + 4} 60 ${CANVAS - 30} Z`, "#c0504d", 0.75, INK);
+    shape(rug, `M 95 ${CANVAS - 30} Q 200 ${CANVAS - 50} 305 ${CANVAS - 30} Q 200 ${CANVAS - 10} 95 ${CANVAS - 30} Z`, "#f2c14e", 0.6);
     const glass = { night: "#26345f", dusk: "#e9b07e", rain: "#9aa3ae" }[skyText] || "#bfe0f5";
     const win = layer("far", "window");
     shape(win, "M 250 50 L 350 50 L 350 150 L 250 150 Z", glass, 0.9, INK);
@@ -682,13 +715,21 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
     return;
   }
 
+  // Skies are gradients now — deep overhead, pale at the horizon, the way a
+  // painted sky is — with a glow where the light comes from.
   for (const b of backdrops.filter(b => b.kind === "sky")) {
-    if (b.text === "night") wash(0, 0, CANVAS, skyline, "#26345f", 0.78);
-    else if (b.text === "dusk") wash(0, 0, CANVAS, skyline, "#e6a26a", 0.35);
-    else if (b.text === "rain") {
-      wash(0, 0, CANVAS, skyline, "#8f97a3", 0.3);
+    if (b.text === "night") {
+      fillRect(0, 0, CANVAS, skyline, gradient([[0, "#0f1733"], [0.7, "#27366b"], [1, "#3d4f86"]]));
+    } else if (b.text === "dusk") {
+      fillRect(0, 0, CANVAS, skyline, gradient([[0, "#5b4b8a"], [0.45, "#e0766b"], [1, "#ffd08a"]]));
+      fillRect(0, 0, CANVAS, skyline, gradient([[0, "#fff1c1", 0.8], [1, "#fff1c1", 0]], ["0.78", "1", "0.5"]));
+    } else if (b.text === "rain") {
+      fillRect(0, 0, CANVAS, skyline, gradient([[0, "#6c7682"], [1, "#b9c0c9"]]));
       wash(0, 0, CANVAS, skyline, "#5f6b7a", rc ? 0.45 : 0, { gap: 11, angle: -70 });
-    } else wash(0, 0, CANVAS, skyline, "#bfe0f5", 0.45);
+    } else {
+      fillRect(0, 0, CANVAS, skyline, gradient([[0, "#6fb6e8"], [0.6, "#b4dcf4"], [1, "#e6f4fb"]]));
+      fillRect(0, 0, CANVAS, skyline, gradient([[0, "#fff8d6", 0.85], [1, "#fff8d6", 0]], ["0.84", "0.12", "0.42"]));
+    }
   }
   // The sky's own small things, free: soft clouds by day, stars at night.
   // Tagged so they move — clouds drift, stars twinkle.
@@ -708,51 +749,90 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
     }
   }
   // Far layers stand on the horizon, behind the ground.
-  const night = skyText === "night";
+  const night = skyText === "night", dusk = skyText === "dusk";
+  const kinds = new Set(backdrops.map(b => b.kind));
+  const outdoorsOpen = ground && ground.kind !== "sand" && !kinds.has("town");
+  // A distant mountain range, pale with distance, on any open landscape:
+  // depth before anything else is drawn. Snow puts white on its peaks.
+  if (outdoorsOpen) {
+    const y = land, g = layer("far");
+    const tone = night ? "#2d3b66" : dusk ? "#9a86b4" : "#aac3dd";
+    let d = `M 0 ${y + 2}`, x = 0;
+    const peaks = [];
+    while (x < CANVAS) { const w = 50 + rand() * 60, hgt = 38 + rand() * 46; peaks.push([x + w / 2, y - hgt, w]); d += ` L ${x + w / 2} ${y - hgt} L ${x + w} ${y - 4 - rand() * 10}`; x += w; }
+    shape(g, d + ` L ${CANVAS} ${y + 2} Z`, tone, night ? 0.9 : 0.7);
+    if (kinds.has("snow") || rand() > 0.5) for (const [px, py, w] of peaks)
+      shape(g, `M ${px} ${py} L ${px - w * 0.16} ${py + 14} L ${px - w * 0.05} ${py + 10} L ${px + w * 0.04} ${py + 15} L ${px + w * 0.16} ${py + 13} Z`, "#ffffff", 0.85);
+  }
   for (const b of backdrops.filter(b => b.kind === "hills")) {
     const y = s(b.args[0]), g = layer("far");
     shape(g, `M 0 ${y + 4} Q 60 ${y - 58} 140 ${y - 20} T 290 ${y - 34} T ${CANVAS} ${y - 14} L ${CANVAS} ${y + 4} Z`,
-      night ? "#3f5a4a" : "#9cc987", 0.75);
+      night ? "#3f5a4a" : "#9cc987", 0.85);
     shape(g, `M 0 ${y + 4} Q 90 ${y - 26} 190 ${y - 8} T ${CANVAS} ${y - 22} L ${CANVAS} ${y + 4} Z`,
-      night ? "#35503f" : "#86bb72", 0.8);
+      night ? "#35503f" : "#86bb72", 0.9);
+    // Fields on the far hill: rows of crops, a patchwork.
+    for (let i = 0; i < 5; i++) line(`M ${40 + i * 9} ${y - 22 + i * 4} q 50 -10 100 -2`, night ? "#2c4436" : "#6fa35b", 1.1, 0.6);
+    for (let i = 0; i < 4; i++) line(`M ${230 + i * 8} ${y - 26 + i * 5} q 45 -8 90 0`, night ? "#2c4436" : "#c9b458", 1.1, 0.7);
   }
   for (const b of backdrops.filter(b => b.kind === "forest")) {
-    const y = s(b.args[0]), g = layer("far");
-    for (let x = -6; x < CANVAS + 10; x += 16 + rand() * 10) {
-      const h = 34 + rand() * 30, w = 13 + rand() * 7;
-      shape(g, `M ${x} ${y + 3} L ${x + w} ${y - h} L ${x + 2 * w} ${y + 3} Z`, night ? "#233b2c" : "#4d7c52", 0.8);
+    const y = s(b.args[0]);
+    // Two rows of trees: the far one paler and smaller, the near one dark.
+    for (const [row, scale, tone] of [["far", 0.7, night ? "#1f3326" : "#7fa983"], ["far", 1, night ? "#233b2c" : "#4d7c52"]]) {
+      const g = layer(row);
+      for (let x = -6; x < CANVAS + 10; x += (16 + rand() * 10) * scale) {
+        const h = (34 + rand() * 30) * scale, w = (13 + rand() * 7) * scale, base = y + 3 - (scale < 1 ? 6 : 0);
+        shape(g, `M ${x} ${base} L ${x + w} ${base - h} L ${x + 2 * w} ${base} Z`, tone, 0.85);
+        shape(g, `M ${x + w * 0.35} ${base - h * 0.45} L ${x + w} ${base - h * 1.02} L ${x + w * 1.65} ${base - h * 0.45} Z`, tone, 0.6);
+      }
     }
   }
   for (const b of backdrops.filter(b => b.kind === "town")) {
     const y = s(b.args[0]), g = layer("far");
+    const tones = night ? ["#3f4561", "#4a4f6a", "#565b78"] : ["#c9c2bb", "#d8cfc2", "#b9c3cc"];
     for (let x = 0; x < CANVAS; ) {
       const w = 34 + rand() * 26, h = 40 + rand() * 70;
-      shape(g, `M ${x} ${y + 3} L ${x} ${y - h} L ${x + w - 4} ${y - h} L ${x + w - 4} ${y + 3} Z`, night ? "#4a4f6a" : "#c9c2bb", 0.85);
+      shape(g, `M ${x} ${y + 3} L ${x} ${y - h} L ${x + w - 4} ${y - h} L ${x + w - 4} ${y + 3} Z`, tones[Math.floor(rand() * 3)], 0.9);
+      if (rand() > 0.6) shape(g, `M ${x - 2} ${y - h} L ${x + (w - 4) / 2} ${y - h - 14} L ${x + w - 2} ${y - h} Z`, night ? "#2e3350" : "#b0776a", 0.9);
       for (let wy = y - h + 10; wy < y - 12; wy += 16)
         for (let wx = x + 7; wx < x + w - 14; wx += 12)
-          if (rand() > 0.35) shape(g, `M ${wx} ${wy} h 6 v 7 h -6 Z`, night ? "#f6d77a" : "#e9f2f8", 0.95);
+          if (rand() > 0.35) shape(g, `M ${wx} ${wy} h 6 v 7 h -6 Z`, night ? (rand() > 0.3 ? "#f6d77a" : "#3a3f5a") : "#e9f2f8", 0.95);
       x += w;
     }
   }
   if (water) {
     const top = s(water.args[0]);
     const bottom = ground && land > top ? land : CANVAS;
-    wash(0, top, CANVAS, bottom - top, "#5ba3d9", 0.55);
+    fillRect(0, top, CANVAS, bottom - top, gradient(night ? [[0, "#233a66"], [1, "#35598a"]] : dusk ? [[0, "#6c7fb0"], [1, "#e9a07e"]] : [[0, "#3f8ccc"], [1, "#8ccbe8"]]));
     line(skyline_d(top), PALETTE.blue, 1.8);
     const rows = Math.max(1, Math.round((bottom - top) / 34));
     for (let i = 0; i < rows; i++) {
       const y = top + (i + 0.6) * ((bottom - top) / (rows + 0.2));
       const x0 = 6 + rand() * 30;
       line(`M ${x0} ${y} q 12 -6 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0 t 24 0`,
-        PALETTE.blue, 1.4, 0.8, "ripple");
+        night ? "#9fb4d8" : PALETTE.blue, 1.4, 0.8, "ripple");
     }
+    // Light on the water: a few short bright strokes.
+    for (let i = 0; i < 7; i++) { const x = 20 + rand() * 360, y = top + 8 + rand() * (bottom - top - 16);
+      line(`M ${x} ${y} l ${10 + rand() * 12} 0`, night ? "#f6e7a1" : "#ffffff", 2, 0.7); }
   }
   if (ground) {
     const sand = ground.kind === "sand", snowy = ground.kind === "snow";
-    wash(0, land, CANVAS, CANVAS - land, sand ? "#ecd49a" : snowy ? "#f5f8fc" : "#9fcf7f", sand ? 0.75 : snowy ? 0.95 : 0.55);
+    fillRect(0, land, CANVAS, CANVAS - land, gradient(sand ? [[0, "#f3dfaa"], [1, "#e0bd78"]] :
+      snowy ? [[0, "#ffffff"], [1, "#dfe8f3"]] : [[0, "#b5dc93"], [1, "#78b35d"]]));
+    if (sand && water) {
+      // Surf where the sea meets the sand, and a band of wet sand.
+      fillRect(0, land, CANVAS, 16, "#d7b97a", { opacity: 0.6 });
+      line(`M 0 ${land + 3} q 20 -6 40 0 t 40 0 t 40 0 t 40 0 t 40 0 t 40 0 t 40 0 t 40 0 t 40 0 t 40 0`, "#ffffff", 3, 0.9);
+    }
     line(skyline_d(land), INK, 1.8);
     if (snowy) {
-      // Snow: soft blue shadows on the ground, and flakes in the air.
+      // Snow: drifts with blue shadows, and flakes in the air.
+      for (let i = 0; i < 3; i++) {
+        const x = rand() * (CANVAS - 120), y = land + 40 + rand() * (CANVAS - land - 70);
+        const g = layer("mid");
+        shape(g, `M ${x} ${y + 14} Q ${x + 60} ${y - 16} ${x + 120} ${y + 14} Z`, "#ffffff", 0.95);
+        line(`M ${x + 20} ${y + 12} Q ${x + 60} ${y - 2} ${x + 105} ${y + 12}`, "#b7c9de", 1.4, 0.8);
+      }
       for (let i = 0; i < 10; i++) {
         const x = 8 + rand() * (CANVAS - 40), y = land + 16 + rand() * (CANVAS - land - 26);
         line(`M ${x} ${y} q 14 -4 28 0`, "#a9bfd6", 1.4, 0.7);
@@ -768,17 +848,54 @@ function drawBackdrops(doc, parent, rc, backdrops, seed) {
     // read as rain in the first screenshots.
     else if (!sand) {
       const roads = backdrops.filter(b => b.kind === "road").map(b => s(b.args[0]));
+      // A path winding from the front up to the horizon, on hills and in woods.
+      if (kinds.has("hills") || kinds.has("forest")) {
+        const mid = 170 + rand() * 60, g = layer("mid");
+        shape(g, `M ${mid - 70} ${CANVAS} C ${mid - 40} ${CANVAS - 70} ${mid + 50} ${land + 70} ${mid - 6} ${land + 2} ` +
+          `L ${mid + 6} ${land + 2} C ${mid + 70} ${land + 70} ${mid + 30} ${CANVAS - 70} ${mid + 70} ${CANVAS} Z`, "#e3cf9e", 0.9);
+      }
+      // A fence along a farm's field.
+      if (kinds.has("hills")) {
+        const y = land + 34, g = layer("mid");
+        for (let x = 8; x < 150; x += 26) shape(g, `M ${x} ${y + 18} L ${x} ${y - 6} L ${x + 3} ${y - 9} L ${x + 6} ${y - 6} L ${x + 6} ${y + 18} Z`, "#b88a5a", 0.95, INK);
+        line(`M 4 ${y + 2} L 160 ${y + 2} M 4 ${y + 11} L 160 ${y + 11}`, "#8a6444", 2.4);
+      }
       for (let i = 0; i < 16; i++) {
         const x = 8 + rand() * (CANVAS - 16), y = land + 14 + rand() * (CANVAS - land - 22);
         if (roads.some(r => Math.abs(y - 3 - r) < 30)) continue;   // no grass on the road
         line(`M ${x - 5} ${y} L ${x - 2} ${y - 7} M ${x} ${y} L ${x + 1} ${y - 9} M ${x + 4} ${y} L ${x + 6} ${y - 6}`,
           PALETTE.green, 1.4, 0.75);
       }
+      // Wild flowers in the grass: small dots of colour.
+      if (!night) {
+        const g = layer("mid");
+        for (let i = 0; i < 18; i++) {
+          const x = 8 + rand() * (CANVAS - 16), y = land + 16 + rand() * (CANVAS - land - 24);
+          if (roads.some(r => Math.abs(y - r) < 26)) continue;
+          const c = ["#f28bb4", "#f6d04d", "#ffffff", "#b48be0"][Math.floor(rand() * 4)];
+          shape(g, `M ${x} ${y} m -3 0 a 3 3 0 1 0 6 0 a 3 3 0 1 0 -6 0`, c, 0.95);
+          shape(g, `M ${x} ${y} m -1.1 0 a 1.1 1.1 0 1 0 2.2 0 a 1.1 1.1 0 1 0 -2.2 0`, "#e6a23c", 1);
+        }
+      }
     } else {
       for (let i = 0; i < 22; i++) {
         const x = 8 + rand() * (CANVAS - 16), y = land + 8 + rand() * (CANVAS - land - 12);
         line(`M ${x} ${y} l 1.5 0.5`, "#9a7b3c", 1.6, 0.7);
       }
+    }
+    // Night falls on the ground too.
+    if (night) fillRect(0, land, CANVAS, CANVAS - land, "#0f1733", { opacity: 0.38 });
+    else if (dusk) fillRect(0, land, CANVAS, CANVAS - land, "#e9906a", { opacity: 0.15 });
+  }
+  // A town has a pavement and street lamps, lit at night.
+  if (kinds.has("town") && ground) {
+    const g = layer("mid");
+    fillRect(0, land, CANVAS, 14, "#cfc8bf", { opacity: 0.9 });
+    line(`M 0 ${land + 14} L ${CANVAS} ${land + 14}`, INK, 1.2, 0.7);
+    for (const x of [48, 212, 360]) {
+      shape(g, `M ${x - 2} ${land + 10} L ${x - 2} ${land - 48} L ${x + 2} ${land - 48} L ${x + 2} ${land + 10} Z`, "#4a4a55", 0.95);
+      if (night) shape(g, `M ${x} ${land - 54} m -16 0 a 16 16 0 1 0 32 0 a 16 16 0 1 0 -32 0`, "#ffe9a0", 0.35);
+      shape(g, `M ${x - 7} ${land - 48} L ${x + 7} ${land - 48} L ${x + 4} ${land - 58} L ${x - 4} ${land - 58} Z`, night ? "#ffe39a" : "#e8e2c8", 1, "#4a4a55");
     }
   }
   for (const b of backdrops.filter(b => b.kind === "road")) {
