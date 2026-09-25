@@ -1,6 +1,6 @@
 # Book without the model — a plan
 
-**Status: plan only. Nothing here is built.** Written after the owner's report:
+**Status: plan only. Nothing here is built. The owner's decisions are at the end.** Written after the owner's report:
 "The AI isn't doing much on this app, its story generation is faulty and never
 good." The ask: write the story with deterministic rules in the browser; let
 people write or paste their own story with the page guiding them; better
@@ -44,17 +44,44 @@ the real cost, and stage 1 measures it before anything ships.
 
 ---
 
-## The flow, as a person sees it
+## The flow, as a person sees it (decided)
+
+**Nothing downloads when the app opens.** The page opens on the first step,
+with no model card and no progress bar:
 
 ```
-1. Who is the hero?    [ photo → drawing of me ]  or  [ dog | cat | girl | boy | dragon | … ]  + a name
-2. The story           ( Make one for me )  or  ( I'll write / paste my own )
+1. Your picture        upload a photo (drawn as a caricature, or cut out), a pet, or a drawing
+                       — or skip and pick a kind: dog | cat | girl | boy | dragon | …   + a name
+2. Write the book      ( Make one for me )  or  ( I'll write / paste my own )
+                       the page writes, splits and checks — no model
 3. Check it            page by page: the words, and what will be drawn on each page
 4. The book            drawn, moving, read aloud — Share · Edit · Save
 ```
 
-It sits in Book mode's intro card, in place of the free-text premise box.
-Sketch mode keeps the composer and the model.
+Steps 1–4 need no model, so they work on any phone, offline after the first
+visit, with no download. The image is only ever processed in the tab.
+
+**The model downloads only when someone asks it to write.** Every model
+feature sits behind its own button. The first tap says what will happen before
+anything starts: "This downloads a writing helper once (~350 MB on this phone),
+then works offline. Download?" After that, it loads from the cache. The
+buttons:
+
+| Button | Where | What the model does | What the page checks |
+|---|---|---|---|
+| **Ideas for what happens next** | while writing your own | three suggestions, from the person's own text | nothing to check: the person picks one or ignores them |
+| **Things to draw here** | a page with nothing drawable | suggests picture words for that page | only words that have a picture are offered |
+| **Say it differently** | a rule-written or own page | rewrites one page | kept only if the names, drawn words, actions and "not"/"never" survive (`checkRewrite`); otherwise the original stays and the page says why |
+| **Draw anything** (Sketch mode) | Sketch | names the things in a free request | the existing scene rules |
+
+`?manual=1` and the storage-aware model pick stay. The pick now happens at
+the first tap, not at page load. Save-Data still asks first, and that question
+now covers every download.
+
+What leaves the page: the model card as the first thing a visitor sees, the
+auto-download on open, and `runBook()`'s model-written stories.
+`scripts/story-pass-bench.mjs` and `book-bench.mjs` keep the story prompt for
+benching.
 
 ---
 
@@ -343,11 +370,19 @@ What changes elsewhere (for the stage that touches it):
 - **Caricature-data link size:** measure `encodeMe()` output on the fixture photos.
 - **WebCodecs on the owner's iPhone:** a one-page probe before stage 6.
 
-## Decisions for the owner
+## Decisions made by the owner
 
-1. **Should the model leave Book mode entirely** (recommended), or stay as a third
-   "Let the model try" option once loaded?
-2. **Is the hero picture the caricature, a cut-out of the real photo, or both?**
-   Should pets and drawings be allowed?
-3. **Can a link carry the caricature's data if the person opts in**, or should
-   faces travel only in files?
+1. **The model leaves Book mode.** Book writes with rules or with the person.
+   The model is a helper behind buttons, never on the path to a finished book.
+2. **Pictures:** the caricature **and** a cut-out of the real photo; pets and
+   drawings are allowed too.
+3. **Links can carry the drawing** when the person switches it on. The default
+   link stays faceless. The photo itself never travels in a link.
+4. **No download on opening the app.** The page asks for a picture, then helps
+   write the book. A model downloads only when someone taps a button that needs
+   it to write.
+
+Build order starts with stage 1 (rules). The helper buttons come after stage 3.
+"Say it differently" is built only if its bench (Ollama, 0.6B and 1.7B: how many
+rewrites pass the check, and whether blind readers find the books less alike)
+beats the rules alone.
