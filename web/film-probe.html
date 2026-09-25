@@ -56,7 +56,7 @@
   </div>
 </main>
 <script type="module">
-import { setup, frameFn, makeVideo, RUN_KEY } from "./film/probe.mjs?v=1";
+import { setup, frameFn, makeVideo, RUN_KEY } from "./film/probe.mjs?v=2";
 
 const $ = id => document.getElementById(id);
 const q = new URLSearchParams(location.search);
@@ -99,7 +99,7 @@ $("load").onclick = async () => {
     ctx3 = await setup($("gl"), $("out"), { width: WIDTH, height: HEIGHT, shadows: SHADOWS });
     const info = ctx3.renderer.info;
     report.load = { ms: Math.round(ctx3.loadMs), MB: +(ctx3.bytes / 1e6).toFixed(2), triangles: info.render.triangles, drawCalls: info.render.calls, textures: info.memory.textures, geometries: info.memory.geometries, clips: ctx3.world.clipNames.length };
-    frameFn(ctx3.renderer, ctx3.world, ctx3.camera, ctx3.ctx)(4.5);
+    frameFn(ctx3)(4.5);
     status(`Loaded in ${(ctx3.loadMs / 1000).toFixed(1)} s. Preview first, then make the video.`);
     $("preview").disabled = $("make").disabled = false;
     $("record").disabled = !navigator.mediaDevices?.getUserMedia;
@@ -113,7 +113,7 @@ $("load").onclick = async () => {
 // Preview: real time, as fast as the device manages. Frame times are the measure.
 $("preview").onclick = async () => {
   $("preview").disabled = $("make").disabled = true;
-  const draw = frameFn(ctx3.renderer, ctx3.world, ctx3.camera, ctx3.ctx);
+  const draw = frameFn(ctx3);
   const times = [];
   const start = performance.now();
   let prev = start;
@@ -168,7 +168,7 @@ $("make").onclick = async () => {
   const heap = () => performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null;
   let heapMax = heap();
   try {
-    const r = await makeVideo({ ...ctx3, seconds: SECONDS, fps: FPS, voice: recorded,
+    const r = await makeVideo(ctx3, { seconds: SECONDS, fps: FPS, voice: recorded,
       onFrame: (f, total) => {
         if (cancelled) throw new Error("stopped");
         if (f % 24 === 0) {
@@ -209,8 +209,7 @@ $("cancel").onclick = () => { cancelled = true; };
 $("copy").onclick = () => navigator.clipboard?.writeText($("report").textContent).then(() => { $("copy").textContent = "Copied"; setTimeout(() => $("copy").textContent = "Copy the report", 1500); });
 // For the tests and for looking at single frames: __probe.still(seconds).
 window.__probe = { report, get ready() { return !!ctx3; },
-  debug: t => { frameFn(ctx3.renderer, ctx3.world, ctx3.camera, ctx3.ctx)(t); const T = ctx3.T, out = {}; for (const [n, c] of Object.entries(ctx3.world.cast)) { const b = new T.Box3().setFromObject(c.body); out[n] = { min: b.min.toArray().map(v => +v.toFixed(2)), max: b.max.toArray().map(v => +v.toFixed(2)), head: c.head.getWorldPosition(new T.Vector3()).toArray().map(v => +v.toFixed(2)) }; } out.cam = ctx3.camera.position.toArray().map(v => +v.toFixed(2)); out.pieces = ctx3.world.scene.children.filter(o => o.type === 'Group' && !o.children.some(k => k.isSkinnedMesh)).flatMap(g => g.children).slice(0, 40).map(o => { const b = new T.Box3().setFromObject(o); return o.name + ' ' + b.min.toArray().map(v => v.toFixed(2)) + ' / ' + b.max.toArray().map(v => v.toFixed(2)); }); return out; },
-  still: t => { const shot = frameFn(ctx3.renderer, ctx3.world, ctx3.camera, ctx3.ctx)(t); return { shot, jpeg: $("out").toDataURL("image/jpeg", 0.85) }; } };
+  still: t => { const shot = frameFn(ctx3)(t); return { shot, jpeg: $("out").toDataURL("image/jpeg", 0.85) }; } };
 </script>
 </body>
 </html>

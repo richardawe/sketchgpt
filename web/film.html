@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Film</title>
+<meta name="description" content="Write a scene in plain prose; this page stages it in 3D and makes the video, on your device. No AI model, nothing uploaded.">
+<style>
+  :root { --bg: #f6f2ea; --ink: #221e1a; --muted: #6f665c; --card: #fffdf8; --line: #ded6ca; --accent: #8a3b12; --warn: #9a5b00; --guess: #fff1cc; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #151311; --ink: #eee7dc; --muted: #a39888; --card: #1f1c19; --line: #36302a; --accent: #f0a070; --warn: #f0c060; --guess: #3a3020; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 22px 0 8px; }
+  p { margin: 0 0 10px; }
+  .muted { color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  textarea { width: 100%; min-height: 240px; font: inherit; font-size: 16px; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); resize: vertical; }
+  button, select, .dl { font: inherit; font-size: 16px; padding: 9px 13px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; text-decoration: none; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+  .length { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .over { color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: top; }
+  .beat-line td:first-child { width: 8.5em; }
+  select { max-width: 100%; }
+  .person { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+  .person:first-child { border-top: 0; padding-top: 0; }
+  .person > div { min-width: 7em; }
+  td { overflow-wrap: anywhere; }
+  .guessed { background: var(--guess); }
+  .badge { font-size: 12px; padding: 1px 6px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .notes li { color: var(--warn); }
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+  @media (min-width: 720px) { .stage { grid-template-columns: 300px minmax(0, 1fr); } }
+  canvas#out { width: 100%; max-width: 300px; aspect-ratio: 9 / 16; background: #000; border-radius: 10px; display: block; margin: 0 auto; }
+  canvas#gl { display: none; }
+  video { width: 100%; max-width: 300px; border-radius: 10px; display: block; margin: 8px auto; }
+  progress { width: 100%; }
+  .gate { max-width: 560px; margin: 12vh auto; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <section id="gate" class="gate card" hidden>
+    <h1>Film</h1>
+    <p><strong>Stories for adults.</strong> Scenes here can have violence, swearing, drinking and implied sex, written by whoever uses the page. Nothing explicit is drawn.</p>
+    <p class="muted">No AI model: the page reads your prose with fixed rules and stages it with free CC0 3D people and rooms. Nothing you write leaves this device.</p>
+    <button id="enter" class="primary">I'm an adult — continue</button>
+  </section>
+
+  <div id="app" hidden>
+    <h1>Film</h1>
+    <p class="muted">Write a scene in plain prose. The page finds who speaks and what they do, stages it in a living room, and makes the video, on this device. No AI model, nothing uploaded. <a href="film-probe.html">How fast is this phone?</a></p>
+
+    <h2>1. Write</h2>
+    <textarea id="story" spellcheck="true" aria-label="Your story"></textarea>
+    <div class="row"><span>Length <span id="length" class="length">0:00</span> of 2:00</span><button id="sample">Use the sample</button><button id="clear">Clear</button></div>
+    <p class="muted">Quotes are lines: <em>"Sit down," Tom said.</em> Blank lines separate paragraphs; a new place or "that night" starts a new scene.</p>
+
+    <h2>2. Cast</h2>
+    <div id="cast" class="card"><p class="muted">Names appear here as you write.</p></div>
+
+    <h2>3. Check</h2>
+    <p class="muted">Lines on a yellow background were given to someone by the novel's rule (lines alternate between two people). Change any speaker here.</p>
+    <ul id="notes" class="notes"></ul>
+    <div id="check" class="card"><p class="muted">Nothing yet.</p></div>
+
+    <h2>4. Watch</h2>
+    <div class="stage">
+      <div><canvas id="out" width="720" height="1280"></canvas><canvas id="gl"></canvas></div>
+      <div>
+        <div class="row"><button id="play" class="primary">Load and play (~7 MB, once)</button><button id="stop" hidden>Stop</button></div>
+        <div id="status" class="muted"></div>
+        <h2>5. Make the video</h2>
+        <div class="row"><button id="make" disabled>Make the video</button><button id="cancel" hidden>Stop</button></div>
+        <progress id="prog" value="0" max="1" hidden></progress>
+        <div id="result"></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script type="module">
+import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS } from "./film.mjs?v=1";
+
+const $ = id => document.getElementById(id);
+const safe = f => { try { return f(); } catch { return null; } };
+const GATE = "sketchgpt.film.adult", DRAFT = "sketchgpt.film.draft";
+const q = new URLSearchParams(location.search);
+const WIDTH = Math.max(180, Math.min(1080, +q.get("width") || 720)), HEIGHT = Math.round(WIDTH * 16 / 9), FPS = Math.max(4, Math.min(60, +q.get("fps") || 24));
+const LOOK_NAMES = ["Woman, long dark hair, red top", "Man, beard, pale shirt", "Woman, fair hair in buns, green top", "Man, brown hair, navy top"];
+
+// Everything the page knows, rebuilt from the text on every edit.
+const state = { pronouns: {}, looks: {}, speakers: {}, story: null, film: null, stage: null, stageCast: null, playing: false };
+
+function open() { $("gate").hidden = true; $("app").hidden = false; }
+if (safe(() => localStorage.getItem(GATE)) === "yes") open(); else $("gate").hidden = false;
+$("enter").onclick = () => { safe(() => localStorage.setItem(GATE, "yes")); open(); };
+
+$("story").value = safe(() => localStorage.getItem(DRAFT)) ?? SAMPLE;
+$("sample").onclick = () => { $("story").value = SAMPLE; update(); };
+$("clear").onclick = () => { $("story").value = ""; update(); };
+let timer = 0;
+$("story").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(update, 250); });
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+
+// The person's corrections sit on top of the rules: a speaker chosen here wins.
+function read() {
+  const text = $("story").value;
+  safe(() => localStorage.setItem(DRAFT, text));
+  const story = readStory(text, { pronouns: state.pronouns });
+  let i = 0;
+  for (const s of story.scenes) for (const b of s.beats) if (b.kind === "line") {
+    const key = i++ + ":" + b.text;
+    if (state.speakers[key] !== undefined) { b.speaker = state.speakers[key] || null; b.how = "chosen"; }
+    b.key = key;
+  }
+  story.cast = story.cast.slice(0, 4);
+  return story;
+}
+
+function update() {
+  const story = state.story = read();
+  const film = state.film = block(story);
+  $("length").textContent = clock(film.length);
+  $("length").classList.toggle("over", film.over);
+  $("length").title = film.over ? `Over ${clock(LIMIT_SECONDS)}: the video will be long` : "";
+  renderCast(story);
+  renderCheck(story);
+  // A stage built for other people can't play this cast.
+  const castKey = story.cast.map(c => c.name + "=" + (state.looks[c.name] ?? "")).join("|");
+  if (state.stage && state.stageCast !== castKey) { $("play").textContent = "Reload and play"; }
+  $("make").disabled = !state.stage || state.stageCast !== castKey || !film.lines.length;
+}
+
+function renderCast(story) {
+  if (!story.cast.length) { $("cast").innerHTML = `<p class="muted">Names appear here as you write.</p>`; return; }
+  $("cast").innerHTML = story.cast.map((c, i) => {
+    const look = state.looks[c.name] ?? (state.looks[c.name] = defaultLook(c, i));
+    return `<div class="person"><div><strong>${esc(c.name)}</strong> <span class="muted">${c.lines} line${c.lines === 1 ? "" : "s"}</span></div>
+      <label>Pronoun <select data-pronoun="${esc(c.name)}"><option value="">choose</option>${["she", "he", "they"].map(p => `<option ${c.pronoun === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>
+      <label>Looks like <select data-look="${esc(c.name)}">${LOOK_NAMES.map((n, j) => `<option value="${j}" ${look === j ? "selected" : ""}>${n}</option>`).join("")}</select></label></div>`;
+  }).join("") + `
+  <p class="muted">The free CC0 tier has two bodies; hair, colour and clothes make four people of them.</p>`;
+}
+// A look matching the pronoun once it's chosen; otherwise in order.
+function defaultLook(c, i) { return c.pronoun === "he" ? (i < 2 ? 1 : 3) : c.pronoun === "she" ? (i < 2 ? 0 : 2) : i % 4; }
+$("cast").addEventListener("change", e => {
+  const t = e.target;
+  if (t.dataset.pronoun) { state.pronouns[t.dataset.pronoun] = t.value || undefined; if (!t.value) delete state.pronouns[t.dataset.pronoun]; const c = state.story.cast.findIndex(x => x.name === t.dataset.pronoun); state.looks[t.dataset.pronoun] = defaultLook({ pronoun: t.value }, c); }
+  if (t.dataset.look) state.looks[t.dataset.look] = +t.value;
+  update();
+});
+
+const MOVE_WORDS = { enter: "comes in", exit: "leaves", sit: "sits", stand: "stands", walk: "walks", nod: "nods", no: "shakes head", arms: "folds arms",
+  drink: "drinks", phone: "on the phone", punch: "punches", fall: "falls", die: "dies", shoot: "shoots", gun: "draws a gun", pick: "picks up", dance: "dances", push: "pushes", getup: "gets up" };
+function renderCheck(story) {
+  $("notes").innerHTML = story.notes.map(n => `<li>${esc(n)}</li>`).join("");
+  const names = story.cast.map(c => c.name);
+  const rows = story.scenes.map((s, si) => `<tr><td colspan="2"><strong>Scene ${si + 1}</strong> <span class="muted">${esc(s.place)}${s.time ? ", " + esc(s.time) : ""}</span></td></tr>` +
+    s.beats.map(b => b.kind === "line"
+      ? `<tr class="beat-line ${b.how === "guessed" ? "guessed" : ""}"><td><select data-line="${esc(b.key)}" aria-label="Who says this"><option value="">nobody</option>${names.map(n => `<option ${b.speaker === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></td>
+         <td>“${esc(b.text)}” <span class="badge">${{ tag: "said so", paragraph: "same paragraph", continued: "continues", guessed: "guessed", unknown: "not given", chosen: "you chose" }[b.how]}</span>${b.manner !== "plain" ? ` <span class="badge">${b.manner}</span>` : ""}</td></tr>`
+      : `<tr><td>${esc(b.who)}</td><td class="muted">${MOVE_WORDS[b.move] || b.move} <span class="badge">“${esc(b.text)}”</span></td></tr>`).join("")).join("");
+  $("check").innerHTML = rows ? `<table>${rows}</table>` : `<p class="muted">Nothing yet.</p>`;
+}
+$("check").addEventListener("change", e => { if (e.target.dataset.line) { state.speakers[e.target.dataset.line] = e.target.value; update(); } });
+
+// ---------------------------------------------------------------- the stage
+let stageMod = null;
+async function ensureStage() {
+  const story = state.story;
+  const castKey = story.cast.map(c => c.name + "=" + (state.looks[c.name] ?? "")).join("|");
+  if (state.stage && state.stageCast === castKey) { const { recast } = stageMod; recast(state.stage, state.film); return state.stage; }
+  stageMod ||= await import("./film/stage.mjs?v=1");
+  const { setup, LOOKS } = stageMod;
+  const looks = Object.fromEntries(story.cast.map(c => [c.name, LOOKS[state.looks[c.name] ?? 0]]));
+  if (state.stage) { state.stage.renderer.dispose(); const gl = $("gl"), fresh = gl.cloneNode(); gl.replaceWith(fresh); }
+  $("status").textContent = "Loading people, movements and the room…";
+  state.stage = await setup($("gl"), $("out"), state.film, { looks, shotAt: t => shotAt(state.stage ? state.stage.film : state.film, t), width: WIDTH, height: HEIGHT });
+  state.stageCast = castKey;
+  $("status").textContent = `Loaded ${(state.stage.bytes / 1e6).toFixed(1)} MB in ${(state.stage.loadMs / 1000).toFixed(1)} s.`;
+  return state.stage;
+}
+
+$("play").onclick = async () => {
+  if (!state.story.cast.length || !state.film.lines.length) { $("status").textContent = "Write at least one line someone says first."; return; }
+  $("play").disabled = true;
+  try {
+    const stage = await ensureStage();
+    const { frameFn } = stageMod;
+    const draw = frameFn(stage);
+    state.playing = true; $("stop").hidden = false; $("play").textContent = "Play again"; update();
+    const start = performance.now();
+    await new Promise(done => {
+      const tick = now => {
+        const t = (now - start) / 1000;
+        if (!state.playing || t > state.film.length) return done();
+        draw(t);
+        $("status").textContent = `${clock(t)} / ${clock(state.film.length)}`;
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  } catch (e) {
+    $("status").textContent = "Could not play: " + e.message;
+  } finally { state.playing = false; $("stop").hidden = true; $("play").disabled = false; update(); }
+};
+$("stop").onclick = () => { state.playing = false; };
+
+let cancelled = false;
+$("make").onclick = async () => {
+  $("make").disabled = $("play").disabled = true; $("cancel").hidden = false; $("prog").hidden = false; cancelled = false;
+  let lock = null;
+  try { lock = await navigator.wakeLock?.request("screen"); } catch {}
+  try {
+    const stage = await ensureStage();
+    const r = await stageMod.makeVideo(stage, { seconds: state.film.length, fps: FPS,
+      onFrame: () => { if (cancelled) throw new Error("stopped"); },
+      onProgress: (k, ms) => { $("prog").value = k; $("status").textContent = `Making the video: ${Math.round(k * 100)}% — about ${Math.ceil(ms / k * (1 - k) / 1000)} s left`; } });
+    const url = URL.createObjectURL(r.blob), name = `film.${r.ext}`;
+    $("result").innerHTML = "";
+    const v = document.createElement("video"); v.src = url; v.controls = true; v.playsInline = true; $("result").append(v);
+    const a = document.createElement("a"); a.href = url; a.download = name; a.className = "dl"; a.textContent = `Save the video (${(r.blob.size / 1e6).toFixed(1)} MB)`; $("result").append(a);
+    const file = new File([r.blob], name, { type: r.blob.type });
+    if (navigator.canShare?.({ files: [file] })) { const s = document.createElement("button"); s.textContent = "Share"; s.onclick = () => navigator.share({ files: [file] }).catch(() => {}); $("result").append(" ", s); }
+    $("status").textContent = `Made ${clock(state.film.length)} of video in ${(r.wallMs / 1000).toFixed(0)} s (${r.ext.toUpperCase()}, ${r.audioCodec ? "with sound" : "silent: no audio encoder"}).`;
+    window.__film.video = { ok: true, ext: r.ext, audio: r.audioCodec, frames: r.frames, bytes: r.blob.size };
+  } catch (e) {
+    $("status").textContent = e.message === "stopped" ? "Stopped." : "The video failed: " + e.message;
+    window.__film.video = { ok: false, error: String(e) };
+  } finally { lock?.release?.(); $("cancel").hidden = true; $("prog").hidden = true; $("play").disabled = false; update(); }
+};
+$("cancel").onclick = () => { cancelled = true; };
+
+// For the tests: the page's state, and single frames.
+window.__film = { state, still: t => stageMod.frameFn(state.stage)(t) };
+update();
+</script>
+</body>
+</html>

@@ -95,13 +95,28 @@ test("film-probe.html is deployed with its module, every asset it loads, and its
   const { existsSync } = await import("node:fs");
   assert.match(workflow, /cp web\/film-probe\.html\s/);
   assert.match(workflow, /cp -r web\/film\s+_site\/film/);
-  const html = web("film-probe.html"), mod = web("film/probe.mjs");
+  const html = web("film-probe.html"), probe = web("film/probe.mjs"), mod = web("film/stage.mjs");
   assert.match(html, /"\.\/film\/probe\.mjs\?v=\d+"/);
+  assert.match(probe, /"\.\/stage\.mjs\?v=\d+"/, "the probe draws on the shared stage");
   const vendor = [...mod.matchAll(/"\.\.\/vendor\/([\w.-]+\.mjs)(?:\?v=\d+)?"/g)].map(m => m[1]);
   assert.deepEqual(vendor.sort(), ["mediabunny-film.mjs", "three.mjs"]);
   for (const v of vendor) assert.ok(existsSync(new URL(`../web/vendor/${v}`, import.meta.url)), `vendor/${v} missing`);
   const assets = new Set([...mod.matchAll(/"([\w-]+\.(?:glb|hdr))"/g)].map(m => m[1]));
-  assert.ok(assets.size >= 9, `${assets.size} assets named`);
+  assert.ok(assets.size >= 7, `${assets.size} assets named`);
   for (const a of assets) assert.ok(existsSync(new URL(`../web/film/assets/${a}`, import.meta.url)), `film/assets/${a} missing`);
   assert.ok(existsSync(new URL("../web/film/assets/LICENSE.txt", import.meta.url)), "the assets say where they came from");
+});
+
+test("film.html is deployed with its reader and stage, at one version each", async () => {
+  const { existsSync } = await import("node:fs");
+  assert.match(workflow, /cp web\/film\.html\s/);
+  assert.match(workflow, /cp web\/film\.mjs\s/);
+  const html = web("film.html"), stage = web("film/stage.mjs");
+  const versions = new Set([...html.matchAll(/"\.\/film\.mjs\?v=(\d+)"/g), ...stage.matchAll(/"\.\.\/film\.mjs\?v=(\d+)"/g)].map(m => m[1]));
+  assert.equal(versions.size, 1, `film.mjs imported as v=${[...versions]}`);
+  assert.match(html, /"\.\/film\/stage\.mjs\?v=\d+"/);
+  assert.ok(existsSync(new URL("../web/film/stage.mjs", import.meta.url)));
+  // The stage names its assets by pattern (`${body}.glb`); every name it can make exists.
+  for (const a of ["woman.glb", "man.glb", "beard.glb", "room.glb", "moves-1.glb", "moves-2.glb", "lebombo_1k.hdr", ...[...stage.matchAll(/"(hair-[\w]+\.glb)"/g)].map(m => m[1])])
+    assert.ok(existsSync(new URL(`../web/film/assets/${a}`, import.meta.url)), a);
 });

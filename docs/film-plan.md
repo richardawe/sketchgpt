@@ -1,9 +1,14 @@
 # Film — a grown-up version of Book, without a model — a plan
 
-**Status: stage 0 is built and tested in headless Chromium, and has never run
-on a phone (`web/film-probe.html`, "Stage 0 as built" below). The free tiers
-turned out smaller than their "60–70%": two bodies, no clothes, no faces that
-move. Stages 1–6 are not built.**
+**Status: stages 0 and 1 are built and tested in headless Chromium. Neither
+has run on a phone.**
+
+- Stage 0 is `web/film-probe.html`, a probe of what a phone can render.
+- Stage 1 is `web/film.html`: plain prose in, a 3D scene and its video out.
+
+Both are described under "as built" below. The free tiers turned out smaller
+than their "60–70%": two bodies, no clothes, no faces that move. Stages 2–6
+are not built.**
 
 The owner said: "The general direction of this works, can we have an adult
 version? No AI, better and more realistic libraries, actual moving objects and
@@ -389,6 +394,92 @@ new bundles for logging endpoints (none).
 - whether the file plays in Photos and shares to Messages.
 
 SwiftShader has no GPU, so its speed says nothing about a phone's.
+
+## Stage 1 as built
+
+`web/film.html` + `web/film.mjs` (pure: the rules) + `web/film/stage.mjs`
+(three.js: the room, the people, the camera, the video). The probe now draws
+on the same stage, so anything measured on it holds for Film.
+
+The page, top to bottom:
+
+1. **Adult notice.** "Stories for adults… nothing explicit is drawn." One
+   tap, remembered on this device.
+2. **Write.** Plain prose, saved as a draft on this device. The length
+   ("0:40 of 2:00") updates as you type.
+3. **Cast.** Every name found, with a **pronoun to choose** (never guessed)
+   and a look: 4 looks from the 2 free bodies (hair, colours, painted
+   clothes).
+4. **Check.** Every line and every move, scene by scene. Each line shows how
+   its speaker was found: *said so*, *same paragraph*, *continues* or
+   *guessed*. Guessed lines are highlighted yellow, and every line has a
+   speaker menu, where the person's choice wins over the rules. Notes list
+   what the page couldn't do ("No move for 'hesitated'", "'she' could be
+   Maya or Ruth").
+5. **Watch.** Loads ~7 MB once, then plays in real time.
+6. **Make the video.** The whole film, 720×1280, 24 fps, with the music bed.
+   Then Save or Share.
+
+**The rules, as tested** (`tests/film.test.mjs`, 16 tests,
+mutation-checked):
+
+- **Cast:** capitalised words that stand mid-sentence, in a speech tag, in a
+  possessive, in a list ("Maya and Ruth"), or at a sentence start before a
+  verb. Words that merely start sentences ("No", "Don't", "Tonight") are not
+  names.
+- **Speakers, in order:**
+  1. the tag before or after the quote (`"…," she whispered` gives Maya,
+     manner *quiet*);
+  2. a continuation of the same speaker's quote;
+  3. someone acting in the same paragraph;
+  4. the novel's alternation between exactly two people, marked
+     **guessed**.
+
+  With three people in the room, an untagged line goes to nobody, with a
+  note.
+- **Pronouns** (including her/his/their) resolve only when exactly one
+  person present has that pronoun.
+- **Moves:** 19 kinds (enter, exit, sit, stand, walk, nod, shake head, fold
+  arms, drink, phone, punch, fall, die, shoot, draw a gun, pick up, dance,
+  push, get up), each mapped to a free-tier clip. **The test reads the clip
+  names out of the shipped GLBs.**
+  - Negations, wishes and plans are not deeds: *didn't*, *wanted to*,
+    *tried to*, *would*.
+  - A speech tag is not an action, and only counts as a tag when it sits
+    next to a quote ("She answered the phone" is a move).
+  - "Tom, Maya and Ruth sat" seats all three.
+  - A verb with no move is listed.
+- **Scenes** break on a paragraph with a new place or a time jump ("That
+  night…"). Stage 1 plays every scene in the one living room and says so.
+- **Timing:** 150 words a minute per line, walks at 1.25 m/s, fixed holds
+  per move, a 2-second wide shot opening each scene. Over 2:00, the length
+  turns amber and nothing is cut.
+- **Camera:** wide on scene starts and walks; on a line, a medium close-up
+  of the speaker; on other moves, the person doing them; otherwise both
+  people. **The 180° rule is a test:** between wide shots, every frame's
+  camera is on one side of the line between the two people.
+
+`tests/film-browser.mjs` runs on a touch screen and is mutation-checked
+(corrections ignored, no notice, a cast row wider than the phone, a camera
+that ignores the speaker). It covers:
+
+- the notice;
+- nothing wider than the phone (the first build was 539 px wide in a 390 px
+  viewport, and the zoomed-out page put a canvas over the buttons);
+- pronouns asked, not guessed;
+- the guessed line highlighted, and corrected by the person;
+- the stage loads, and every line's frame is shot on its speaker;
+- a video of every frame, with sound, playing for the film's length;
+- the draft surviving a reload.
+
+**Not built in stage 1:** sets other than the living room (stage 2), props
+in hand, per-line recorded voices (stage 4), share links (stage 6), and a
+look chosen per scene.
+
+**Not tested:** any phone. Also, whether rules-directed shots are watchable
+to anyone but the page's tests, and real writers' prose: the rules are
+tested on sentences written for the tests. Stage 3's corpus count is where
+that gets measured.
 
 ## What is not known, and how each gets known
 

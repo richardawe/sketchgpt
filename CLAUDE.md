@@ -80,10 +80,13 @@ docs/storybook.md         a story written by the model, illustrated by the page 
 docs/story-rules.md       Book without the model — all six stages built: rules, no download, own story, scenery, pictures, GIF
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
-docs/film-plan.md         "Film": user prose → 2-min 3D video, phone first, no model; stage 0 built, stages 1–6 planned;
+docs/film-plan.md         "Film": user prose → 2-min 3D video, phone first, no model; stages 0–1 built, 2–6 planned;
                           mature tier only (explicit content is banned on GitHub — read before building)
+web/film.html             Film stage 1: adult notice → write prose → cast (pronouns asked) → check (guesses shown) → watch → video
+web/film.mjs              Film's rules, pure: prose → cast/lines/moves (readStory), timelines (block), shots + 180° rule
+web/film/stage.mjs        the shared three.js stage: room, people, painted-on clothes, camera, soundtrack, video
 web/film-probe.html       Film stage 0: can this phone make a 2-minute 3D video? numbers in a copyable report
-web/film/probe.mjs        the probe's scene, rule-cut camera, painted-on clothes, soundtrack, video (three.js)
+web/film/probe.mjs        the probe's hand-written 30 s scene, drawn on the shared stage
 web/film/assets/          CC0 people, 84 movements, a room, an HDRI (~6.9 MB) — regenerate, never hand-edit
 web/vendor/three.mjs      three.js 0.186.1 bundle; mediabunny-film.mjs = Book's writer + audio (scripts/film/vendor.mjs)
 scripts/film/             inventory.mjs (what a glTF pack contains), build-assets.mjs, vendor.mjs
@@ -630,7 +633,10 @@ practical fine-tuning.
   has the reader on every page, blinking; shared links carry only "me" and
   show a stand-in child (`tests/me-browser.mjs`). The Book intro links to
   selfie.html.
-- **Film stage 0 is built and has never run on a phone** (`docs/film-plan.md`).
+- **Film stages 0–1 are built and have never run on a phone** (`docs/film-plan.md`).
+  Stage 1 (`film.html`) reads plain prose by rules — speakers from tags, the
+  paragraph, then a marked "guessed" alternation; pronouns asked; the 180°
+  rule a test — and plays it in one living room.
   Open `film-probe.html` on the owner's iPhone, make the 2-minute video, copy
   the report. That decides the phone budget before stage 1. Found building it:
   the free Quaternius tiers are **two bodies, no clothes, no facial morphs**
