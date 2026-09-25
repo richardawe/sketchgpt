@@ -68,13 +68,15 @@ try {
       // A normal disk. Headless Chromium here offers ~0.9 GB, which makes the page
       // (correctly) pick a smaller model than a real desktop gets.
       if (navigator.storage) navigator.storage.estimate = async () => ({ quota: 50e9, usage: 0 });
+      // The model streams in Sketch; Book writes with rules and has nothing to stop.
+      localStorage.setItem('sketchgpt.cfg', JSON.stringify({ output: 'sketch' }));
   });
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.pathname === '/mock.mjs')
       return route.fulfill({ contentType: 'text/javascript', body: stub });
     const name = url.pathname.replace(/^.*\//, '');
-    const file = /^(sketch|stamps|rough|book|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
+    const file = /^(sketch|stamps|rough|book|story|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
     await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
@@ -90,11 +92,12 @@ try {
   // ---- 1. a stop stops --------------------------------------------------
   await page.fill('#input', 'a dog who counts');
   await page.click('#send');
-  await page.waitForFunction(() => /\d{2,} characters/.test(document.querySelector('.book-status')?.textContent || ''));
+  await page.waitForFunction(() => window.started === 1);
+  await page.waitForTimeout(150);                 // some ticks arrive
   await page.click('#stop');
   await ready();
 
-  assert.match(await page.locator('.book-status').last().textContent(), /Stopped/, 'Stop was not reported');
+  assert.match(await page.locator('.msg.assistant').last().textContent(), /stopped/i, 'Stop was not reported');
   // The generator must have run to its end rather than being abandoned: that
   // is the whole difference between draining and breaking.
   assert.equal(await page.evaluate(() => window.finished), 1,
@@ -110,9 +113,8 @@ try {
   // lock that was never released, and nothing below ever resolves.
   await page.fill('#input', 'again please');
   await page.click('#send');
-  await page.waitForFunction(
-    () => /\d+ characters/.test(document.querySelectorAll('.book-status')[1]?.textContent || ''),
-    null, { timeout: 15000 });
+  await page.waitForFunction(() => window.started === 2, null, { timeout: 15000 });
+  await page.waitForTimeout(100);
   assert.equal(await page.evaluate(() => window.blocked || 0), 0,
     'the second turn had to wait for a leaked lock');
   assert.equal(await page.evaluate(() => window.started), 2, 'the second generation never began');

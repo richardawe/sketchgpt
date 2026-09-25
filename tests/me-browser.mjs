@@ -1,13 +1,14 @@
 // "Star in a book": a photo drawn on selfie.html becomes the hero of the next
-// book written on the main page — on a touch screen, with a stub model.
+// book made on the main page — on a touch screen. Books are written by rules
+// (web/story.mjs), so no model is involved at all.
 //
 //   PLAYWRIGHT_MODULE=... SKETCH_CHROME=... node tests/me-browser.mjs
 //
 // Holds the page to:
 //   - only the drawing travels (after the "#", cleared from the address bar at
 //     once), and only for this tab: a new tab has no hero;
-//   - the reader's name reaches the model, and their figure is on the cover
-//     and on every page of a book they write;
+//   - the builder starts with the reader as the hero, under their name, and
+//     their figure is on the cover and on every page of the book;
 //   - a shared book never shows the reader's face: "me" there is a stand-in;
 //   - nothing goes anywhere but the site.
 import assert from "node:assert/strict";
@@ -28,9 +29,10 @@ const server = await serve(new URL("../web/", import.meta.url).pathname);
 const browser = await launch();
 const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 const outside = [], errors = [];
+let lib = 0;
 await context.route("**/*", r => {
   const u = r.request().url();
-  if (/cdn\.jsdelivr\.net\/npm\/@mlc-ai\/web-llm/.test(u)) return r.fulfill({ contentType: "text/javascript", body: stub });
+  if (/cdn\.jsdelivr\.net\/npm\/@mlc-ai\/web-llm/.test(u)) { lib++; return r.fulfill({ contentType: "text/javascript", body: stub }); }
   if (!u.startsWith(server.url) && !/^(data|blob):/.test(u)) { outside.push(u); return r.abort(); }
   return r.continue();
 });
@@ -53,18 +55,18 @@ await page.waitForFunction(() => !location.hash);
 assert.ok(await page.evaluate(() => sessionStorage.getItem("sketchgpt.me")), "the drawing is kept for this tab");
 assert.equal(await page.evaluate(() => location.hash), "", "the drawing is cleared from the address bar");
 
-// 2. The model loads (stub); the intro says who the hero is.
-await page.waitForFunction(() => !document.querySelector("#send").disabled, null, { timeout: 60000 });
-await page.waitForSelector("#intro .me-note .me-thumb svg");
+// 2. The builder says who the hero is, and starts with them.
+await page.waitForSelector("#intro .me-note .me-thumb svg", { timeout: 60000 });
 assert.match(await page.textContent("#intro .me-note"), /hero of your next book, as Kate/);
+assert.equal(await page.getAttribute("#kinds [aria-pressed=true]", "data-value"), "me");
+assert.equal(await page.inputValue("#hero-name"), "Kate");
 
-// 3. Write a book: the name reaches the model, the face is on every page.
-await page.fill("#input", "a girl who finds a dragon egg");
-await page.tap("#send");
+// 3. Make a book: Kate on every page, in words and as her drawing.
+await page.tap("#write");
 await page.waitForFunction(() => document.querySelectorAll(".book .art svg").length >= 7, null, { timeout: 60000 });
-const req = await page.evaluate(() => window.requests[0].messages.at(-1).content);
-assert.match(req, /The hero is called Kate\./);
-assert.doesNotMatch(req, /data:|base64|me=z/, "nothing of the drawing goes to the model");
+const words = await page.$$eval(".book .page-text", ps => ps.slice(0, 6).map(p => p.textContent));
+assert.ok(words.every(t => /\bKate\b/.test(t)), words.join(" | "));
+assert.equal(lib, 0, "a book fetched the model library");
 const arts = await page.$$eval(".book .art", as => as.map(a => !!a.querySelector('[data-thing="me"][data-figure] [data-part="head"]')));
 assert.equal(arts.length, 7);
 assert.ok(arts.every(Boolean), `the reader is on every page and the cover: ${arts}`);
@@ -84,9 +86,9 @@ if (process.env.SHOT) for (const i of [0, 2, 5]) {
 // 4. A new tab has no hero.
 const other = await context.newPage();
 await other.goto(server.url);
-await other.waitForFunction(() => !document.querySelector("#send").disabled, null, { timeout: 60000 });
-await other.waitForSelector("#intro .me-note");
-assert.match(await other.textContent("#intro .me-note"), /draw yourself from a photo/);
+await other.waitForSelector("#intro .me-note", { timeout: 60000 });
+assert.match(await other.textContent("#intro .me-note"), /Use a photo of me/);
+assert.equal(await other.locator('#kinds [data-value="me"]').count(), 0, "a new tab offered a drawing it does not have");
 assert.equal(await other.evaluate(() => sessionStorage.getItem("sketchgpt.me")), null);
 
 // 5. A shared book with "me" in it, opened in the tab that has a hero: a stand-in.
@@ -104,5 +106,5 @@ assert.ok(await page.$$eval('.book .art [data-thing="child"]', n => n.length) >=
 
 assert.deepEqual(outside, [], "requests outside the site");
 assert.deepEqual(errors, [], "page errors");
-console.log("me-browser: ok — the drawing travels only in this tab, Kate is on every page, a shared book shows a stand-in");
+console.log("me-browser: ok — the drawing travels only in this tab, the builder starts with Kate, she is on every page with no model, a shared book shows a stand-in");
 await browser.close(); server.close();

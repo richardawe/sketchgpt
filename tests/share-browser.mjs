@@ -2,10 +2,12 @@
 //
 //   node tests/share-browser.mjs
 //
-// Writes a book (stub model), edits a page's words, a picture's list, the
-// title and a character, undoes, asks the model to rewrite a page, shares —
-// then opens the link as ANOTHER DEVICE WITH NO GPU AT ALL and checks it is
-// the same book, drawn the same, with no model created and nothing downloaded.
+// Makes a book with the builder (rules, no model), edits a page's words, a
+// picture's list, the title and a character, undoes, asks the model to
+// rewrite a page (the model comes from opening Sketch once — the only way it
+// downloads), shares — then opens the link as ANOTHER DEVICE WITH NO GPU AT ALL
+// and checks it is the same book, drawn the same, with no model created and
+// nothing downloaded.
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { launch } from './browser.mjs';
@@ -17,18 +19,11 @@ export async function CreateMLCEngine() { window.created = true; return {
  chat: { completions: { async create(req) {
  window.requests.push(req);
  const rewrite = /Write this page again/.test(req.messages[1].content);
- const out = rewrite ? JSON.stringify({ text: 'Pip waves at a friendly crab on the sand.' }) : window.story;
+ const out = rewrite ? JSON.stringify({ text: 'Pip waves at a friendly crab on the sand.' }) : '';
  return (async function* () { yield { choices: [{ delta: { content: out } }] }; })();
  } } }
 }; }`;
 
-const STORY = JSON.stringify({
-  title: 'Pip and the Sea',
-  cast: [{ name: 'Pip', is: 'dog' }, { name: 'Mr. Gull', is: 'bird' }],
-  pages: ['Pip is a little dog who lives on a farm.', 'Pip wants to see the sea.',
-    'Pip walks past the village and the tall trees.', 'Mr. Gull flies down and shows Pip the way to the beach.',
-    'Pip jumps into the sea. He swims in the waves.', 'Pip and Mr. Gull watch the boats come home.']
-});
 
 const phone = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
   userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' };
@@ -38,25 +33,26 @@ async function device(browser, { gpu, voices }) {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
-  await page.addInitScript(({ story, gpu, voices }) => {
+  await page.addInitScript(({ gpu, voices }) => {
     if (gpu) Object.defineProperty(navigator, 'gpu', { value: { requestAdapter: async () => ({
       features: new Set(['shader-f16']), limits: { maxBufferSize: 1e9 } }) } });
     else Object.defineProperty(navigator, 'gpu', { value: undefined });
     if (navigator.storage) navigator.storage.estimate = async () => ({ quota: 50e9, usage: 0 });
-    window.requests = []; window.story = story;
+    window.requests = [];
     Object.defineProperty(window, 'speechSynthesis', { value: { getVoices: () => voices, speak() {}, cancel() {}, onvoiceschanged: null } });
     window.SpeechSynthesisUtterance = class { constructor(t) { this.text = t; } };
     Object.defineProperty(navigator, 'share', { value: async d => { window.shared = d; } });
-  }, { story: STORY, gpu, voices });
+  }, { gpu, voices });
+  const libs = { n: 0 };
   await page.route('**/*', async r => {
     const url = new URL(r.request().url());
-    if (url.pathname === '/mock.mjs') return r.fulfill({ contentType: 'text/javascript', body: stub });
+    if (url.pathname === '/mock.mjs') { libs.n++; return r.fulfill({ contentType: 'text/javascript', body: stub }); }
     const name = url.pathname.replace(/^.*\//, '');
-    const file = /^(sketch|stamps|rough|book|scene|art|art-names|animate|voice|share)\.mjs$/.test(name) ? name : 'browser.html';
+    const file = /^(sketch|stamps|rough|book|story|scene|art|art-names|animate|voice|share)\.mjs$/.test(name) ? name : 'browser.html';
     await r.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
-  return { context, page, errors };
+  return { context, page, errors, libs };
 }
 
 // What each picture is, exactly: every path's geometry, in order.
@@ -72,13 +68,19 @@ try {
   const a = await device(browser, { gpu: true, voices: [{ name: 'Ava (Enhanced)', lang: 'en-US', localService: true, voiceURI: 'Ava' }] });
   const p = a.page;
   // The default page: sharing and editing need no flag.
-  await p.goto('http://localhost:8080/browser.html?lib=/mock.mjs&manual=1');
-  await p.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
-  await p.click('#load');
-  await p.waitForFunction(() => !document.querySelector('#send').disabled);
-  await p.fill('#input', 'a little dog who has never seen the sea');
-  await p.click('#send');
-  await p.waitForFunction(() => !document.querySelector('#send').disabled && document.querySelector('.book .share'));
+  await p.goto('http://localhost:8080/browser.html?lib=/mock.mjs');
+  // The model is needed only for "Rewrite with the model", and it comes the
+  // one way it can: by opening Sketch.
+  await p.tap('#output [data-mode="sketch"]');
+  await p.waitForFunction(() => document.querySelector('#foot').classList.contains('on'), null, { timeout: 15000 });
+  await p.tap('#output [data-mode="book"]');
+  await p.tap('#kinds [data-value="dog"]');
+  await p.tap('#places [data-value="farm"]');
+  await p.tap('#wishes [data-value="sea"]');
+  await p.fill('#hero-name', 'Pip');
+  await p.tap('#write');
+  await p.waitForFunction(() => document.querySelector('.book .share') && !document.querySelector('#write').disabled);
+  const orig = { title: await p.locator('.book .cover h2').textContent(), texts: await texts(p) };
 
   // Editing is a mode: until it is on, the book reads clean.
   const sheet = n => p.locator(`.book .sheet:nth-of-type(${n})`);
@@ -116,13 +118,13 @@ try {
     !document.querySelector('.book .art [data-thing="dog"]'));
   const renamed = await texts(p);
   assert.ok(renamed.every(t => !/\bPip\b/.test(t)), renamed.join(' | '));
-  assert.match(renamed[3], /shows Biscuit the way/);
+  assert.ok(renamed.every(t => /\bBiscuit\b/.test(t)), 'the new name is on every page');
   assert.ok((await things(p, 2)).includes('cat'), 'the hero is still on the page, as a cat');
 
   // Undo the rename: back to Pip the dog, everywhere.
   await p.locator('.book .undo').click();
-  await p.waitForFunction(() => document.querySelector('.book .cover h2').textContent === 'Pip and the Sea');
-  assert.match((await texts(p))[3], /shows Pip the way/);
+  await p.waitForFunction(t => document.querySelector('.book .cover h2').textContent === t, orig.title);
+  assert.deepEqual((await texts(p)).filter((t, i) => i !== 2), orig.texts.filter((t, i) => i !== 2));
   assert.ok((await things(p, 2)).includes('dog'));
 
   // Rewrite with the model: its words go into the editor, not the book.
@@ -131,16 +133,16 @@ try {
   await p.waitForFunction(() => document.querySelector('.book .sheet:nth-of-type(3) .ed-text').value.includes('crab'));
   const asked = await p.evaluate(() => window.requests.at(-1).messages[1].content);
   assert.match(asked, /page 2 of 6/);
-  assert.equal((await texts(p))[1], 'Pip wants to see the sea. ', 'a rewrite is not saved until the person saves it');
+  assert.equal((await texts(p))[1], orig.texts[1], 'a rewrite is not saved until the person saves it');
   if (process.env.SHOT) { await sheet(3).locator('.editor').scrollIntoViewIfNeeded(); await p.waitForTimeout(2500); await p.screenshot({ path: process.env.SHOT + '-page.png' }); }
   await sheet(3).locator('.ed-cancel').click();
-  assert.equal((await texts(p))[1], 'Pip wants to see the sea. ');
+  assert.equal((await texts(p))[1], orig.texts[1]);
 
   // Share: the link is the book; the model's things and the voice travel.
   await p.locator('.book .share').click();
   await p.waitForFunction(() => window.shared);
   const shared = await p.evaluate(() => window.shared);
-  assert.equal(shared.title, 'Pip and the Sea');
+  assert.equal(shared.title, orig.title);
   assert.match(shared.url, /#book=z[A-Za-z0-9_-]+$/);
   assert.doesNotMatch(shared.url, /animate/, 'a shared link needs no flag');
   assert.ok(shared.url.length < 4000, `link is ${shared.url.length} characters`);
@@ -160,7 +162,9 @@ try {
   assert.deepEqual(await texts(b.page), mine.texts, 'the words are not the ones shared');
   assert.deepEqual(await fingerprint(b.page), mine.pictures, 'the pictures are not drawn the same');
   assert.equal(await b.page.evaluate(() => window.created || false), false, 'a model was created to show a shared book');
-  assert.match(await b.page.locator('#log .errbox').textContent(), /no WebGPU/, 'this phone was meant to have no GPU');
+  assert.equal(await b.page.evaluate(() => navigator.gpu), undefined, 'this phone was meant to have no GPU');
+  assert.equal(await b.page.locator('#nomodel').count(), 0, 'Book checked for a GPU it does not need');
+  assert.equal(b.libs.n, 0, 'the model library was fetched to show a shared book');
   assert.match(await b.page.locator('.book .by').textContent(), /Shared with you/);
   assert.match(await b.page.locator('.book .reader-note:not(.share-note)').textContent(),
     /asked for Ava \(Enhanced\): using Ava \(Premium\)/);
@@ -182,8 +186,8 @@ try {
   await c.page.waitForFunction(() => /damaged/.test(document.querySelector('#log').textContent));
   assert.equal(await c.page.locator('.book').count(), 0);
   // A shared link never starts the model download, even on a phone that could.
-  assert.match(await c.page.locator('#autonote').textContent(), /no model was downloaded/);
   await c.page.waitForTimeout(500);
+  assert.equal(c.libs.n, 0, 'a shared link fetched the model library');
   assert.equal(await c.page.evaluate(() => window.created || false), false, 'a shared link started the model');
 
   for (const d of [a, b, c]) await d.context.close();

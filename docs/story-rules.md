@@ -1,6 +1,6 @@
 # Book without the model — a plan
 
-**Status: stage 1 (rule-written stories) is built and tested, but not yet in the app; the rest is plan. The owner's decisions are at the end.** Written after the owner's report:
+**Status: stages 1 and 2 are built and tested: Book writes with rules and downloads no model. Pasted stories, scenery, pictures from photos of pets and drawings, and export are still plan. The owner's decisions are at the end.** Written after the owner's report:
 "The AI isn't doing much on this app, its story generation is faulty and never
 good." The ask: write the story with deterministic rules in the browser; let
 people write or paste their own story with the page guiding them; better
@@ -215,10 +215,13 @@ repeat ("Just then, Owl…", "jumps for joy", "safe and sound"). Someone who
 reads five books from the same choices will notice. That is the sameness to
 judge by reading, and the reason "Say it differently" stays on the list.
 
-**Not yet done:** the blind read. `docs/story-rules-bench/read.md` holds eight
-books (four by the model, four by the rules, shuffled and unlabelled); score
-them 0–3 before opening `key.json`. It is not blind for whoever wrote the rules,
-so no score is recorded here yet. Stage 1 is done when the owner has read it.
+**The blind read was skipped.** The owner found the sheet too long to score
+and said to go ahead (`docs/story-rules-bench/read.md` is kept for anyone
+who wants to). The only reading on record is the author's, which is not blind:
+the rule books make sense page to page, and the four model books include one
+that repeats "safe and happy" for six pages and one whose last two pages say
+nearly the same sentence. The first real test is the owner reading a book on their
+phone.
 
 **Found on the way, and fixed for every book, not just rule books:**
 
@@ -236,6 +239,42 @@ so no score is recorded here yet. Stage 1 is done when the owner has read it.
   as a bear**, so a bear hero's lost teddy vanished into its own picture; and
   a helper named "Bird" takes the word "birds" as its name, so a flock of
   birds went undrawn.
+
+### Stage 2 as built
+
+- **Opening the app downloads nothing.** WebLLM used to be awaited at the top
+  of `browser.html`, before anything ran. It is now fetched only when a model
+  is wanted, and so is the device and model setup (`prepareModel()`). Book
+  never calls either. `tests/book-browser.mjs` counts requests for the library
+  and fails on any from Book (mutation-checked by loading it at startup again).
+- **The builder is Book's first screen:** 1 · Your hero (the photo link, or
+  the reader's drawing already chosen if they brought one; 16 kinds; a name),
+  2 · Where they live, 3 · What they wish for (only wishes that fit), then
+  Write. Anything left on "Surprise me" is picked so the wish fits. The
+  builder stays at the top; each press is a new book. `?seed=N` makes books
+  reproducible, for tests and recorded demos.
+- **A phone with no WebGPU makes books.** The no-GPU message used to replace
+  the whole page. Now it shows only in Sketch, and Book carries on
+  (mutation-checked).
+- **The privacy meter runs from page load** in Book ("0 requests since the
+  page loaded"), and restarts when a model loads. It ignores the page
+  re-fetching its own files for the offline cache. Without that, a first visit
+  showed `sketch.mjs`, `scene.mjs` and `book.mjs` as requests (caught by the
+  offline test, mutation-checked).
+- **Offline:** after one visit, a whole book is written and drawn with the
+  network down (`tests/offline.mjs`).
+- **The model's place now:** Sketch, which downloads it when opened (with the
+  old rules: cached, or not `?manual=1` and not Save-Data), and "Rewrite with
+  the model" in the book editor. That button is disabled until Sketch has
+  loaded the model. `runBook()` and the model-written story are gone from the
+  page; `book.mjs` keeps the story prompt for the bench scripts.
+- **Tests rewritten** for the builder: book, share, animate, me, offline,
+  failure, stop, sketch and scene. The stop test now runs in Sketch, the only
+  place a model still streams.
+
+**Not tested on a real device:** everything above ran in headless Chromium
+with touch emulation. Unknown: how the builder reads on the owner's phone, and
+whether 17 hero chips are too many on a small screen.
 
 ---
 

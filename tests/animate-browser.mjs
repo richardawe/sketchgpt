@@ -11,26 +11,12 @@ import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { launch } from './browser.mjs';
 
-const stub = `export const prebuiltAppConfig = { model_list: [] };
-export const hasModelInCache = async () => false;
-export async function CreateMLCEngine() { return {
- interruptGenerate() {},
- chat: { completions: { async create(req) {
- window.requests.push(req);
- return (async function* () { yield { choices: [{ delta: { content: window.story } }] }; })();
- } } }
-}; }`;
-
-const STORY = JSON.stringify({
-  title: 'Pip and the Sea',
-  cast: [{ name: 'Pip', is: 'dog' }, { name: 'Mr. Gull', is: 'bird' }],
-  pages: ['Pip is a little dog who lives on a farm. He dreams of the sea.',
-    'Pip wants to see the sea, but it is far away.',
-    'Pip walks past the village, but he gets lost.',
-    'Mr. Gull flies down and shows Pip the way to the beach.',
-    'Pip jumps into the sea. He swims in the waves.',
-    'As the sun sets, Pip and Mr. Gull watch the boats come home.']
-});
+// The book the builder makes for these choices and ?seed=0 — written by the
+// same rules here, so the test knows every word (web/story.mjs).
+import { writeStory } from '../web/story.mjs';
+import { sentences } from '../web/voice.mjs';
+const CHOICES = { kind: 'dog', place: 'farm', wish: 'sea', name: 'Pip' };
+const STORY = writeStory({ ...CHOICES, seed: 0 });
 
 const phone = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
   userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' };
@@ -42,12 +28,12 @@ try {
     const page = await context.newPage();
     const errors = [], fetched = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.addInitScript(story => {
+    await page.addInitScript(() => {
       Object.defineProperty(navigator, 'gpu', { value: { requestAdapter: async () => ({
         features: new Set(['shader-f16']), limits: { maxBufferSize: 1e9 }
       }) } });
       if (navigator.storage) navigator.storage.estimate = async () => ({ quota: 50e9, usage: 0 });
-      window.requests = []; window.story = story;
+      window.requests = [];
       // The device's voice, recorded rather than heard.
       window.spoken = [];
       const voices = [{ name: 'Albert', lang: 'en-US', localService: true, voiceURI: 'Albert' },
@@ -59,27 +45,26 @@ try {
       // The book's own animations only: the page's interface has some of its own.
       window.print = () => { window.animsWhilePrinting = [...document.querySelectorAll('.book .art svg')]
         .reduce((n, svg) => n + svg.getAnimations({ subtree: true }).length, 0); };
-    }, STORY);
+    });
     await page.route('**/*', async r => {
       const url = new URL(r.request().url());
-      if (url.pathname === '/mock.mjs') return r.fulfill({ contentType: 'text/javascript', body: stub });
       const name = url.pathname.replace(/^.*\//, '');
       fetched.push(name);
-      const file = /^(sketch|stamps|rough|book|scene|art|art-names|animate|voice|share)\.mjs$/.test(name) ? name : 'browser.html';
+      const file = /^(sketch|stamps|rough|book|story|scene|art|art-names|animate|voice|share)\.mjs$/.test(name) ? name : 'browser.html';
       await r.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
         body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
     });
 
     // The default is on; ?animate=0 is the plain book.
-    await page.goto(`http://localhost:8080/browser.html?lib=/mock.mjs&manual=1${animate ? '' : '&animate=0'}`);
-    await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
-    await page.click('#load');
-    await page.waitForFunction(() => !document.querySelector('#send').disabled);
-    await page.fill('#input', 'a little dog who has never seen the sea');
-    await page.click('#send');
-    await page.waitForFunction(() => !document.querySelector('#send').disabled &&
-      !/writing|drawing/.test(document.querySelector('#status').textContent));
+    await page.goto(`http://localhost:8080/browser.html?seed=0${animate ? '' : '&animate=0'}`);
+    for (const [id, v] of [['kinds', 'dog'], ['places', 'farm'], ['wishes', 'sea']]) await page.tap(`#${id} [data-value="${v}"]`);
+    await page.fill('#hero-name', 'Pip');
+    await page.tap('#write');
+    await page.waitForFunction(() => document.querySelector('.book .book-actions') && !document.querySelector('#write').disabled);
     const book = page.locator('.msg.assistant .book').last();
+    assert.deepEqual(await book.locator('.page-text').evaluateAll(p => p.slice(0, 6).map(x => x.textContent.trim())),
+      STORY.pages, 'the builder did not make the book these rules make for ?seed=0');
+    assert.ok(!fetched.includes('mock.mjs'), 'a book fetched the model library');
     assert.equal(await book.locator('.art svg').count(), 7, 'every page and the cover get a picture');
 
     if (!animate) {
@@ -96,9 +81,10 @@ try {
     // ---- Pictures move, and say how --------------------------------------------
     assert.ok(await page.evaluate(() => document.getAnimations().length) > 10, 'the pictures are not moving');
     const made = await book.locator('.made p').allTextContents();
-    assert.match(made[4], /Moving: Pip \(dog\): hop, then swim/, made[4]);
-    assert.match(made[3], /Mr\. Gull \(bird\): fly/, made[3]);
-    assert.doesNotMatch(made[0], /Moving/, 'a dream is not a deed: page 1 should not move Pip');
+    assert.match(made[5], /Moving: Pip \(dog\): swim/, made[5]);
+    assert.match(made[3], /Bird \(bird\): fly/, made[3]);
+    assert.match(made[2], /Pip \(dog\): run/, made[2]);
+    assert.doesNotMatch(made[1], /Pip \(dog\)/, 'a wish is not a deed: page 2 should not move Pip');
     // The zoom is on the picture's box, not redrawn inside the SVG.
     assert.ok(await page.evaluate(() => [...document.querySelectorAll('.book .art > svg')]
       .some(svg => svg.getAnimations().length)), 'the camera should move the <svg> element itself');
@@ -128,21 +114,22 @@ try {
     const read = book.locator('.book-actions button.read');
     await read.click();
     const spoken = await page.evaluate(() => window.spoken.map(u => u.text));
-    assert.equal(spoken[0], 'Pip and the Sea', 'the title is read first');
+    const all = STORY.pages.flatMap(sentences);
+    assert.equal(spoken[0], STORY.title, 'the title is read first');
     assert.equal(spoken.at(-1), 'The End');
-    assert.deepEqual(spoken.slice(1, 3), ['Pip is a little dog who lives on a farm.', 'He dreams of the sea.'],
-      'pages are read a sentence at a time');
-    assert.equal(spoken.length, 1 + 8 + 1, 'every sentence queued at once, inside the tap');
-    assert.ok(spoken.includes('Mr. Gull flies down and shows Pip the way to the beach.'), 'a title split a sentence');
+    assert.deepEqual(spoken.slice(1, 3), sentences(STORY.pages[0]), 'pages are read a sentence at a time');
+    assert.equal(spoken.length, 1 + all.length + 1, 'every sentence queued at once, inside the tap');
     assert.equal(await page.evaluate(() => window.spoken[0].voice.name), 'Albert', 'the picked voice reads the book');
     assert.equal(await read.textContent(), 'Stop reading');
     // As a sentence starts it is marked, and its page's picture plays again.
     await page.evaluate(() => window.spoken[1].onstart());
-    assert.equal(await book.locator('.said.reading').textContent(), 'Pip is a little dog who lives on a farm. ');
+    assert.equal(await book.locator('.said.reading').textContent(), sentences(STORY.pages[0])[0] + ' ');
     assert.match(await book.locator('.book-top .share-note').textContent(), /Reading page 1 of 6 · Albert/);
-    await page.evaluate(() => window.spoken[6].onstart());
+    // The first sentence of page 5, wherever it falls in the queue.
+    const five = 1 + STORY.pages.slice(0, 4).flatMap(sentences).length;
+    await page.evaluate(i => window.spoken[i].onstart(), five);
     assert.match(await book.locator('.book-top .share-note').textContent(), /Reading page 5 of 6/);
-    assert.match(await book.locator('.said.reading').textContent(), /^Pip jumps into the sea/);
+    assert.equal(await book.locator('.said.reading').textContent(), sentences(STORY.pages[4])[0] + ' ');
     assert.equal(await book.locator('.reading').count(), 1, 'only one sentence is marked');
     await page.evaluate(() => window.spoken.at(-1).onend());
     await page.waitForFunction(() => [...document.querySelectorAll('.book-actions button')].some(b => b.textContent === 'Read aloud'));

@@ -45,12 +45,14 @@ export async function CreateMLCEngine() { return {
     const url = new URL(route.request().url());
     if (url.pathname === '/mock.mjs') return route.fulfill({ contentType: 'text/javascript', body: stub });
     const name = url.pathname.replace(/^.*\//, '');
-    const file = /^(sketch|stamps|rough|book|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
+    const file = /^(sketch|stamps|rough|book|story|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
     await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
   const open = async (query = '') => {
     await page.goto('http://localhost:8080/browser.html?lib=/mock.mjs&manual=1' + query);
+    // The model is Sketch's: it is prepared when Sketch is opened.
+    await page.click('#output [data-mode="sketch"]');
     await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
     await page.click('#load');
   };

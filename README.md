@@ -29,8 +29,9 @@ create a Pages site — it fails with *"Resource not accessible by integration"*
 Already have a repo? Run `./scripts/setup-pages.sh` inside it, or
 `./scripts/setup-pages.sh my-chat` to create one first.
 
-Then open the URL. The first visit downloads the model picked for the device;
-after that the page loads it from cache and drops you straight into Book mode.
+Then open the URL. It opens in Book mode, which needs no model: nothing
+downloads. The model for the device downloads the first time someone opens
+Sketch, and loads from cache after that.
 
 ### What visitors get
 
@@ -39,9 +40,10 @@ after that the page loads it from cache and drops you straight into Book mode.
 | Desktop | Qwen3-1.7B where it fits at ≥2048 context, else Qwen3-0.6B | ~990 MB / ~360 MB |
 | Phone / tablet | Qwen3-0.6B at a 1024 context, else Qwen2.5-0.5B | ~350 MB / ~300 MB |
 
-The page reads the GPU adapter and available memory, filters out models the
-device cannot run, picks the best one that fits with headroom, and **starts the
-download by itself** — unless the browser has asked to save data. "Choose a
+When Sketch is opened, the page reads the GPU adapter and available memory,
+filters out models the device cannot run, picks the best one that fits with
+headroom, and **starts the download by itself** — unless the browser has asked
+to save data. Book never downloads a model. "Choose a
 different model" is on the card while it downloads. The choices come from
 benching Book's real prompt (`docs/storybook.md`): Qwen2.5-0.5B, the previous
 phone default, could not write a story at all — casts like "Dog (has)".
@@ -138,37 +140,36 @@ The browser page has a mode switch in the header:
 
 | | |
 |---|---|
-| **Book** | an idea in, a six-page illustrated story out — printable, and downloadable as one HTML file. The default. |
+| **Book** | pick a hero (or use a photo of yourself), a place and a wish; a six-page illustrated story out — moving, read aloud, shareable, printable. No model. The default. |
 | **Sketch** | describe a scene, get an SVG drawn locally |
 
 Desk (brain dump, say it better) and Chat were removed for Book. Desk's
 measurements stay in `docs/desk.md`, its module in `scripts/lib/desk.mjs` for
 the bench.
 
-### Book — a picture book, written and drawn on the device
+### Book — a picture book, written and drawn on the device, with no model
 
-The model does the two things a small model can: write a simple story, and name
-what is in each picture. The page does everything else — placing, drawing, and
-above all **continuity**, which the model is never trusted with. Every rule
-below is a failure seen in a model-written book (`docs/storybook.md`):
+The model's stories were "faulty and never good" on real devices, so Book no
+longer uses one. `web/story.mjs` writes the six pages from word lists: a hero
+(17 kinds, or the reader's own drawing from a photo), a place (7), and a wish
+(6). A helper is chosen because it can do what the problem needs. Every
+drawable word in the rules is marked, so `tests/story.test.mjs` can hold 7,800
+books to it:
+the picture draws exactly those words, the help makes sense, and the animation
+acts out what happens, never what is only wished for. `docs/story-rules.md`
+has the design and the measurements.
 
-- **The hero is on every page**, once, as the same picture — the model dropped
-  them whenever the text said "he".
-- **A name is not a thing** — a dog called Ducky was drawn as a duck.
-- **No stand-ins** — "He jumped into the water", on a dog's page, came back as a boy.
-- **A copied example is removed** — on a vague page the model returned the
-  scene prompt's own harbour example, word for word.
-- **Things with no picture stay off the art** — the text is right under it.
-
-On a desktop (1.5B and up) each page is planned by the model and fixed by those
-rules. On a phone the model writes the story only, and each picture is built
-from the page's own words — the small models loop or copy a scene list. Under
-every picture, "How this picture was made" says what the model listed and what
-the page changed. **Print or save as PDF** prints the book and nothing else;
+The page still owns **continuity**: the hero is on every page as the same
+picture, a name is not a thing (a dog called Ducky is not a duck), and each
+picture is built from its page's own words. Books move, are read aloud in the
+device's voice, and share as a link that redraws the whole book on the
+recipient's device. **Print or save as PDF** prints the book and nothing else;
 **Download book** saves it as one self-contained HTML file.
 
-About 25 seconds a book with Qwen3-1.7B on Ollama on CPU. **Neither the phone
-nor the desktop build has written a book on a real GPU yet.**
+Opening the app fetches no model and not even the model library, and a phone
+with no WebGPU makes books like any other. The model downloads only when
+something needs it: Sketch, or "Rewrite with the model" in the book editor once
+Sketch has loaded it.
 
 ### Scenes on desktop
 

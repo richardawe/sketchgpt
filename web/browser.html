@@ -242,6 +242,21 @@
   .intro > p { color: var(--muted); margin: 0 auto 24px; max-width: 460px; }
   .suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
   .suggest button { border-radius: 999px; font-size: 13.5px; }
+  /* The book builder: hero, place, wish, Write. */
+  .intro .step { margin: 0 auto 18px; }
+  .intro .step h3 { font-size: 13px; font-weight: 600; color: var(--ink-2); margin: 0 0 8px;
+                    text-transform: none; letter-spacing: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .chips button { border-radius: 999px; font-size: 13.5px; padding: 5px 12px; }
+  #kinds button { text-transform: capitalize; }
+  .chips button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .name-row { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 14px; color: var(--muted); }
+  /* 16px, always: under 16px iOS zooms the page when the field is focused. */
+  #hero-name { width: 220px; max-width: 60vw; padding: 7px 10px; border: 1px solid var(--line-2);
+               border-radius: 10px; background: var(--panel); color: var(--ink); font-family: inherit; font-size: 16px; }
+  .me-note a.photo { font-weight: 600; color: var(--ink); }
+  #write { padding: 11px 22px; font-size: 15px; margin: 4px 0 8px; }
+  .intro .me-note { margin: 0 auto 10px; }
 
   /* ---- Composer ----------------------------------------------------------- */
   footer {
@@ -422,10 +437,10 @@
 <div id="log"><div class="wrap" id="wrap">
   <section class="card" id="card">
     <span class="eyebrow"><svg class="i" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>Runs on this device</span>
-    <h2>Picture books, written and drawn in this tab</h2>
-    <p>A small language model downloads once, then writes stories on your own graphics chip, and
-       the page illustrates every page. Nothing you type is sent anywhere — and after the first
-       load it works offline.</p>
+    <h2>Sketch with a small model, in this tab</h2>
+    <p>Sketch needs a small language model. It downloads once, then runs on your own graphics
+       chip: it names what is in your scene, and the page draws it. Nothing you type is sent
+       anywhere, and after the first load it works offline. Books need none of this.</p>
     <label for="model">Model</label>
     <select id="model" title="Model"></select>
     <div id="meta"></div>
@@ -463,8 +478,8 @@
 import { SKETCH_SCHEMA, renderSketch, planSketchTurn, loadRough, loadArt, estimateTokens,
          readDrawing, registerFigure } from "./sketch.mjs?v=9";
 import { scenePrompt, composeScene, looksLikeCoordinates } from "./scene.mjs?v=9";
-import { STORY_SCHEMA, STORY_TOKENS, PAGE_TOKENS, storyMessages, parseStory, pageMessages,
-         fixPagePlan, wordsOnlyPlan, coverPlan, castAsMe } from "./book.mjs?v=9";
+import { wordsOnlyPlan, coverPlan } from "./book.mjs?v=9";
+import { writeStory, wishesFor, KINDS, PLACES, WISHES } from "./story.mjs?v=1";
 const LIB = new URLSearchParams(location.search).get("lib")
   || "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/+esm";
 
@@ -473,20 +488,22 @@ const LIB = new URLSearchParams(location.search).get("lib")
 const ROUGH_PARAM = new URLSearchParams(location.search).get("rough");
 const ROUGH = ROUGH_PARAM === "0" ? null : (ROUGH_PARAM || undefined);
 
-// A static import that fails kills the whole module silently, leaving the page
-// stuck on "checking…". Load it dynamically so a blocked CDN is reportable.
-let webllm;
-try {
-  webllm = await import(LIB);
-} catch (e) {
-  document.getElementById("wrap").innerHTML =
-    '<div class="errbox"><b>Could not load the WebLLM library.</b><br><br>' +
-    'The page needs to fetch it from a CDN on first load. Check your network ' +
-    'or any extension blocking <code>cdn.jsdelivr.net</code>, then reload.<br><br>' +
-    String(e && e.message || e) + '</div>';
-  document.getElementById("status").textContent = "library unavailable";
-  document.getElementById("dot").className = "dot err";
-  throw e;
+// WebLLM is fetched only when something needs a model — Sketch, or a model
+// button in the book editor. Book writes with rules (web/story.mjs), so
+// opening the app downloads no model and no model library: the owner's call,
+// after the model's stories were "faulty and never good". It used to be
+// awaited at the top of this module, before anything else could run.
+let webllm = null, libPromise = null;
+function loadLib() {
+  return libPromise ||= import(LIB).then(m => (webllm = m), e => {
+    libPromise = null;
+    fail('<b>Could not load the WebLLM library.</b><br><br>' +
+      'Sketch needs to fetch it from a CDN the first time. Check your network ' +
+      'or any extension blocking <code>cdn.jsdelivr.net</code>, then try again.<br><br>' +
+      esc(String(e && e.message || e)));
+    setStatus("library unavailable", "err");
+    throw e;
+  });
 }
 
 const $ = id => document.getElementById(id);
@@ -696,7 +713,8 @@ function meNote() {
     b.type = "button"; b.textContent = "Not me"; b.addEventListener("click", forgetMe);
     d.append(t, p, b);
   } else {
-    d.innerHTML = `<span>Put yourself in the story: <a href="./selfie.html">draw yourself from a photo</a>.</span>`;
+    d.innerHTML = `<span><a class="photo" href="./selfie.html">Use a photo of me</a> — drawn on this device, ` +
+      `never uploaded. Or pick a hero:</span>`;
   }
   return d;
 }
@@ -754,12 +772,33 @@ async function pickCacheBackend() {
   }
 }
 
-const setStatus = (t, s) => { $("status").textContent = t; $("dot").className = "dot" + (s ? " " + s : ""); };
+// The header says what the model is doing — in Sketch. In Book there is no
+// model to report on: it says "ready", or what the book is doing.
+let modelStatus = ["checking…", ""];
+let bookBusy = null;          // Book's status while a book is drawn; null when idle
+const setStatus = (t, s) => { modelStatus = [t, s || ""]; paintStatus(); };
+function paintStatus() {
+  const [t, s] = outMode() === "book" ? (bookBusy || ["ready", "on"]) : modelStatus;
+  $("status").textContent = t;
+  $("dot").className = "dot" + (s ? " " + s : "");
+}
 
-// Terminal: no WebGPU, no usable model. Nothing on the card would help.
+// Terminal for the model: no WebGPU, no usable model, no library. Nothing on
+// the card would help. It used to replace the whole page; now only Sketch
+// needs a model, so the problem is shown in Sketch and Book carries on — a
+// phone with no WebGPU can still make, read and share a book.
+let modelProblem = false;
 function fail(html) {
-  $("wrap").innerHTML = `<div class="errbox">${html}</div>`;
+  modelProblem = true;
+  let box = $("nomodel");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "errbox"; box.id = "nomodel";
+    $("card").before(box);
+  }
+  box.innerHTML = html;
   setStatus("unavailable", "err");
+  syncMode();
 }
 
 // Recoverable: this load failed, but picking another model or trying again
@@ -782,7 +821,12 @@ function failSoft(html) {
 // blocklisted drivers the API is present but requestAdapter() yields null.
 // Checking only the API lets the user get all the way to a confusing failure
 // inside the engine, so resolve a real adapter up front.
-const FALLBACK = "You can still use the Ollama version — see <code>scripts/serve-web.sh</code>.";
+const FALLBACK = "Books still work here: they need no model. For Sketch, the Ollama version is an option — " +
+  "see <code>scripts/serve-web.sh</code>.";
+
+// Everything a model needs, done once and only when a model is wanted.
+let initPromise = null;
+const prepareModel = () => initPromise ||= init().catch(e => console.warn("init:", e));
 
 async function init() {
   if (!navigator.gpu) {
@@ -801,6 +845,8 @@ async function init() {
     return;
   }
 
+  setStatus("checking…", "busy");
+  await loadLib();
   APP = { ...webllm.prebuiltAppConfig, cacheBackend: await pickCacheBackend() };
 
   // ---- what can this device actually run? ----
@@ -937,22 +983,18 @@ async function init() {
   await refreshMeta();
   setStatus("ready to load");
 
-  // The page picks the model for this device and starts straight away — the
-  // owner's call, made after "press a button to download" read as a page that
-  // did nothing. Three things keep that honest: the card names the model and
-  // its size while it downloads, "Choose a different model" is one tap away,
-  // and a browser that has asked to save data (Save-Data / Lite mode) still
-  // gets asked first. ?manual=1 always shows the picker.
+  // This runs only once someone opens Sketch, which needs the model — Book
+  // never gets here. From there the page picks the model for this device and
+  // starts straight away (the owner's call, after "press a button to download"
+  // read as a page that did nothing). Three things keep that honest: the card
+  // names the model and its size while it downloads, "Choose a different
+  // model" is one tap away, and a browser that has asked to save data
+  // (Save-Data / Lite mode) still gets asked first. ?manual=1 always shows the
+  // picker.
   let cached = false;
   try { cached = await webllm.hasModelInCache($("model").value, APP); } catch {}
   const saveData = !!(navigator.connection && navigator.connection.saveData);
-  if (SHARED_HASH) {
-    // Someone sent a book. Showing it needs no model, so nothing downloads —
-    // on a phone that is hundreds of MB and GPU memory the book does not use.
-    $("autonote").hidden = false;
-    $("autonote").textContent = "You opened a shared book, so no model was downloaded. Press the button to get the model " +
-      "and write your own.";
-  } else if (cached || (!MANUAL && !saveData)) {
+  if (cached || (!MANUAL && !saveData)) {
     const m = modelOf($("model").value);
     if (!cached) $("autonote").innerHTML =
       `<b>${esc(m ? m.label.split(" — ")[0] : $("model").value)}</b> was picked for this ` +
@@ -1085,10 +1127,9 @@ $("load").addEventListener("click", async () => {
     $("bar").classList.remove("on");
     // Hidden, not removed: the card holds #model, which the failure report and
     // the small-model notes read for the rest of the session.
-    $("card").hidden = true;
-    $("foot").classList.add("on");
+    // (syncMode below hides the card and shows the composer, in Sketch.)
     setStatus("ready — running locally", "on");
-    startNetMeter();
+    startNetMeter("the model loaded");
     const m = modelOf(id);
     $("menuinfo").innerHTML = `<b>${esc(m ? m.label : id)}</b><br>` +
       `${CTX.toLocaleString()}-token context · ~${Math.round(gpuOf(id, CTX) || 0)} MB GPU memory` +
@@ -1165,8 +1206,10 @@ $("evict").addEventListener("click", async () => {
   if (!confirm("Remove all cached model weights from this browser?\n\n" +
                "They will download again next time.")) return;
   const errs = [];
+  try { await loadLib(); } catch { return; }
+  const app = APP || { ...webllm.prebuiltAppConfig, cacheBackend: "cache" };
   for (const m of MODELS) {
-    try { await webllm.deleteModelAllInfoInCache(m.id, APP); }
+    try { await webllm.deleteModelAllInfoInCache(m.id, app); }
     catch (e) { errs.push(m.id); }
   }
   // Anything WebLLM missed, and the other backend's leftovers.
@@ -1223,59 +1266,159 @@ function setMode(m, { quiet = false } = {}) {
 for (const b of $("output").querySelectorAll("button"))
   b.addEventListener("click", () => { if (b.dataset.mode !== outMode()) setMode(b.dataset.mode); });
 
+// Book needs no model; Sketch does. The card, the composer and the header
+// follow the mode: in Book the card never shows and nothing downloads; the
+// first visit to Sketch prepares the model (and, per the rules in init(),
+// downloads it).
 function syncMode() {
+  const book = outMode() === "book";
+  $("card").hidden = book || !!engine || modelProblem;
+  if ($("nomodel")) $("nomodel").hidden = book;
+  $("foot").classList.toggle("on", !book && !!engine);
+  if (!book && !engine && !modelProblem) prepareModel();
+  paintStatus();
   fitPlaceholder();
   updateHint();
   showIntro();
 }
 
-// A phone-sized model writes simpler stories and cannot plan scenes (measured:
-// Qwen2.5-0.5B returned casts like "Dog (has)"; the small models loop or copy
-// a scene list). On those, each picture is built from the page's own words.
-const smallModel = () => { const m = modelOf($("model").value); return !m || m.tier === 0; };
-
 function updateHint() {
-  const el = $("count");
-  if (!engine) { el.textContent = ""; return; }
-  el.textContent = outMode() === "book"
-    ? (smallModel() ? "Six short pages · simpler on a phone" : "Six short pages · about 30 seconds")
-    : "Stays on this device";
+  $("count").textContent = engine && outMode() === "sketch" ? "Stays on this device" : "";
 }
 
 // ---- Empty states ------------------------------------------------------------
-const BOOK_IDEAS = ["a little dog who has never seen the sea", "a young dragon who is afraid of the dark",
-                    "a girl who plants a magic seed", "a cat who wants to fly"];
 const SKETCH_IDEAS = ["a farm with animals and a tractor", "a cosy cabin in the woods at night",
                       "a sunny beach with people and boats"];
 
 function showIntro() {
   const wrap = $("wrap");
-  if (!engine) return;                        // the load card owns the page until then
-  let el = $("intro");
-  if (wrap.querySelector(".msg")) { if (el) el.remove(); return; }
-  if (!el) { el = document.createElement("section"); el.id = "intro"; el.className = "intro"; wrap.prepend(el); }
   const book = outMode() === "book";
-  el.innerHTML = book
-    ? `<h2>Write a picture book</h2><p>Give it an idea — a character and a wish or a worry. The model
-       writes six short pages on this device, and the page illustrates every one.</p>`
-    : `<h2>Draw a scene</h2><p>Say what is in it. The model names the things; the page places them and
+  let el = $("intro");
+  // Sketch's intro is for an empty page, once the model is there. Book's is
+  // the book builder, and it stays at the top: the next book starts there.
+  if (!book && (!engine || wrap.querySelector(".msg"))) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement("section"); el.id = "intro"; el.className = "intro"; }
+  if (el !== wrap.firstElementChild) wrap.prepend(el);
+  if (book) { buildBookIntro(el); return; }
+  el.innerHTML = `<h2>Draw a scene</h2><p>Say what is in it. The model names the things; the page places them and
        draws them by hand. Edit the commands under a drawing to move anything.</p>`;
-  if (book && smallModel()) {
-    const n = document.createElement("p");
-    n.className = "fine";
-    n.textContent = "On this phone's model the stories are simpler, and each picture is drawn from the words on its page.";
-    el.appendChild(n);
-  }
   const row = document.createElement("div");
   row.className = "suggest";
-  for (const idea of book ? BOOK_IDEAS : SKETCH_IDEAS) {
+  for (const idea of SKETCH_IDEAS) {
     const b = document.createElement("button");
     b.type = "button"; b.textContent = idea;
     b.addEventListener("click", () => { $("input").value = idea; $("form").requestSubmit(); });
     row.appendChild(b);
   }
   el.appendChild(row);
-  if (book) el.appendChild(meNote());
+}
+
+// ---- The book builder ----------------------------------------------------------
+// A hero, a place, a wish: web/story.mjs writes the six pages from those, with
+// no model (docs/story-rules.md). Anything not chosen is picked for them. What
+// is chosen lives only in this variable — nothing typed is ever stored.
+const choice = { kind: null, place: null, wish: null, name: "" };
+let booksMade = 0;
+// ?seed=N makes the books reproducible (tests, recorded demos): with every
+// choice made, the same seed is the same book. Otherwise each is new.
+const SEED = parseInt(new URLSearchParams(location.search).get("seed"), 10);
+
+// Hero × place pairs that fit what has been chosen so far.
+function pairs(kind = choice.kind, place = choice.place) {
+  const kinds = kind ? [kind] : Object.keys(KINDS).filter(k => k !== "me");
+  const places = place ? [place] : Object.keys(PLACES);
+  return kinds.flatMap(k => places.map(p => [k, p]));
+}
+
+function buildBookIntro(el) {
+  // Someone who brought a photo is the hero, until they pick another.
+  if (me && !choice.kindPicked) choice.kind = "me";
+  if (choice.kind === "me" && !me) choice.kind = null;
+  const wishes = new Set(pairs().flatMap(([k, p]) => wishesFor(k, p)));
+  if (choice.wish && !wishes.has(choice.wish)) choice.wish = null;
+
+  el.innerHTML = `<h2>Make a picture book</h2><p>Pick a hero, where they live and what they wish for.
+    This page writes the story and draws every page, right here — nothing to download, nothing sent.</p>`;
+  const step = (title, ...parts) => {
+    const s = document.createElement("div"); s.className = "step";
+    const h = document.createElement("h3"); h.textContent = title;
+    s.append(h, ...parts); el.appendChild(s); return s;
+  };
+  const chips = (id, items, key) => {
+    const row = document.createElement("div"); row.className = "chips"; row.id = id;
+    for (const [value, label] of [[null, "Surprise me"], ...items]) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = label; b.dataset.value = value || "";
+      b.setAttribute("aria-pressed", String(choice[key] === value));
+      b.addEventListener("click", () => { choice[key] = value; if (key === "kind") choice.kindPicked = true;
+        buildBookIntro(el); });
+      row.appendChild(b);
+    }
+    return row;
+  };
+
+  const kinds = Object.keys(KINDS).filter(k => k !== "me" || me).map(k => [k, k === "me" ? "Me — my drawing" : k]);
+  const name = document.createElement("input");
+  name.id = "hero-name"; name.maxLength = 40; name.autocomplete = "off";
+  name.value = choice.name || (choice.kind === "me" && me && me.name) || "";
+  name.placeholder = choice.kind ? `Name, e.g. ${KINDS[choice.kind].names[0]}` : "Name (or leave it to us)";
+  name.addEventListener("input", () => { choice.name = name.value; });
+  const nameRow = document.createElement("label"); nameRow.className = "name-row";
+  nameRow.append(Object.assign(document.createElement("span"), { textContent: "Called" }), name);
+  step("1 · Your hero", meNote(), chips("kinds", kinds, "kind"), nameRow);
+  step("2 · Where they live", chips("places", Object.entries(PLACES).map(([k, p]) => [k, p.label]), "place"));
+  step("3 · What they wish for", chips("wishes", Object.entries(WISHES)
+    .filter(([k]) => wishes.has(k)).map(([k, w]) => [k, w.label]), "wish"));
+
+  const go = document.createElement("button");
+  go.type = "button"; go.id = "write"; go.className = "primary";
+  go.textContent = booksMade ? "Write another book" : "Write my book";
+  go.disabled = bookBusy !== null;
+  go.addEventListener("click", makeBook);
+  el.appendChild(go);
+}
+
+async function makeBook() {
+  if (bookBusy) return;
+  await meReady;
+  let { kind, place, wish } = choice;
+  if (kind === "me" && !me) kind = null;
+  // Whatever was left to us, picked so the wish fits.
+  const fits = pairs(kind, place).filter(([k, p]) => !wish || wishesFor(k, p).includes(wish));
+  if (fits.length) [kind, place] = fits[Math.floor(Math.random() * fits.length)];
+  const name = (choice.name || (kind === "me" && me && me.name) || "").trim();
+  const story = writeStory({ kind, place, wish, name,
+    seed: Number.isFinite(SEED) ? SEED + booksMade : Math.floor(Math.random() * 1e9) });
+  const hero = story.cast[0];
+
+  addMsg("user", `${hero.name}, ${hero.is === "me" ? "you" : "a " + hero.is}, ${PLACES[story.choices.place].label}` +
+    ` — wishes to ${WISHES[story.choices.wish].label}`, "Book");
+  const out = addMsg("assistant", "");
+  const status = document.createElement("p");
+  status.className = "note book-status";
+  status.textContent = "Drawing the book…";
+  out.body.appendChild(status);
+
+  bookBusy = ["drawing…", "busy"]; stopFlag = false;
+  if ($("write")) $("write").disabled = true;
+  paintStatus();
+  // The book as data: what a share link carries and what an edit changes.
+  const state = { title: story.title, cast: story.cast,
+    pages: story.pages.map(text => ({ text, things: null })), cover: null, voice: "" };
+  try {
+    await showBook(state, out, { status, plan: async text => {
+      const fixed = wordsOnlyPlan(text, state);
+      return { things: fixed.entries, how: "Drawn from the words on this page." +
+        (fixed.fixes.length ? ` The page: ${fixed.fixes.join("; ")}.` : "") };
+    } });
+    booksMade++;
+    scrollToAnswer(out.body);
+  } catch (e) {
+    showNote(out.body, "This book could not be drawn: " + (e && e.message || e));
+  } finally {
+    bookBusy = null;
+    syncMode();
+  }
 }
 
 // ---- The privacy meter -------------------------------------------------------
@@ -1285,15 +1428,28 @@ function showIntro() {
 // record. Writing a book and drawing make none. The counter does not pretend otherwise if
 // something does — a KaTeX font fetched for a formula is listed like anything
 // else, so the reader can see it is a font and not their text.
-function startNetMeter() {
+// Book needs no model, so the meter starts once the page has finished
+// loading; loading a model (Sketch) starts it again from there. The page
+// fetching its OWN files a second time is not counted: the offline worker
+// re-fetches the scripts the page already loaded (warmWorker), which is the
+// page caching itself, not anything leaving the device — it once showed as
+// 11 requests on a first visit.
+let netFrom = "the page loaded", netObserver = null;
+const netBefore = new Set();
+function startNetMeter(from = "the page loaded") {
   netSince = performance.now();
+  netFrom = from;
+  netSeen.length = 0;
+  for (const e of performance.getEntriesByType("resource")) netBefore.add(e.name);
   $("net").hidden = false;
   renderNet();
+  if (netObserver) return;
   try {
-    new PerformanceObserver(list => {
-      for (const e of list.getEntries()) if (e.startTime >= netSince) netSeen.push(e.name);
+    netObserver = new PerformanceObserver(list => {
+      for (const e of list.getEntries()) if (e.startTime >= netSince && !netBefore.has(e.name)) netSeen.push(e.name);
       renderNet();
-    }).observe({ type: "resource", buffered: true });
+    });
+    netObserver.observe({ type: "resource", buffered: true });
   } catch {
     $("net").hidden = true;
     $("netinfo").textContent = "This browser cannot report its own requests, so there is no counter.";
@@ -1305,11 +1461,11 @@ function renderNet() {
   $("netn").textContent = String(n);
   $("net").classList.toggle("dirty", n > 0);
   $("net").title = n
-    ? `${n} network request${n === 1 ? "" : "s"} since the model loaded — open the menu to see them`
-    : "No network requests since the model loaded";
+    ? `${n} network request${n === 1 ? "" : "s"} since ${netFrom} — open the menu to see them`
+    : `No network requests since ${netFrom}`;
   $("netinfo").innerHTML = n
-    ? `<b>${n} request${n === 1 ? "" : "s"}</b> since the model loaded:`
-    : `<b>0 requests</b> since the model loaded. Nothing you have typed has left this device.`;
+    ? `<b>${n} request${n === 1 ? "" : "s"}</b> since ${netFrom}:`
+    : `<b>0 requests</b> since ${netFrom}. Nothing you have made or typed has left this device.`;
   $("netlog").hidden = !n;
   $("netlog").textContent = netSeen.map(u => {
     try { const x = new URL(u); return x.host + x.pathname; } catch { return u; }
@@ -1606,63 +1762,13 @@ function readButton(book, status) {
   return { read, voicePanel };
 }
 
-async function runBook(premise, out) {
-  await meReady;
-  const status = document.createElement("p");
-  status.className = "note book-status";
-  status.textContent = "Writing the story…";
-  out.body.appendChild(status);
-
-  // Starring the reader: their name goes to the model; their face never does.
-  if (me && me.name) premise = `${premise.trim().replace(/[.!?]?$/, ".")} The hero is called ${me.name}.`;
-  const raw = await complete(storyMessages(premise), { maxTokens: STORY_TOKENS, temperature: 0.8,
-    schema: STORY_SCHEMA, onText: t => { status.textContent = `Writing the story… ${t.length} characters`; } });
-  if (stopFlag && !raw.includes('"pages"')) { status.textContent = "Stopped."; return; }
-  let story;
-  try { story = parseStory(raw); } catch (e) {
-    // Not a failure of the page or the device: the model wrote something that
-    // is not a story. Say so plainly, and keep what it wrote one tap away.
-    status.textContent = "The model did not write a story this time. Try again, or give it a simpler idea.";
-    const details = document.createElement("details");
-    details.className = "source raw";
-    const summary = document.createElement("summary");
-    summary.textContent = "Show what the model returned";
-    const pre = document.createElement("pre");
-    pre.textContent = raw.trim() || "(nothing)";
-    details.append(summary, pre);
-    out.body.appendChild(details);
-    return;
-  }
-
-  // The book as data: what a share link carries and what an edit changes.
-  const state = { title: story.title, cast: me ? castAsMe(story.cast, me.name) : story.cast,
-    pages: story.pages.map(text => ({ text, things: null })),
-    cover: null, voice: "" };
-  const planning = sceneMode();
-  await showBook(state, out, { status, truncated: story.truncated, plan: async text => {
-    let entries = [];
-    if (planning) {
-      try { entries = readDrawing(await complete(pageMessages(state, text),
-        { maxTokens: PAGE_TOKENS, temperature: 0.3, schema: SKETCH_SCHEMA })).c; } catch {}
-    }
-    const fixed = planning ? fixPagePlan(entries, text, state) : wordsOnlyPlan(text, state);
-    // Show the working, one tap away and never printed: what the model listed
-    // and what the page changed.
-    const how = (planning ? `The model listed: ${entries.join(", ") || "nothing usable"}. ` :
-      "Drawn from the words on this page. ") +
-      (fixed.fixes.length ? `The page: ${fixed.fixes.join("; ")}.` : "") +
-      (fixed.unknown.length ? ` No picture for ${fixed.unknown.map(w => `"${w}"`).join(", ")}.` : "");
-    return { things: fixed.entries, how };
-  } });
-}
-
 /**
  * Lay a book out and draw it. `state` is the book as data ({ title, cast,
  * pages: [{ text, things }], cover, voice }); a page with no things yet is
- * planned by `plan(text)` — the model's writing path — and a shared or edited
- * book already has them, so it needs no model at all.
+ * planned by `plan(text)` — from its own words (makeBook) — and a shared or
+ * edited book already has them.
  */
-async function showBook(state, out, { plan = null, status = null, truncated = false, shared = false } = {}) {
+async function showBook(state, out, { plan = null, status = null, shared = false } = {}) {
   const book = document.createElement("div");
   book.className = "book";
   book.dataset.title = state.title;
@@ -1675,7 +1781,7 @@ async function showBook(state, out, { plan = null, status = null, truncated = fa
   // straight away, pictures as they arrive.
   const cover = sheet(book, "cover");
   cover.innerHTML = `<h2></h2><p class="by">${shared ? "Shared with you · rebuilt on this device from the link, " +
-    "with no model downloaded and nothing uploaded" : "Written by a small language model on this device · illustrated by the page"}</p>`;
+    "with nothing uploaded" : "Written and drawn on this device by sketchgpt · no AI model, nothing uploaded"}</p>`;
   const titleEl = cover.querySelector("h2");
   titleEl.textContent = state.title;
   const coverArt = document.createElement("div"); coverArt.className = "art pending"; cover.appendChild(coverArt);
@@ -1718,14 +1824,8 @@ async function showBook(state, out, { plan = null, status = null, truncated = fa
     return { s, art, p, made, madeText: body };
   });
   const end = sheet(book, "end");
-  end.innerHTML = `<p class="page-text">The End</p><p class="credit">Story by a language model running in ` +
-    `this browser · pictures placed and drawn by sketchgpt · illustrations from Twemoji (CC-BY 4.0) · ` +
-    `inference by WebLLM</p>`;
-  if (truncated) {
-    const t = document.createElement("p"); t.className = "note";
-    t.textContent = `The model ran out of room after ${state.pages.length} pages, so the story is short.`;
-    out.body.insertBefore(t, book);
-  }
+  end.innerHTML = `<p class="page-text">The End</p><p class="credit">Story and pictures by sketchgpt, ` +
+    `in this browser · illustrations from Twemoji (CC-BY 4.0)</p>`;
 
   async function drawPage(i) {
     const pg = sheets[i], page = state.pages[i];
@@ -1854,7 +1954,9 @@ async function showBook(state, out, { plan = null, status = null, truncated = fa
       const save = button("Save", "primary ed-save"), cancel = button("Cancel", "ed-cancel");
       const rewrite = button("Rewrite with the model", "ed-rewrite");
       const edNote = document.createElement("p"); edNote.className = "reader-note";
-      if (!engine) { rewrite.disabled = true; rewrite.title = "Load the model first"; }
+      // The model downloads only when something needs it to write: open
+      // Sketch once and this button works too.
+      if (!engine) { rewrite.disabled = true; rewrite.title = "Needs the model: open Sketch once to download it"; }
       const row = document.createElement("div"); row.className = "ed-actions"; row.append(save, cancel, rewrite);
       ed.append(field("Words", words), field("In the picture — one thing per line (e.g. boat, big dog front)", things), row, edNote);
       open.hidden = true;
@@ -2067,7 +2169,8 @@ function showNote(el, text) {
 $("form").addEventListener("submit", async e => {
   e.preventDefault();
   const text = $("input").value.trim();
-  if (!engine || generating || !text) return;
+  // The composer is Sketch's: Book is written by the builder, not typed.
+  if (!engine || generating || !text || outMode() !== "sketch") return;
 
   // A lost GPU device does not come back. Without this the page happily
   // accepts request after request and fails each one identically.
@@ -2078,20 +2181,17 @@ $("form").addEventListener("submit", async e => {
   $("input").value = ""; $("input").style.height = "auto";
   if ($("intro")) $("intro").remove();
 
-  addMsg("user", text, sketching ? null : "Book");
+  addMsg("user", text);
   if (sketching) sketchHistory.push({ role: "user", content: text });
   const out = addMsg("assistant", "");
 
   generating = true; stopFlag = false;
   $("send").disabled = true; $("stop").style.display = "";
-  setStatus(sketching ? "drawing…" : "writing…", "busy");
+  setStatus("drawing…", "busy");
 
   let raw = "";
   try {
-    if (!sketching) {
-      await runBook(text, out);
-      scrollToAnswer(out.body);
-    } else {
+    {
       out.body.textContent = "Drawing…";
       // A sketch turn is planned, not accumulated: only the previous drawing
       // and the instruction that produced it are carried, so the prompt stays
@@ -2181,9 +2281,7 @@ $("input").addEventListener("input", function () {
 });
 
 function fitPlaceholder() {
-  $("input").placeholder = outMode() === "sketch"
-    ? "Describe a scene…"
-    : "A story about…  e.g. a little dog who has never seen the sea";
+  $("input").placeholder = "Describe a scene…";
 }
 
 // ---- Boot ----------------------------------------------------------------------
@@ -2202,9 +2300,13 @@ function boot() {
   loadRough(ROUGH);
   // The illustrations too: every book and every scene draws with them.
   loadArt();
-  // A shared book opens whatever init() decides about the model — even on a
-  // device with no WebGPU, which can show a book but never write one.
-  Promise.resolve().then(init).catch(e => console.warn("init:", e)).finally(openShared);
+  // No model, no model library: Book writes with rules. syncMode() (above,
+  // in restore) prepares the model only when the saved mode is Sketch. A
+  // shared book opens with no model at all, even with no WebGPU.
+  openShared();
+  // The privacy meter starts once the page's own files are in.
+  Promise.allSettled([loadRough(ROUGH), loadArt(), animation, sharing, meReady])
+    .then(() => { if (netSince === null) startNetMeter(); });
   // Keep the page itself available with no signal: the weights persist, but
   // GitHub Pages expires the HTML after ten minutes. Registered here, not on
   // "load": this module top-level awaits the WebLLM import, so "load" fires

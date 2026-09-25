@@ -30,10 +30,10 @@ them, and keep changes small enough for one person to review.
 web/browser.html          in-browser inference (WebGPU via WebLLM) — the public page
 web/index.html            local chat against Ollama — development only
 web/sketch.mjs            sketch format, context budget, SVG rendering
-web/book.mjs              Book (the default mode) — story prompt + parser, and the page's
-                          picture rules (continuity: hero on every page, names are not things)
-web/story.mjs             a picture-book story written by RULES, no model — hero, place, wish;
-                          every drawable word [marked] so tests hold the picture to it (not wired in yet)
+web/book.mjs              Book's picture rules (continuity: hero on every page, names are not
+                          things); the old model story prompt + parser, kept for the benches
+web/story.mjs             Book's stories, written by RULES, no model — hero, place, wish;
+                          every drawable word [marked] so tests hold the picture to it
 web/scene.mjs             scene mode (desktop) — the model lists things, the page places them
 web/art.mjs               generated Twemoji illustrations (CC-BY 4.0) — never edit by hand
 web/art-names.mjs         generated word -> illustration map — never edit by hand
@@ -73,7 +73,7 @@ docs/desk.md              what replaced it — five tools benched, two shipped, 
                           (Desk itself was then replaced by Book)
 docs/sketch-scenes.md     why desktop sketches stopped asking for coordinates
 docs/storybook.md         a story written by the model, illustrated by the page — what broke
-docs/story-rules.md       Book without the model — stage 1 (rule stories) built; pasted stories, scenery, sharing planned
+docs/story-rules.md       Book without the model — stages 1–2 built (rules; no download on open); more planned
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
 web/selfie.html           Draw me: a photo drawn as a moving caricature, GIF/sticker/SVG export (stage 1)
@@ -503,7 +503,7 @@ practical fine-tuning.
   still entirely unwritten: **a visitor draws, sees what their hardware
   managed, and the lab learns nothing.** The page already computes the answer
   per device and throws it away. No datapoint, no public matrix.
-- **Book mode works on the owner's real devices.** Phone (Qwen3-0.6B, iPhone,
+- **Book mode, as the model wrote it (now retired for rules), worked on the owner's real devices.** Phone (Qwen3-0.6B, iPhone,
   Safari, 1024 ctx): the first run died on an empty picture, fixed, then
   "Works now". Desktop: models did not download until the storage-aware pick;
   now tested and working. The model writes a six-page story (JSON schema:
@@ -512,7 +512,14 @@ practical fine-tuning.
   (`wordsOnlyPlan()`). Print (this book only) and Download (one HTML file).
   Still unmeasured: how long a book takes on a real GPU, and story quality on
   the browser's q4f16 build (the numbers are Ollama on CPU).
-- **The model now downloads without a button press** — the owner's decision,
+- **Book needs no model, and opening the app downloads nothing** (the owner's
+  call, `docs/story-rules.md`). Book's first screen is a builder — hero (or
+  the reader's photo), place, wish — and `web/story.mjs` writes the book.
+  WebLLM itself is fetched only when Sketch is opened, or for "Rewrite with the
+  model". A phone with no WebGPU makes books. The next stages are in
+  `docs/story-rules.md`: your own pasted story with a guide, better scenery,
+  pets and drawings as heroes, and export. **Never run on a real phone yet.**
+- **In Sketch, the model downloads without a button press** — the owner's decision,
   reversing "silently pulling hundreds of MB is not ours to do". What is left
   of that rule: the card names model and size while it downloads, `?manual=1`
   is one tap away, and `navigator.connection.saveData` still means ask first

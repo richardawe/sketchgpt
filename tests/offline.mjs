@@ -64,14 +64,30 @@ try {
     async () => (await navigator.serviceWorker.getRegistrations()).length > 0,
     { timeout: 15000 });
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null, { timeout: 15000 });
-  // The engine module stands in for the WebLLM bundle: fetched before the
-  // worker had control, so it is only cached if the page warms the worker.
-  await page.waitForFunction(async () => {
+  // Book's own module, fetched before the worker had control, is only cached
+  // if the page warms the worker (warmWorker). Book is what a visitor opens,
+  // so this is the check that one visit is enough.
+  const cached = path => page.waitForFunction(async p => {
     for (const k of await caches.keys())
-      if (await (await caches.open(k)).match(new URL('mock.mjs', location.href).href, { ignoreSearch: true })) return true;
+      if (await (await caches.open(k)).match(new URL(p, location.href).href, { ignoreSearch: true })) return true;
     return false;
-  }, null, { timeout: 15000 });
+  }, path, { timeout: 15000 });
+  await cached('story.mjs');
+  await page.waitForSelector('#write');
+  // A first visit: the worker takes control and the page re-fetches its own
+  // scripts so they are cached (warmWorker). That is the page caching itself,
+  // not anything leaving the device, and the privacy meter must not count it —
+  // it once showed 11 requests on a first visit.
+  await page.waitForFunction(() => !document.querySelector('#net').hidden);
+  await page.waitForTimeout(1500);
+  assert.equal(await page.locator('#netn').textContent(), '0',
+    'the meter counted the page caching its own files: ' + await page.locator('#netlog').textContent());
+  // Open Sketch once while online: the model library (the stand-in engine
+  // module here) is fetched only then, and the worker caches it.
+  await page.click('#output [data-mode="sketch"]');
   await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load');
+  await cached('mock.mjs');
+  await page.click('#output [data-mode="book"]');
 
   // Now cut it off entirely — server down AND the browser offline.
   await context.setOffline(true);
@@ -79,31 +95,23 @@ try {
 
   await page.reload();
   assert.match(await page.title(), /sketchgpt/, 'the page did not survive going offline');
-  await page.waitForFunction(() => document.querySelector('#status') !== null);
-  assert.equal(await page.locator('#input').count(), 1, 'the composer is missing offline');
   assert.equal(await page.locator('#output').count(), 1, 'the mode picker is missing offline');
-  // The elements above are static HTML and exist even if the script died. This
-  // is the check that the page's own modules — imported with a ?v= cache-buster
-  // — came back from the worker's cache and ran.
-  await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load',
-    null, { timeout: 10000 });
+  // The elements above are static HTML and exist even if the script died.
+  // This is the check that the page's modules — imported with a ?v=
+  // cache-buster — came back from the worker's cache and ran: a whole book,
+  // written and drawn, with no network at all.
+  await page.waitForSelector('#write', { timeout: 10000 });
   assert.equal(await page.locator('#output [data-mode="book"]').getAttribute('aria-selected'), 'true',
     'the page did not start in Book mode offline');
-  // The local modules must come from the cache too, not just the HTML.
-  const drew = await page.evaluate(async () => {
-    const m = await import('./sketch.mjs');
-    return m.parseSketch('{"t":"A cat","c":["cat 50 52 34"]}').commands[0].text;
-  });
-  assert.equal(drew, 'cat', 'sketch.mjs was not available offline');
-  // Book is the default mode, so its module has to be in the shell cache, not
-  // fetched on demand.
-  const planned = await page.evaluate(async () => {
-    const m = await import('./book.mjs');
-    return m.storyMessages('a dog').length;
-  });
-  assert.equal(planned, 2, 'book.mjs was not available offline');
-  console.log('Offline check passed: page, composer, sketch and book modules all load ' +
-    'with the network down.');
+  await page.click('#write');
+  await page.waitForFunction(() => document.querySelectorAll('.book .art svg').length === 7, null, { timeout: 20000 });
+  // And Sketch still reaches its model library.
+  await page.click('#output [data-mode="sketch"]');
+  await page.waitForFunction(() => document.querySelector('#status').textContent === 'ready to load',
+    null, { timeout: 10000 });
+  assert.equal(await page.locator('#input').count(), 1, 'the composer is missing offline');
+  console.log('Offline check passed: after one visit, a whole book is written and drawn with the ' +
+    'network down, and Sketch still reaches its model library.');
 } finally {
   await context.close(); await browser.close();
   server.listening && await new Promise(r => server.close(r));

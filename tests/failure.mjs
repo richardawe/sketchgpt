@@ -44,13 +44,15 @@ try {
       if (navigator.storage) navigator.storage.estimate = async () => ({ quota: 50e9, usage: 0 });
     window.requests = [];
     window.failWith = null;
+    // Failures are the model's, and only Sketch has a model now.
+    localStorage.setItem('sketchgpt.cfg', JSON.stringify({ output: 'sketch' }));
   });
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.pathname === '/mock.mjs')
       return route.fulfill({ contentType: 'text/javascript', body: stub });
     const name = url.pathname.replace(/^.*\//, '');
-    const file = /^(sketch|stamps|rough|book|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
+    const file = /^(sketch|stamps|rough|book|story|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
     await route.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
       body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
   });
@@ -74,13 +76,13 @@ try {
   await page.evaluate(() => { window.failWith = 'something went sideways'; });
   await send('hello');
   let body = await page.locator('.msg.assistant .body').last().textContent();
-  assert.match(body, /Generation failed/);
+  // Sketch heads a failure with its own advice; the facts under it are the same.
+  assert.match(body, /Could not finish a valid sketch|Generation failed/);
   assert.match(body, /Details to copy/);
   let facts = await page.locator('.msg.assistant .source pre').last().textContent();
   for (const key of ['model:', 'mode:', 'context:', 'prompt:', 'gpu:', 'agent:', 'error:'])
     assert.ok(facts.includes(key), `the report is missing "${key}"`);
-  // Book is the default mode, and its failures get the same report.
-  assert.match(facts, /mode: book/);
+  assert.match(facts, /mode: sketch/);
   assert.match(facts, /gpu: apple apple-m/);
   assert.match(facts, /error: something went sideways/);
   assert.match(facts, /prompt: \d+ tokens/);
@@ -156,15 +158,12 @@ try {
 
   // ---- a stop is not a failure ------------------------------------------
   await open();
-  await page.evaluate(() => { window.failWith = null; });
+  await page.evaluate(() => { window.failWith = null; window.reply = JSON.stringify({ t: 'A cat', c: ['cat 50 50 30'] }); });
   await send('fine');
   body = await page.locator('.msg.assistant .body').last().textContent();
   assert.ok(!/Generation failed|Details to copy/.test(body),
     'a successful turn was reported as a failure');
-  // A reply that is not a story is the model's miss, not a failure: it is
-  // said plainly, and what the model wrote is kept.
-  assert.match(body, /did not write a story/);
-  assert.equal(await page.locator('.msg.assistant .source.raw pre').last().textContent(), 'ok');
+  assert.equal(await page.locator('.msg.assistant').last().locator('svg').count(), 1);
   assert.equal(await page.locator('#send').isDisabled(), false);
 
   assert.deepEqual(errors, [], 'page errors: ' + errors.join('; '));
