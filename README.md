@@ -165,7 +165,10 @@ It never changes a word. The hero can be **your own picture**: a pet, a
 child's drawing (the paper is taken away) or a photo (the person cut out).
 It stays in the tab and never goes in a link. Backgrounds follow the words
 (hills, forest, snow, a town, a room with a window) and carry from page to
-page. Any moving page can be **saved as a GIF** to send.
+page, painted with gradient skies, distance and each place's own small
+things. Any moving page can be **saved as a GIF**, and the whole book **as a
+video** (MP4, or WebM where the browser cannot make H.264), silent, made in
+the tab.
 
 The page still owns **continuity**: the hero is on every page as the same
 picture, a name is not a thing (a dog called Ducky is not a duck), and each
@@ -527,6 +530,9 @@ docs/customising.md       how to change what the model does
 - **[Twemoji](https://github.com/jdecked/twemoji)** (graphics CC-BY 4.0,
   © Twitter, Inc and other contributors) — the illustrations sketches are drawn
   from, vendored as path data in `web/art.mjs` and credited inside every SVG.
+- **[Mediabunny](https://github.com/Vanilagy/mediabunny)** (MPL-2.0) — writes
+  the MP4/WebM when a book is saved as a video; only its writer is vendored,
+  unmodified, in `web/vendor/mediabunny.mjs`.
 - **[Fluent Emoji](https://github.com/microsoft/fluentui-emoji)** (MIT, © Microsoft)
   — its "Flat" style fills what Twemoji's list lacks: animals like the llama and
   otter, and the set dressing backgrounds are made of. Vendored beside Twemoji

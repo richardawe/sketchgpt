@@ -36,9 +36,10 @@ web/story.mjs             Book's stories, written by RULES, no model — hero, p
                           every drawable word [marked] so tests hold the picture to it
 web/picture.mjs           your own picture as the hero — paper removed, person cut out, or kept; tab only
 web/gif.mjs               a moving page as an animated GIF (frames stepped from its animations; gifenc)
+web/video.mjs             the whole book as a video: MP4 (H.264) or WebM (VP9), WebCodecs + vendor/mediabunny.mjs
 web/scene.mjs             places things and chooses the backdrop (hills, forest, snow, town, room);
                           placeOf() carries a page's place to the next
-web/art.mjs               generated Twemoji illustrations (CC-BY 4.0) — never edit by hand
+web/art.mjs               generated Twemoji (CC-BY 4.0) + Fluent Emoji Flat (MIT) illustrations — never edit by hand
 web/art-names.mjs         generated word -> illustration map — never edit by hand
 web/stamps.mjs            generated Lucide path data — never edit by hand
 web/rough.mjs             vendored rough.js 4.6.6 (MIT) — verbatim, keep it so
@@ -83,7 +84,8 @@ web/selfie.html           Draw me: a photo drawn as a moving caricature, GIF/sti
 web/face.mjs              selfie drawing: alignment, caricature rules, colour, hair, SVG, poses (pure)
 web/face-find.mjs         MediaPipe's face/hair/person models on LiteRT.js — never MediaPipe's runtime (it logs)
 web/face-mean.mjs         generated average face — never edit by hand (scripts/build-face-mean.mjs)
-web/vendor/               LiteRT.js, the four .tflite models, gifenc — regenerate with scripts/vendor-face.mjs
+web/vendor/               LiteRT.js, the four .tflite models, gifenc — regenerate with scripts/vendor-face.mjs;
+                          mediabunny.mjs (MPL-2.0, tree-shaken MP4/WebM writer, esbuild from npm mediabunny@1.60.0)
 docs/selfie.md            Selfie mode: the plan, stage 1 as built, what was measured and not tested
 scripts/face-bench.mjs    selfie fixture review: photos through the real page, drawings + skin numbers
 scripts/rhyme-bench.mjs   can a small model rhyme? (no: 0-2/16, judged by CMUdict) — parked
@@ -525,8 +527,12 @@ practical fine-tuning.
   paste your own story with a page-by-page guide; scenery (hills, forest,
   snow, town, rooms; the place carried between pages; depth); your own picture
   as the hero (tab only, never in a link; the caricature in a link only when
-  ticked, 7.9 KB); a page saved as a GIF. The model-helper buttons (ideas,
-  things to draw, say it differently) are planned and not built.
+  ticked, 7.9 KB); a page saved as a GIF. Then, at the owner's ask: richer
+  painted backgrounds with per-place props, Fluent Emoji as a second picture
+  library, and the whole book as a video (MP4, or WebM where H.264 cannot be
+  encoded — headless Chromium here; the MP4 path is untested). The
+  model-helper buttons (ideas, things to draw, say it differently) are
+  planned and not built.
 - **In Sketch, the model downloads without a button press** — the owner's decision,
   reversing "silently pulling hundreds of MB is not ours to do". What is left
   of that rule: the card names model and size while it downloads, `?manual=1`

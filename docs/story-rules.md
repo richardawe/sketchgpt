@@ -534,6 +534,64 @@ GIF) and `me-browser` (the opt-in link). Mutation checks:
 - GIF time on a phone CPU.
 - Whether `navigator.share` with a GIF file opens the share sheet on iOS.
 
+## After stage 6: richer backgrounds, a second picture library, video
+
+The owner, after trying stages 3–6: "The background is still basic, add
+more… add more image libraries and have the option to make this a video and
+not a gif."
+
+**A second library.** Fluent Emoji's Flat style (MIT, © Microsoft) now sits
+beside Twemoji in `web/art.mjs`, built by the same script. It adds 53
+pictures: 33 animals Twemoji's list lacked (llama, otter, flamingo, panda…)
+and set dressing (potted plant, framed picture, log, fern, coral, nest,
+ladder…). It never takes a word Twemoji draws: all 225 existing pictures and
+every word mapping came out byte-identical. The bundle grew from 345 to
+510 KB (192 KB gzipped). Kenney's CC0 background packs were the first choice,
+but they can only be downloaded through a manual click-through, so they
+cannot be fetched by a script.
+
+**Richer backgrounds**, all drawn on the page:
+- **Skies:** gradients with a glow where the light comes from.
+- **Open country:** a distant mountain range, snow-capped in snow.
+- **Farms:** patchwork fields, a winding path and a fence.
+- **Forests:** two rows of trees.
+- **Towns:** roofs, windows lit at night, a pavement and street lamps.
+- **Sea:** a gradient, light on the water, and surf on the sand.
+- **Grass:** deepens toward the front and has wild flowers.
+- **Snow:** drifts.
+- **Time of day:** night and dusk fall on the ground too.
+- **Indoors:** a painted wall, skirting board, floorboards and a rug.
+
+`scene.mjs` also dresses each place with a few small props: a barn and
+sheaves, mushrooms and a log, a palm and shells, pictures on the wall. The
+props are chosen by the place, so every page set there has the same ones.
+They sit behind the story's things, are fewer on a busy page, and are never
+animals or people.
+
+Two catches found on the way:
+- **Props must never go round nothing.** An empty plan dressed with props
+  looked like a picture, which would have hidden a model that drew nothing in
+  Sketch. A test caught it.
+- **Twemoji's "lamp" is an oil lamp (🪔),** and it floated over the hero like a
+  flame, so rooms don't use it.
+
+**Video.** "Save the book as a video" (`web/video.mjs`) makes the cover, every
+page moving with its words, and The End, at 540×720:
+- Frames are stepped the way the GIF steps them, with the camera kept and
+  pages fading in.
+- They're encoded in the tab with WebCodecs through Mediabunny (MPL-2.0). Only
+  its MP4/WebM writer is bundled: tree-shaken to 219 KB, loaded only when
+  asked, and it makes no network requests.
+- The output is MP4 (H.264) where the browser can encode it, else WebM (VP9).
+- Headless Chromium here has no H.264 encoder, so the test covers WebM: a
+  30.5 s, 0.8 MB video, made in about 16 s on this CPU and played back at
+  540×720.
+- It is silent.
+
+**Not tested:** the MP4 path (any real Chrome, Edge or Safari); how long a
+video takes on a phone; whether iOS shares an MP4 to Messages or WhatsApp
+from the share sheet.
+
 ## Not known, and how each gets known
 
 - **Whether rule stories feel repetitive:** the stage 1 blind read, then the owner.
