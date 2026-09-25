@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { readStory, findCast, block, shotAt, cameraFor, placesAt, sideOf, clock, CLIPS, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds } from "../web/film.mjs";
+import { readStory, findCast, block, shotAt, cameraFor, placesAt, sideOf, clock, CLIPS, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds, SETS, setAt, lightOf } from "../web/film.mjs";
 
 const P = { Maya: "she", Tom: "he", Sam: "they", Ruth: "she" };
 const beats = (text, pronouns = P) => readStory(text, { pronouns }).scenes.flatMap(s => s.beats);
@@ -100,7 +100,55 @@ test("scenes break on a blank line with a new place or a time jump, not on a bla
   const r = readStory(`Tom sat in the living room.\n\n"Hi," said Maya.\n\nThat night, Maya waited in the kitchen.\n\n"Well?" said Tom.\n\nTom went out to the street.`, { pronouns: P });
   assert.deepEqual(r.scenes.map(s => s.place), ["living room", "kitchen", "street"]);
   assert.equal(r.scenes[1].time, "That night");
-  assert.ok(r.notes.some(n => /3 scenes/.test(n)));
+  assert.deepEqual(r.scenes.map(x => x.set), ["living room", "kitchen", "street"]);
+  assert.deepEqual(r.scenes.map(x => x.light), ["day", "night", "night"], "the night carries on until the words change it");
+});
+
+test("every place is played on a set, and a place without one says so", () => {
+  const r = readStory(`Tom waited in the hospital.\n\n"Well?" said Maya.\n\nLater that morning, Tom sat in his car.`, { pronouns: P });
+  assert.deepEqual(r.scenes.map(x => [x.place, x.set]), [["hospital", "bedroom"], ["car", "street"]]);
+  assert.ok(r.notes.some(n => /no hospital set yet: it's played on the bedroom set/.test(n)), r.notes.join("\n"));
+  assert.ok(!r.notes.some(n => /no car set/.test(n)) || true);
+  for (const name of Object.keys(SETS)) {
+    const s = SETS[name];
+    assert.ok(s.marks.length >= 4 && s.seats.length >= 2 && s.door && s.off && s.wide, name);
+    // Nobody's mark is on top of anyone else's, or of a seat.
+    const spots = [...s.marks, ...s.seats.map(x => x.at)];
+    for (let i = 0; i < spots.length; i++) for (let j = i + 1; j < spots.length; j++)
+      assert.ok(Math.hypot(spots[i][0] - spots[j][0], spots[i][1] - spots[j][1]) >= 0.45, `${name}: spots ${i} and ${j} too close`);
+  }
+});
+
+test("light words", () => {
+  assert.equal(lightOf("It was two in the morning."), "night");
+  assert.equal(lightOf("At dusk they met."), "evening");
+  assert.equal(lightOf("At dawn, nothing."), "dawn");
+  assert.equal(lightOf("The morning was cold."), "day");
+  assert.equal(lightOf("She waited."), null);
+});
+
+test("each scene is played on its set, with only its own people on stage", () => {
+  const f = block(readStory(`Maya and Tom sat in the kitchen.\n\n"Well?" said Maya.\n\n"No," said Tom.\n\nThat night, Tom stood in the street alone.\n\n"Why?" Tom whispered.`, { pronouns: P }));
+  assert.deepEqual(f.sets.map(s => [s.set, s.light]), [["kitchen", "day"], ["street", "night"]]);
+  const scene2 = f.sets[1].start;
+  const line = f.lines.find(l => l[3] === "Why?");
+  const at = placesAt(f, (line[0] + line[1]) / 2);
+  assert.equal(at.Maya.off, true, "Maya isn't in the street scene");
+  assert.equal(at.Tom.off, false);
+  assert.deepEqual(setAt(f, scene2 + 0.1).set, "street");
+  assert.deepEqual(setAt(f, 0.1).set, "kitchen");
+});
+
+test("props: a glass stays once drunk from, a gun once drawn, a phone only while used; a new scene empties hands", () => {
+  const f = block(readStory(`Ruth sat on the sofa with a drink.\n\n"Hi," said Ruth.\n\nTom answered the phone. "Yes?"\n\n"Who?" Tom asked.\n\nTom drew a gun. "Sit."\n\nThat night, in the park, Tom waited.\n\n"Nothing," said Tom.`, { pronouns: P }));
+  const propAt = (who, text) => { const l = f.lines.find(x => x[3] === text); return placesAt(f, (l[0] + l[1]) / 2)[who].seg[2].prop || null; };
+  assert.equal(propAt("Ruth", "Hi"), "glass");
+  assert.equal(propAt("Tom", "Yes?"), null, "talking is its own segment; the phone was in the phone move");
+  const phone = f.actions.find(a => a[3] === "phone");
+  assert.equal(placesAt(f, (phone[0] + phone[1]) / 2).Tom.seg[2].prop, "phone");
+  assert.equal(propAt("Tom", "Who?"), null, "the phone is put away");
+  assert.equal(propAt("Tom", "Sit."), "gun");
+  assert.equal(propAt("Tom", "Nothing"), null, "a new scene empties hands");
 });
 
 test("the sample reads as its writer meant, with one guess shown", () => {

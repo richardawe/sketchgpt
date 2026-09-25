@@ -67,7 +67,7 @@ try {
   s = await page.evaluate(() => window.__film.state.story);
   const lines = s.scenes.flatMap(x => x.beats).filter(b => b.kind === "line");
   assert.deepEqual(lines.map(l => [l.speaker, l.how]), [["Ruth", "tag"], ["Sam", "paragraph"], ["Ruth", "guessed"], ["Sam", "paragraph"]]);
-  assert.deepEqual(s.scenes.flatMap(x => x.beats).filter(b => b.kind === "action").map(b => `${b.who}:${b.move}`), ["Ruth:sit", "Sam:enter", "Sam:no"]);
+  assert.deepEqual(s.scenes.flatMap(x => x.beats).filter(b => b.kind === "action").map(b => `${b.who}:${b.move}`), ["Ruth:sit", "Ruth:hold", "Sam:enter", "Sam:no"]);
   // The guess is shown, highlighted, and can be changed; the change wins.
   assert.equal(await page.locator("tr.guessed").count(), 1);
   assert.match(await page.textContent("tr.guessed"), /There's no traffic.*guessed/);

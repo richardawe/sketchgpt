@@ -1,6 +1,6 @@
 // Build Film's stage-0 assets from the free CC0 packs (docs/film-plan.md).
 //
-//   node scripts/film/build-assets.mjs <unzipped Quaternius Standard packs> <unzipped Kenney furniture kit> <out dir>
+//   node scripts/film/build-assets.mjs <unzipped Quaternius Standard packs> <unzipped Kenney furniture kit> <out dir> [<folder of unzipped Kenney city-kit-roads, city-kit-commercial_2.1, car-kit, nature-kit, food-kit>]
 //
 // Needs, installed somewhere on NODE_PATH (not in this repo):
 //   @gltf-transform/core @gltf-transform/extensions @gltf-transform/functions meshoptimizer sharp
@@ -97,26 +97,52 @@ for (const [src, name] of [["Universal Animation Library[Standard]/Unreal-Godot/
   await write(doc, name);
 }
 
-// A room: Kenney's furniture kit, the pieces a living room needs, one file,
-// each piece a named root node the page clones. Unlit flat colours become lit
-// (MeshStandardMaterial) so the room takes the same light as the people.
-const PIECES = ["floorFull", "wall", "wallWindow", "wallDoorway", "loungeSofa", "loungeChair", "tableCoffee", "rugRectangle",
-  "lampRoundFloor", "bookcaseOpen", "pottedPlant", "sideTable", "televisionModern", "cabinetTelevision", "books", "doorway", "kitchenBar", "stoolBar", "ceilingFan"];
-const room = new Document();
-const kdir = join(kenney, "Models", "GLTF format");
-for (const p of PIECES) {
-  const piece = await io.read(join(kdir, p + ".glb"));
-  const scene = piece.getRoot().getDefaultScene() || piece.getRoot().listScenes()[0];
-  for (const n of scene.listChildren()) n.setName(p);
-  mergeDocuments(room, piece);
+// Kits of pieces: each file holds named root nodes the page clones and places
+// (web/film/stage.mjs). Unlit flat colours become lit (MeshStandardMaterial)
+// so the sets take the same light as the people.
+async function kit(name, dir, pieces, { textures = 256 } = {}) {
+  const doc = new Document();
+  for (const p of pieces) {
+    const piece = await io.read(join(dir, p + ".glb"));
+    const scene = piece.getRoot().getDefaultScene() || piece.getRoot().listScenes()[0];
+    // One root per piece, named for it, whatever the source's own node tree.
+    const holder = piece.createNode(p);
+    for (const n of scene.listChildren()) holder.addChild(n);
+    scene.addChild(holder);
+    mergeDocuments(doc, piece);
+  }
+  const [first, ...rest] = doc.getRoot().listScenes();
+  for (const s of rest) { for (const n of s.listChildren()) first.addChild(n); s.dispose(); }
+  for (const b of doc.getRoot().listBuffers().slice(1)) b.dispose();
+  for (const acc of doc.getRoot().listAccessors()) acc.setBuffer(doc.getRoot().listBuffers()[0]);
+  for (const m of doc.getRoot().listMaterials()) m.setExtension("KHR_materials_unlit", null).setRoughnessFactor(0.85).setMetallicFactor(0);
+  doc.getRoot().listExtensionsUsed().filter(e => e instanceof KHRMaterialsUnlit).forEach(e => e.dispose());
+  await doc.transform(dedup(), prune(),
+    textureCompress({ encoder: sharp, targetFormat: "webp", resize: [textures, textures], quality: 85 }));
+  await write(doc, name);
 }
-const [first, ...rest] = room.getRoot().listScenes();
-for (const s of rest) { for (const n of s.listChildren()) first.addChild(n); s.dispose(); }
-for (const b of room.getRoot().listBuffers().slice(1)) b.dispose();
-for (const acc of room.getRoot().listAccessors()) acc.setBuffer(room.getRoot().listBuffers()[0]);
-for (const m of room.getRoot().listMaterials()) m.setExtension("KHR_materials_unlit", null).setRoughnessFactor(0.85).setMetallicFactor(0);
-room.getRoot().listExtensionsUsed().filter(e => e instanceof KHRMaterialsUnlit).forEach(e => e.dispose());
-await room.transform(dedup(), prune());
-await write(room, "room.glb");
+
+// Rooms: Kenney's Furniture Kit (CC0) — the living room, kitchen, bedroom, office and bar.
+await kit("room.glb", join(kenney, "Models", "GLTF format"), ["floorFull", "wall", "wallWindow", "wallDoorway", "loungeSofa", "loungeChair",
+  "tableCoffee", "rugRectangle", "lampRoundFloor", "bookcaseOpen", "pottedPlant", "sideTable", "televisionModern", "cabinetTelevision", "books",
+  "doorway", "kitchenBar", "kitchenBarEnd", "stoolBar", "ceilingFan",
+  "kitchenCabinet", "kitchenCabinetDrawer", "kitchenCabinetUpper", "kitchenFridgeLarge", "kitchenStove", "kitchenSink", "kitchenCoffeeMachine",
+  "kitchenMicrowave", "table", "chair", "bedDouble", "cabinetBedDrawer", "lampSquareTable", "desk", "chairDesk", "computerScreen",
+  "computerKeyboard", "bookcaseClosedWide", "tableRound", "chairCushion", "bench", "coatRackStanding", "lampSquareFloor", "rugRound",
+  "pillow", "pillowBlue", "plantSmall1", "trashcan", "laptop", "radio", "lampWall"]);
+
+// Outside, if the Kenney city, nature and car kits are given (argv 4: their parent folder).
+const more = process.argv[5];
+if (more) {
+  const find = (kitDir, sub) => { const d = readdirSync(join(more, kitDir), { recursive: true }).find(f => f.endsWith(sub)); return d && join(more, kitDir, dirname(d)); };
+  const roads = find("kenney_city-kit-roads", "road-straight.glb"), city = find("kenney_city-kit-commercial_2.1", "building-a.glb");
+  const cars = find("kenney_car-kit", "sedan.glb"), nature = find("kenney_nature-kit", "tree_default.glb"), food = find("kenney_food-kit", "soda-glass.glb");
+  // The street (City Kit Roads + Commercial + Car Kit), the park (Nature Kit), and things to hold (Food Kit). All CC0.
+  await kit("city.glb", roads, ["road-straight", "tile-low", "light-square", "construction-cone", "dumpster"], { textures: 128 });
+  await kit("buildings.glb", city, ["building-a", "building-b", "building-c", "building-d", "building-e", "building-h", "low-detail-building-a", "low-detail-building-b", "low-detail-building-wide-a", "detail-awning"], { textures: 256 });
+  await kit("cars.glb", cars, ["sedan", "taxi"], { textures: 128 });
+  await kit("nature.glb", nature, ["ground_grass", "ground_pathStraight", "tree_default", "tree_oak", "tree_fat", "tree_detailed", "plant_bushLarge", "plant_bush", "flower_redA", "flower_yellowA", "fence_simple", "rock_smallA"], { textures: 128 });
+  await kit("props.glb", food, ["soda-glass", "wine-red", "cup"], { textures: 128 });
+}
 
 console.log("\n" + readdirSync(out).join(" "));

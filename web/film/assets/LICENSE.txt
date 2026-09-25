@@ -8,9 +8,17 @@ hair-buns.glb, beard.glb      Quaternius — Universal Base Characters [Standard
 moves-1.glb                   Quaternius — Universal Animation Library [Standard]
 moves-2.glb                   Quaternius — Universal Animation Library 2 [Standard]
                               https://quaternius.com  (CC0 1.0)
-room.glb                      Kenney — Furniture Kit 2.0, 19 pieces merged
+room.glb                      Kenney — Furniture Kit 2.0, 52 pieces merged
                               https://kenney.nl/assets/furniture-kit  (CC0 1.0)
+city.glb                      Kenney — City Kit (Roads)          https://kenney.nl/assets/city-kit-roads  (CC0 1.0)
+buildings.glb                 Kenney — City Kit (Commercial) 2.1 https://kenney.nl/assets/city-kit-commercial  (CC0 1.0)
+cars.glb                      Kenney — Car Kit                   https://kenney.nl/assets/car-kit  (CC0 1.0)
+nature.glb                    Kenney — Nature Kit                https://kenney.nl/assets/nature-kit  (CC0 1.0)
+props.glb                     Kenney — Food Kit                  https://kenney.nl/assets/food-kit  (CC0 1.0)
 lebombo_1k.hdr                Poly Haven — "Lebombo" by Greg Zaal, 1k, unchanged
                               https://polyhaven.com/a/lebombo  (CC0 1.0)
+sky_1k.hdr                    Poly Haven — "Kloofendal 48d Partly Cloudy (Pure Sky)" by Greg Zaal,
+                              sky edits by Jarod Guest, 1k, unchanged
+                              https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky  (CC0 1.0)
 
 https://creativecommons.org/publicdomain/zero/1.0/

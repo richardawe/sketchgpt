@@ -50,7 +50,7 @@ export const MOVES = [
   ["exit", /\b(le(?:ft|aves?)(?! (?:it|the|a|her|his|them|him)\b)|walk(?:s|ed)? out|went out|goes out|storm(?:s|ed)? out|exit(?:s|ed)?)\b/i],
   ["sit", /\b(s(?:its?|at)(?: back)? down|s(?:its?|at) on|s(?:its?|at)\b(?! up))\b/i],
   ["stand", /\b(st(?:ands?|ood) up|st(?:ands?|ood)\b(?! (?:still|there|by|in|at|behind|beside|near))|got to (?:her|his|their) feet|gets up|got up|rose|rises)\b/i],
-  ["walk", /\b(walk(?:s|ed)? (?:to|over|across|toward|towards|back)|cross(?:es|ed) (?:to|the room)|went (?:to|over)|goes (?:to|over)|pac(?:es|ed))\b/i],
+  ["walk", /\b(walk(?:s|ed)? (?:to|over|across|toward|towards|back|down|along|up|away)|cross(?:es|ed) (?:to|the room)|went (?:to|over)|goes (?:to|over)|pac(?:es|ed))\b/i],
   ["nod", /\b(nod(?:s|ded)?)\b/i],
   ["no", /\b(shook (?:her|his|their) head|shakes (?:her|his|their) head)\b/i],
   ["arms", /\b((?:crossed|crosses|folded|folds) (?:her|his|their) arms)\b/i],
@@ -64,6 +64,7 @@ export const MOVES = [
   ["pick", /\b(pick(?:s|ed)? up|grabb?(?:ed|s)|took the|takes the)\b/i],
   ["dance", /\b(danc(?:e|es|ed|ing))\b/i],
   ["push", /\b(push(?:es|ed)|shov(?:es|ed))\b/i],
+  ["hold", /\b(with a (?:drink|glass|beer|bottle|coffee|cup|whisky|whiskey|wine)|(?:holding|held|holds) (?:a|her|his|their) (?:drink|glass|beer|bottle|coffee|cup))\b/i],
   ["getup", /\b(got up off the floor|gets up off the floor|picked (?:herself|himself|themselves) up)\b/i],
 ];
 // Clips for each move, standing and (if it differs) seated.
@@ -91,6 +92,14 @@ export const PLACES = {
   street: /\b(street|road|pavement|sidewalk|alley)\b/i, car: /\b(car|driver's seat|passenger seat)\b/i,
   park: /\b(park|garden|bench)\b/i, hospital: /\b(hospital|ward)\b/i, rooftop: /\b(roof|rooftop)\b/i,
 };
+// The light a scene is played in, from its own words; carried to the next scene until they change it.
+const LIGHTS = [
+  ["night", /\b(night|midnight|dark(?:ness)?|moonlight|(?:one|two|three|four|1|2|3|4)(?: o'clock)? in the morning|[1-4] ?a\.?m\b)/i],
+  ["evening", /\b(evening|dusk|sunset|twilight)\b/i],
+  ["dawn", /\b(dawn|sunrise|daybreak|first light)\b/i],
+  ["day", /\b(morning|afternoon|noon|midday|daylight|sunlight|sunny|the next day)\b/i],
+];
+export function lightOf(text) { return (LIGHTS.find(([, re]) => re.test(text)) || [null])[0]; }
 const TIME = /\b(that night|that evening|the next (?:morning|day|night|evening)|next morning|at dawn|later that|hours later|days later|weeks later|the following (?:morning|day)|meanwhile|a week later|years later)\b/i;
 
 // ---------------------------------------------------------------- reading
@@ -182,16 +191,22 @@ export function readStory(text, { pronouns = {} } = {}) {
   // Scenes: a blank line followed by a new place or a time jump.
   const paragraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
   const scenes = [];
-  let scene = null, place = null;
+  let scene = null, place = null, light = "day";
   paragraphs.forEach((par, pi) => {
     const narration = pieces(par).filter(p => p.kind === "narration").map(p => p.text).join(" ");
     const newPlace = Object.entries(PLACES).find(([, re]) => re.test(narration))?.[0] || null;
     const jump = TIME.test(narration);
+    const newLight = lightOf(narration);
     if (!scene || jump || (newPlace && newPlace !== place && scene.beats.length)) {
-      scene = { place: newPlace || place || "living room", time: (narration.match(TIME) || [])[0] || null, beats: [], paragraphs: [] };
+      if (scene) scene.present = present.map(c => c.name);
+      const where = newPlace || place || "living room";
+      scene = { place: where, set: PLACE_SET[where] || "living room", time: (narration.match(TIME) || [])[0] || null,
+        light: newLight || light, beats: [], paragraphs: [] };
+      if (PLACE_SET[where] !== where) note(`set-${where}`, `There's no ${where} set yet: it's played on the ${PLACE_SET[where]} set.`);
       scenes.push(scene);
       present = [];
-    }
+    } else if (newLight && !scene.beats.length) scene.light = newLight;
+    light = scene.light;
     if (newPlace) place = newPlace;
     scene.paragraphs.push(pi);
 
@@ -290,8 +305,8 @@ export function readStory(text, { pronouns = {} } = {}) {
     return null;
   }
 
+  if (scene) scene.present = present.map(c => c.name);
   const real = cast.filter(c => c.lines || scenes.some(s => s.beats.some(b => b.who === c.name)));
-  if (scenes.length > 1) note("scenes", `${scenes.length} scenes found. Stage 1 plays them all in one living room.`);
   return { cast: real.length ? real : cast, scenes, notes };
 }
 
@@ -304,6 +319,9 @@ function movesIn(s) {
       .filter(Boolean).sort((a, b) => a.at - b.at);
     // "sat down" is sit, not also stand/walk: one move per clause, the first.
     if (hits.length) found.push({ ...hits[0], clause: sentencePart });
+    // …except holding something, which goes with any move: "sat down with a drink".
+    const hold = hits.find(h => h.move === "hold");
+    if (hold && hits[0] !== hold) found.push({ ...hold, clause: sentencePart });
   }
   return found;
 }
@@ -311,80 +329,123 @@ function movesIn(s) {
 // Past-tense-ish verbs after a subject, for the "no move for …" list.
 function verbsIn(s) {
   return [...s.matchAll(/\b(?:she|he|they|[A-Z][a-z]+)\s+((?:[a-z]+ed|[a-z]+s)(?:\s+(?:up|down|out|in|back|away|over|around))?)\b/g)]
-    .map(m => m[1]).filter(v => !/^(was|is|has|does|goes|says|seems|looks|feels|this|his|hers|its|yes|less|unless|was)$/i.test(v.split(" ")[0]) && !new RegExp(`^(${SPEECH_RE})$`, "i").test(v.split(" ")[0]));
+    .map(m => m[1]).filter(v => !/^(was|is|has|does|goes|says|seems|looks|feels|this|his|hers|its|yes|less|unless|was|waited|waits|paused|pauses|stayed|stays|listened|listens|watched|watches|stared|stares|looked|glanced|glances|lingered|remained|remains)$/i.test(v.split(" ")[0]) && !new RegExp(`^(${SPEECH_RE})$`, "i").test(v.split(" ")[0]));
 }
 
 // ---------------------------------------------------------------- blocking
-// One room for stage 1: the probe's living room (web/film/probe.mjs). Marks in
-// metres; two people face each other across the rug, a third has a spare mark.
-export const ROOM = {
-  door: [2.1, 1.6],
-  marks: [[0.6, 0.1], [-0.9, -0.7], [1.4, -0.9], [-1.6, 0.6]],
-  seats: [[-0.9, -1.2], [-0.4, -1.2]],
-  window: [-1.6, 0.6],
+// The sets (web/film/stage.mjs builds them). Each is its own space, in metres:
+// where people stand (marks), where they sit (seats: where they are, and what
+// they face), the door they come in by, a spot to walk to, the off-stage point
+// beyond the door, and the wide shot that opens every scene there.
+export const SETS = {
+  "living room": { inside: true, door: [2.1, 1.6], off: [3.3, 2.2], window: [-1.6, 0.6],
+    marks: [[0.6, 0.1], [-0.9, -0.7], [1.4, -0.9], [-1.6, 0.6]],
+    seats: [{ at: [-0.9, -1.2], face: [-0.9, 0] }, { at: [-0.4, -1.2], face: [-0.4, 0] }],
+    wide: { at: [2.4, 1.75, 3.4], look: [-0.4, 0.95, -0.6] } },
+  kitchen: { inside: true, door: [2.1, 1.6], off: [3.3, 2.2], window: [-0.4, -1.9],
+    marks: [[1.1, 0.9], [-0.7, -0.6], [1.5, -0.9], [-1.8, 1.4]],
+    seats: [{ at: [-1.5, 0.45], face: [-0.4, 0.45] }, { at: [0.3, 0.45], face: [-0.8, 0.45] }],
+    wide: { at: [2.5, 1.8, 3.4], look: [-0.5, 0.9, -0.8] } },
+  bedroom: { inside: true, door: [2.1, 1.6], off: [3.3, 2.2], window: [0.8, -1.6],
+    marks: [[0.7, 0.4], [-0.3, 0.4], [1.6, -0.6], [-2, 1]],
+    seats: [{ at: [-1.6, -0.45], face: [-1.6, 1] }, { at: [-0.8, -0.45], face: [-0.8, 1] }],
+    wide: { at: [2.4, 1.8, 3.3], look: [-0.6, 0.8, -0.8] } },
+  office: { inside: true, door: [2.1, 1.6], off: [3.3, 2.2], window: [1.3, -1.8],
+    marks: [[0.7, 0.5], [-0.9, -0.55], [1.5, -0.8], [-1.9, 1]],
+    seats: [{ at: [-0.8, -1.75], face: [-0.8, 0] }, { at: [-0.8, 0.35], face: [-0.8, -2] }],
+    wide: { at: [2.6, 1.9, 3.3], look: [-0.5, 0.9, -0.9] } },
+  bar: { inside: true, door: [2.1, 1.6], off: [3.3, 2.2], window: [1.6, 0.9],
+    marks: [[0.6, 0.2], [-0.7, -0.4], [1.5, -0.6], [-1.8, 0.9]],
+    // Bar stools are higher than a chair: whoever sits on one is lifted onto it.
+    seats: [{ at: [-1.1, -1.25], face: [-1.1, 0], lift: 0.4 }, { at: [-0.3, -1.25], face: [-0.3, 0], lift: 0.4 }],
+    wide: { at: [2.5, 1.8, 3.4], look: [-0.5, 0.9, -0.8] } },
+  street: { inside: false, door: [5, 0.6], off: [9, 0.6], window: [-3, -0.6],
+    marks: [[0.7, 0.4], [-0.8, 0.1], [1.8, -0.3], [-2, 0.8]],
+    seats: [{ at: [-2.6, -0.9], face: [-2.6, 1] }, { at: [-1.9, -0.9], face: [-1.9, 1] }],
+    wide: { at: [4.6, 2.3, 7.4], look: [-0.6, 1.3, -1] } },
+  park: { inside: false, door: [5, 0.8], off: [9, 0.8], window: [-3, 1.2],
+    marks: [[0.7, 0.5], [-0.7, 0.1], [1.8, -0.4], [-2, 1]],
+    seats: [{ at: [-1.1, -0.9], face: [-1.1, 1] }, { at: [-0.4, -0.9], face: [-0.4, 1] }],
+    wide: { at: [3.2, 1.9, 5.2], look: [-0.6, 1.1, -0.6] } },
 };
+/** The one room of stage 1, kept for anything that still means "the living room". */
+export const ROOM = SETS["living room"];
+// Places the page reads, and the set each is played on. A place with no set
+// of its own says so (a note), rather than pretending.
+export const PLACE_SET = { "living room": "living room", kitchen: "kitchen", bedroom: "bedroom", office: "office", bar: "bar",
+  street: "street", car: "street", park: "park", hospital: "bedroom", rooftop: "street" };
 const SPEED = 1.25; // walking, m/s
 
 const lineSeconds = text => Math.max(1.3, words(text) / WPM * 60 + 0.35);
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
+// What each move puts in a hand. A glass stays in hand once drunk from, a gun
+// once drawn; a phone only while it's in use. A new scene empties every hand.
+const PROP_OF = { drink: "glass", hold: "glass", gun: "gun", shoot: "gun", phone: "phone" };
+const KEEPS = new Set(["glass", "gun"]);
+
 /**
- * Timelines from a read story. Everyone who enters walks in from the door;
- * everyone else starts on a mark. Returns { people: { name: { timeline, mark } },
- * lines: [[start, end, name, text, how, key]], actions: [[start, end, name, move]],
- * scenes: [start…], length, over }.
+ * Timelines from a read story, scene by scene on each scene's set. Returns
+ * { people: { name: { timeline } }, lines: [[start, end, name, text, how, key]],
+ * actions: [[start, end, name, move]], scenes: [start…], sets: [{ start, set,
+ * light, place }], length, over }. A segment's options carry `prop` for what's
+ * in the right hand, and `off` for someone not on stage.
  */
 export function block(story, { gap = 0.25 } = {}) {
   const people = {};
   const cast = story.cast.slice(0, 4);
-  const lines = [], actions = [], sceneStarts = [];
-  let t = 0;
+  const lines = [], actions = [], sceneStarts = [], sets = [];
+  let t = 0, set = SETS["living room"];
+  const same = (a, b) => a && b && a[0] === b[0] && a[1] === b[1];
   const seg = (name, start, clip, o) => {
     const tl = people[name].timeline;
     // A segment starting when the last one did replaces it.
     if (tl.length && Math.abs(tl[tl.length - 1][0] - start) < 2e-3) tl.pop();
-    // Same loop, same place: carry on rather than restart it.
+    // Same loop, same place, same hand: carry on rather than restart it.
     const last = tl[tl.length - 1];
-    if (last && last[1] === clip && !o.from && !last[2].from && same(last[2].at, o.at) && last[2].face === o.face && !o.once) return;
+    if (last && last[1] === clip && !o.from && !last[2].from && same(last[2].at, o.at) && last[2].face === o.face && !o.once && last[2].prop === o.prop && !!last[2].off === !!o.off) return;
     tl.push([+start.toFixed(3), clip, o]);
   };
-  const same = (a, b) => a && b && a[0] === b[0] && a[1] === b[1];
   const state = {};
-  // Who enters later starts off-screen (outside the door); the rest are placed.
-  const enters = new Set();
-  for (const s of story.scenes) for (const b of s.beats) if (b.kind === "action" && b.move === "enter") enters.add(b.who);
-  let markI = 0;
-  for (const c of cast) {
-    const firstEnter = enters.has(c.name);
-    const mark = ROOM.marks[markI++ % ROOM.marks.length];
-    people[c.name] = { timeline: [], mark };
-    state[c.name] = { at: firstEnter ? [ROOM.door[0] + 1.2, ROOM.door[1] + 0.6] : mark, seated: false, here: !firstEnter };
-  }
+  cast.forEach((c, i) => { people[c.name] = { timeline: [] }; state[c.name] = { i, here: false, seated: false, at: null, prop: null }; });
+  const markOf = name => set.marks[state[name].i % set.marks.length];
   const others = name => cast.map(c => c.name).filter(n => n !== name && state[n].here);
   const face = name => { const o = others(name); return o.length ? "other" : null; };
   const settle = (name, start) => {
     const st = state[name];
-    if (!st.here) seg(name, start, "Idle_Loop", { at: [ROOM.door[0] + 1.2, ROOM.door[1] + 0.6], off: true });
-    else seg(name, start, st.seated ? CLIPS.idle[1] : CLIPS.idle[0], { at: st.at, sit: st.seated, face: face(name) });
+    if (!st.here) seg(name, start, "Idle_Loop", { at: set.off, off: true });
+    else if (st.dead) return;
+    else seg(name, start, st.seated ? CLIPS.idle[1] : CLIPS.idle[0], { at: st.at, sit: st.seated, face: st.seated ? st.seatFace : face(name), prop: st.prop, lift: st.seated ? st.lift : 0 });
   };
 
   for (const scene of story.scenes) {
+    set = SETS[scene.set] || SETS[PLACE_SET[scene.place]] || SETS["living room"];
     sceneStarts.push(t);
+    sets.push({ start: t, set: Object.keys(SETS).find(k => SETS[k] === set), light: scene.light || "day", place: scene.place });
+    // Who is in this scene: whoever it names or gives a line or a move. Those
+    // whose first beat is coming in start outside; everyone else on a mark.
+    const inScene = new Set(scene.present || []);
+    for (const b of scene.beats) { if (b.who) inScene.add(b.who); if (b.speaker) inScene.add(b.speaker); }
+    const firstBeat = name => scene.beats.find(b => b.who === name || b.speaker === name);
+    for (const c of cast) {
+      const st = state[c.name];
+      Object.assign(st, { seated: false, prop: null, dead: false, lift: 0 });
+      st.here = inScene.has(c.name) && !(firstBeat(c.name)?.move === "enter");
+      st.at = st.here ? markOf(c.name) : set.off;
+    }
     for (const c of cast) settle(c.name, t);
     t += 2.0; // the wide shot that opens every scene
     for (const beat of scene.beats) {
       if (beat.kind === "line") {
         // A recorded line lasts as long as the recording; otherwise it's read at WPM.
         const d = beat.seconds > 0 ? Math.min(30, beat.seconds) + 0.15 : lineSeconds(beat.text);
-        if (beat.speaker && people[beat.speaker]) {
+        if (beat.speaker && people[beat.speaker] && !state[beat.speaker].dead) {
           const st = state[beat.speaker];
-          if (!st.here) { walkIn(beat.speaker); }
-          seg(beat.speaker, t, st.seated ? CLIPS.talk[1] : CLIPS.talk[0], { at: st.at, sit: st.seated, face: face(beat.speaker) });
+          if (!st.here) walkIn(beat.speaker);
+          seg(beat.speaker, t, st.seated ? CLIPS.talk[1] : CLIPS.talk[0], { at: st.at, sit: st.seated, face: st.seated ? st.seatFace : face(beat.speaker), prop: st.prop, lift: st.seated ? st.lift : 0 });
           lines.push([+t.toFixed(3), +(t + d).toFixed(3), beat.speaker, beat.text, beat.how, beat.key]);
-          const s0 = t;
           t += d + gap;
           settle(beat.speaker, t);
-          void s0;
         } else {
           lines.push([+t.toFixed(3), +(t + d).toFixed(3), null, beat.text, beat.how, beat.key]);
           t += d + gap;
@@ -392,61 +453,63 @@ export function block(story, { gap = 0.25 } = {}) {
         continue;
       }
       const name = beat.who;
-      if (!people[name]) continue;
+      if (!people[name] || state[name].dead) continue;
       const st = state[name];
       const start = t;
-      if (beat.move === "enter") { walkIn(name); actions.push([+start.toFixed(3), +t.toFixed(3), name, "enter"]); continue; }
+      if (beat.move === "enter") { if (!st.here) walkIn(name); actions.push([+start.toFixed(3), +t.toFixed(3), name, "enter"]); continue; }
       if (!st.here) walkIn(name);
+      const standUp = () => { seg(name, t, "Sitting_Exit", { at: st.at, sit: true, face: st.seatFace, once: true, prop: st.prop, lift: st.lift }); t += HOLD.stand; st.seated = false; st.lift = 0; };
+      if (beat.move === "hold") { st.prop = "glass"; settle(name, t); continue; }
       if (beat.move === "exit") {
-        const to = [ROOM.door[0] + 1.2, ROOM.door[1] + 0.6];
-        if (st.seated) { seg(name, t, "Sitting_Exit", { at: st.at, sit: true, once: true }); t += HOLD.stand; st.seated = false; }
-        const d = (dist(st.at, ROOM.door) + 1.3) / SPEED;
-        seg(name, t, "Walk_Loop", { from: st.at, to });
-        t += d; st.at = to; st.here = false;
-        seg(name, t, "Idle_Loop", { at: to, off: true });
+        if (st.seated) standUp();
+        const d = (dist(st.at, set.door) + dist(set.door, set.off)) / SPEED;
+        seg(name, t, "Walk_Loop", { from: st.at, to: set.off, prop: st.prop });
+        t += d; st.at = set.off; st.here = false; st.prop = null;
+        seg(name, t, "Idle_Loop", { at: set.off, off: true });
         actions.push([+start.toFixed(3), +t.toFixed(3), name, "exit"]);
         for (const n of others(name)) settle(n, t);
         continue;
       }
       if (beat.move === "sit") {
         if (st.seated) continue;
-        const seat = ROOM.seats.find(s => !cast.some(c => c.name !== name && state[c.name].seated && same(state[c.name].at, s))) || ROOM.seats[0];
-        if (dist(st.at, seat) > 0.3) { const d = dist(st.at, seat) / SPEED; seg(name, t, "Walk_Loop", { from: st.at, to: seat }); t += d; }
-        seg(name, t, "Sitting_Enter", { at: seat, sit: true, face: [seat[0], seat[1] + 1], once: true });
-        t += HOLD.sit; st.at = seat; st.seated = true;
+        const seat = set.seats.find(s => !cast.some(c => c.name !== name && state[c.name].seated && same(state[c.name].at, s.at))) || set.seats[0];
+        if (dist(st.at, seat.at) > 0.3) { const d = dist(st.at, seat.at) / SPEED; seg(name, t, "Walk_Loop", { from: st.at, to: seat.at, prop: st.prop }); t += d; }
+        seg(name, t, "Sitting_Enter", { at: seat.at, sit: true, face: seat.face, once: true, prop: st.prop, lift: seat.lift || 0 });
+        t += HOLD.sit; st.at = seat.at; st.seated = true; st.seatFace = seat.face; st.lift = seat.lift || 0;
         settle(name, t);
         actions.push([+start.toFixed(3), +t.toFixed(3), name, "sit"]);
         continue;
       }
       if (beat.move === "stand") {
         if (!st.seated) continue;
-        seg(name, t, "Sitting_Exit", { at: st.at, sit: true, once: true });
-        t += HOLD.stand; st.seated = false;
-        st.at = people[name].mark;
+        standUp();
+        st.at = markOf(name);
         settle(name, t);
         actions.push([+start.toFixed(3), +t.toFixed(3), name, "stand"]);
         continue;
       }
       if (beat.move === "walk") {
-        const to = dist(st.at, people[name].mark) > 0.5 ? people[name].mark : ROOM.window;
-        if (st.seated) { seg(name, t, "Sitting_Exit", { at: st.at, sit: true, once: true }); t += HOLD.stand; st.seated = false; }
+        const to = dist(st.at, markOf(name)) > 0.5 ? markOf(name) : set.window;
+        if (st.seated) standUp();
         const d = dist(st.at, to) / SPEED;
-        seg(name, t, "Walk_Loop", { from: st.at, to });
+        seg(name, t, "Walk_Loop", { from: st.at, to, prop: st.prop });
         t += d; st.at = to;
         settle(name, t);
         actions.push([+start.toFixed(3), +t.toFixed(3), name, "walk"]);
         continue;
       }
-      // Everything else plays where they are; seated people stand first, except to drink or talk.
+      // Everything else plays where they are; seated people stand first, except to drink, talk or gesture.
       const clip = CLIPS[beat.move]?.[0];
       if (!clip) continue;
-      if (st.seated && !["drink", "phone", "nod", "no", "arms"].includes(beat.move)) { seg(name, t, "Sitting_Exit", { at: st.at, sit: true, once: true }); t += HOLD.stand; st.seated = false; st.at = people[name].mark; }
+      if (st.seated && !["drink", "phone", "nod", "no", "arms"].includes(beat.move)) { standUp(); st.at = markOf(name); }
+      const prop = PROP_OF[beat.move] || st.prop;
+      if (KEEPS.has(PROP_OF[beat.move])) st.prop = PROP_OF[beat.move];
       const seatedClip = st.seated && beat.move === "phone" ? "Sitting_Talking_Loop" : st.seated ? CLIPS.idle[1] : clip;
-      seg(name, t, st.seated ? seatedClip : clip, { at: st.at, sit: st.seated, face: face(name), once: !/_Loop$/.test(clip) });
+      seg(name, t, st.seated ? seatedClip : clip, { at: st.at, sit: st.seated, face: st.seated ? st.seatFace : face(name), once: !/_Loop$/.test(clip), prop, lift: st.seated ? st.lift : 0 });
       t += HOLD[beat.move] || 2;
       actions.push([+start.toFixed(3), +t.toFixed(3), name, beat.move]);
-      if (beat.move === "die") { state[name].dead = true; continue; }
-      if (beat.move === "fall") { seg(name, t, "LayToIdle", { at: st.at, face: face(name), once: true }); t += HOLD.getup; }
+      if (beat.move === "die") { st.dead = true; continue; }
+      if (beat.move === "fall") { seg(name, t, "LayToIdle", { at: st.at, face: face(name), once: true, prop: st.prop }); t += HOLD.getup; }
       settle(name, t);
     }
     t += 0.8;
@@ -454,23 +517,24 @@ export function block(story, { gap = 0.25 } = {}) {
 
   function walkIn(name) {
     const st = state[name];
-    const to = people[name].mark;
-    const from = [ROOM.door[0] + 1.2, ROOM.door[1] + 0.6];
+    const to = markOf(name);
     st.here = true;
-    const d = dist(from, to) / SPEED;
-    seg(name, t, "Walk_Loop", { from, to });
+    const d = (dist(set.off, set.door) + dist(set.door, to)) / SPEED;
+    seg(name, t, "Walk_Loop", { from: set.off, to, prop: st.prop });
     t += d; st.at = to;
     settle(name, t);
     for (const n of others(name)) settle(n, t);
   }
 
-  // A dead person stays down: their last segment holds.
-  for (const c of cast) if (state[c.name].dead) {
-    const tl = people[c.name].timeline;
-    const i = tl.findIndex(s => s[1] === "Death01");
-    people[c.name].timeline = tl.slice(0, i + 1);
-  }
-  return { people, lines, actions, scenes: sceneStarts, length: +t.toFixed(2), over: t > LIMIT_SECONDS };
+  return { people, lines, actions, scenes: sceneStarts, sets, length: +t.toFixed(2), over: t > LIMIT_SECONDS };
+}
+
+/** The set, light and place at t. */
+export function setAt(film, t) {
+  const s = film.sets || [];
+  let i = 0;
+  while (i + 1 < s.length && s[i + 1].start <= t) i++;
+  return s[i] || { start: 0, set: "living room", light: "day", place: "living room" };
 }
 
 /** The segment a timeline is in at t: index. */
@@ -494,7 +558,7 @@ export function placesAt(film, t) {
       const d = dist(o.from, o.to), k = Math.min(1, (t - seg[0]) / Math.max(0.01, Math.min(end, seg[0] + d / SPEED) - seg[0]));
       at = [o.from[0] + (o.to[0] - o.from[0]) * k, o.from[1] + (o.to[1] - o.from[1]) * k];
     }
-    out[name] = { at, seg, off: !!o.off };
+    out[name] = { at, seg, off: !!o.off, lift: o.lift || 0 };
   }
   for (const [name, p] of Object.entries(out)) {
     const o = p.seg[2];
@@ -555,9 +619,9 @@ export function shotAt(film, t) {
  * on one side of the line between the scene's two principal people — the
  * audience's side (+z) — so a cut never flips who is on the left.
  */
-export function cameraFor(shot, heads, facing, pair) {
+export function cameraFor(shot, heads, facing, pair, wide = SETS["living room"].wide) {
   const names = pair.filter(n => heads[n]);
-  if (shot === "wide" || names.length < 1) return { fov: 58, at: [2.4, 1.75, 3.4], look: [-0.4, 0.95, -0.6] };
+  if (shot === "wide" || names.length < 1) return { fov: 58, at: wide.at, look: wide.look };
   const [a, b] = names.length >= 2 ? names : [names[0], names[0]];
   const A = heads[a], B = heads[b];
   let side = [-(B[2] - A[2]), 0, B[0] - A[0]];

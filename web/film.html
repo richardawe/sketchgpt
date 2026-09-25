@@ -59,7 +59,7 @@
 
   <div id="app" hidden>
     <h1>Film</h1>
-    <p class="muted">Write a scene in plain prose. The page finds who speaks and what they do, stages it in a living room, and makes the video, on this device. No AI model, nothing uploaded. <a href="film-probe.html">How fast is this phone?</a></p>
+    <p class="muted">Write a scene in plain prose. The page finds who speaks and what they do, stages it (a living room, kitchen, bedroom, office, bar, street or park, by day or night), and makes the video, on this device. No AI model, nothing uploaded. <a href="film-probe.html">How fast is this phone?</a></p>
 
     <h2>1. Write</h2>
     <textarea id="story" spellcheck="true" aria-label="Your story"></textarea>
@@ -80,7 +80,7 @@
     <div class="stage">
       <div><canvas id="out" width="720" height="1280"></canvas><canvas id="gl"></canvas></div>
       <div>
-        <div class="row"><button id="play" class="primary">Load and play (~7 MB, once)</button><button id="stop" hidden>Stop</button></div>
+        <div class="row"><button id="play" class="primary">Load and play (~7–9 MB, once)</button><button id="stop" hidden>Stop</button></div>
         <div id="status" class="muted"></div>
         <h2>5. Make the video</h2>
         <div class="row"><button id="make" disabled>Make the video</button><button id="cancel" hidden>Stop</button></div>
@@ -91,7 +91,7 @@
   </div>
 </main>
 <script type="module">
-import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds } from "./film.mjs?v=2";
+import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds } from "./film.mjs?v=3";
 import { voiceOptions } from "./voice.mjs?v=10";
 
 const $ = id => document.getElementById(id);
@@ -189,11 +189,11 @@ $("cast").addEventListener("change", e => {
 });
 
 const MOVE_WORDS = { enter: "comes in", exit: "leaves", sit: "sits", stand: "stands", walk: "walks", nod: "nods", no: "shakes head", arms: "folds arms",
-  drink: "drinks", phone: "on the phone", punch: "punches", fall: "falls", die: "dies", shoot: "shoots", gun: "draws a gun", pick: "picks up", dance: "dances", push: "pushes", getup: "gets up" };
+  drink: "drinks", phone: "on the phone", punch: "punches", fall: "falls", die: "dies", shoot: "shoots", gun: "draws a gun", pick: "picks up", dance: "dances", push: "pushes", getup: "gets up", hold: "holds a glass" };
 function renderCheck(story) {
   $("notes").innerHTML = story.notes.map(n => `<li>${esc(n)}</li>`).join("");
   const names = story.cast.map(c => c.name);
-  const rows = story.scenes.map((s, si) => `<tr><td colspan="2"><strong>Scene ${si + 1}</strong> <span class="muted">${esc(s.place)}${s.time ? ", " + esc(s.time) : ""}</span></td></tr>` +
+  const rows = story.scenes.map((s, si) => `<tr><td colspan="2"><strong>Scene ${si + 1}</strong> <span class="muted">${esc(s.place)}${s.set !== s.place ? ` (on the ${esc(s.set)} set)` : ""} · ${esc(s.light)}${s.time ? " · " + esc(s.time) : ""}</span></td></tr>` +
     s.beats.map(b => b.kind === "line"
       ? `<tr class="beat-line ${b.how === "guessed" ? "guessed" : ""}"><td><select data-line="${esc(b.key)}" aria-label="Who says this"><option value="">nobody</option>${names.map(n => `<option ${b.speaker === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></td>
          <td>“${esc(b.text)}” <span class="badge">${{ tag: "said so", paragraph: "same paragraph", continued: "continues", guessed: "guessed", unknown: "not given", chosen: "you chose" }[b.how]}</span>${b.manner !== "plain" ? ` <span class="badge">${b.manner}</span>` : ""}
@@ -270,7 +270,7 @@ async function ensureStage() {
   const story = state.story;
   const castKey = story.cast.map(c => c.name + "=" + (state.looks[c.name] ?? "")).join("|");
   if (state.stage && state.stageCast === castKey) { const { recast } = stageMod; recast(state.stage, state.film); return state.stage; }
-  stageMod ||= await import("./film/stage.mjs?v=2");
+  stageMod ||= await import("./film/stage.mjs?v=3");
   const { setup, LOOKS } = stageMod;
   const looks = Object.fromEntries(story.cast.map(c => [c.name, LOOKS[state.looks[c.name] ?? 0]]));
   if (state.stage) { state.stage.renderer.dispose(); const gl = $("gl"), fresh = gl.cloneNode(); gl.replaceWith(fresh); }

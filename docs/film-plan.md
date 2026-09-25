@@ -1,6 +1,6 @@
 # Film — a grown-up version of Book, without a model — a plan
 
-**Status: stages 0 and 1 are built. Stage 0 has run on the owner's iPhone,
+**Status: stages 0–2 are built (2: seven sets, light by time of day, props in hand). Stage 0 has run on the owner's iPhone,
 which made the 2-minute 720p MP4 with sound in 43 s ("Stage 0 measured"
 below). Stage 1 has not run on a phone yet.**
 
@@ -573,6 +573,78 @@ in-tap unlock. Book queued every sentence inside the tap because a later
 `speak()` "can be refused". If an iPhone refuses, the page falls back to
 subtitles only and says so. Also untested: the iPhone microphone through
 MediaRecorder (Safari records `audio/mp4`), and which voices an iPhone offers.
+
+## Stage 2 as built: sets, light, props
+
+Seven sets, chosen by the story's place words: **living room, kitchen,
+bedroom, office, bar, street, park**.
+- "car" and "rooftop" play on the street set, "hospital" on the bedroom set.
+  The page says so ("There's no hospital set yet: it's played on the bedroom
+  set").
+- Each set is described in `film.mjs` `SETS` (marks, seats with what they
+  face, door, off-stage point, window, wide shot) and built in `stage.mjs`
+  `BUILD`.
+- The film loads only the sets and kits its story uses.
+  - Interiors come from Kenney's Furniture Kit.
+  - The street comes from City Kit Roads + Commercial + Car Kit.
+  - The park comes from the Nature Kit, recoloured by material name, because
+    Kenney's grass is mint.
+  - Outside also loads a Poly Haven sky HDRI (1.4 MB).
+  - All CC0. The new kits add under 0.5 MB.
+
+**Light** comes from each scene's own words, carried until they change:
+*night* (midnight, dark, "two in the morning"), *evening* (dusk, sunset),
+*dawn* (sunrise) and *day*.
+- Each light sets the environment intensity, the key light's colour and
+  strength, and a practical (a lamp, a street light).
+- Outside, the sky shows, dimmed at evening and dawn and replaced by dark
+  blue at night.
+
+**Only a scene's people are on stage.** That means whoever it names, speaks
+or acts. Those who "come in" start outside, and a new scene resets seats and
+hands.
+
+**Props in the right hand:**
+- a glass when someone drinks or is "with a drink", which stays in hand;
+- a phone while on the phone, then put away;
+- a gun once drawn, which stays until they leave or the scene ends.
+
+The glass is a tumbler with a drink in it, because Kenney's clear glass
+vanished on screen. The phone and gun are simple boxes. Grips were set by
+rendering the hand close up in each pose (`GRIP`).
+
+**Bar stools lift** whoever sits on them by 0.4 m, because the free sitting
+clip is chair height.
+
+Found by looking at every set rather than trusting the numbers:
+- a mint park;
+- a monitor in front of the office close-up;
+- a woman sitting *inside* a bar stool;
+- a lamp post filling the street's wide shot;
+- a gun lying across the forearm;
+- an office chair turned the wrong way.
+
+All were fixed and looked at again.
+
+**Tested** (`tests/film-sets-browser.mjs`: a six-place story, touch screen;
+mutation-checked: the set never changes, props never shown, no stool lift,
+light ignoring the time):
+
+- each scene shows only its set;
+- the sky shows outside only, and not at night;
+- night is darker than day;
+- props appear exactly when the words put them in a hand;
+- the stool lift is applied;
+- every scene draws;
+- the whole 45 s film renders.
+
+Unit tests cover the sets' marks, the light words, the scene membership and
+the props' rules.
+
+**Not tested:** any of it on a phone. The phone budget from stage 0 was
+measured with one room; a street set is more geometry, and nobody has timed
+it on the iPhone. Also untested: whether the sets read as their places to
+anyone but the page's tests.
 
 ## What is not known, and how each gets known
 

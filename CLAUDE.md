@@ -82,14 +82,14 @@ docs/storybook.md         a story written by the model, illustrated by the page 
 docs/story-rules.md       Book without the model — all six stages built: rules, no download, own story, scenery, pictures, GIF
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
-docs/film-plan.md         "Film": user prose → 2-min 3D video, phone first, no model; stages 0–1 built, 2–6 planned;
+docs/film-plan.md         "Film": user prose → 2-min 3D video, phone first, no model; stages 0–2 built, 3–6 planned;
                           mature tier only (explicit content is banned on GitHub — read before building)
 web/film.html             Film stage 1: adult notice → write prose → cast (pronouns asked) → check (guesses shown) → watch → video
 web/film.mjs              Film's rules, pure: prose → cast/lines/moves (readStory), timelines (block), shots + 180° rule
 web/film/stage.mjs        the shared three.js stage: room, people, painted-on clothes, camera, soundtrack, video
 web/film-probe.html       Film stage 0: can this phone make a 2-minute 3D video? numbers in a copyable report
 web/film/probe.mjs        the probe's hand-written 30 s scene, drawn on the shared stage
-web/film/assets/          CC0 people, 84 movements, a room, an HDRI (~6.9 MB) — regenerate, never hand-edit
+web/film/assets/          CC0 people, 84 movements, furniture/city/car/nature/food kits, 2 HDRIs — regenerate, never hand-edit
 web/vendor/three.mjs      three.js 0.186.1 bundle; mediabunny-film.mjs = Book's writer + audio (scripts/film/vendor.mjs)
 scripts/film/             inventory.mjs (what a glTF pack contains), build-assets.mjs, vendor.mjs
 web/selfie.html           Draw me: a photo drawn as a moving caricature, GIF/sticker/SVG export (stage 1)
@@ -654,6 +654,11 @@ practical fine-tuning.
   phone's voice speaks the rest, per-person voice + pitch; music off by
   default. Unverified on iOS: on-cue `speak()` after an in-tap unlock (the
   page falls back to "subtitles only" and says so).
+  **Stage 2:** seven sets (living room, kitchen, bedroom, office, bar, street,
+  park; car/rooftop → street, hospital → bedroom, said so), light from the
+  scene's words (day/dawn/evening/night), only a scene's people on stage,
+  props in hand (glass, phone, gun), bar stools lift. Found by looking, not by
+  numbers: Kenney's nature kit is mint (recoloured by material name).
   **Stage 0 is measured on the owner's iPhone: 2 minutes of 720p MP4 + AAC in
   43 s** (table row above). Still owed: preview fps, whether the MP4 plays in
   Photos and shares, and stage 1 (`film.html`) on the phone. Found building it:

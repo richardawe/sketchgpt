@@ -4,7 +4,7 @@
 // looped to the video's length, cut by rule, subtitles, a music bed made on
 // the page and, if the person records one, their own voice line. The stage
 // (web/film/stage.mjs) draws it; this file is only the scene and its shots.
-import { setup as stageSetup, frameFn, makeVideo as stageVideo, LOOKS } from "./stage.mjs?v=2";
+import { setup as stageSetup, frameFn, makeVideo as stageVideo, LOOKS } from "./stage.mjs?v=3";
 
 const RUN_KEY = "sketchgpt.film.probe.run";
 const LOOP = 30;
