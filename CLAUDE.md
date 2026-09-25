@@ -70,6 +70,7 @@ docs/desk.md              what replaced it — five tools benched, two shipped, 
                           (Desk itself was then replaced by Book)
 docs/sketch-scenes.md     why desktop sketches stopped asking for coordinates
 docs/storybook.md         a story written by the model, illustrated by the page — what broke
+docs/story-rules.md       PLAN, not built: Book without the model — rule-written or pasted stories, better scenery, sharing
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
 web/selfie.html           Draw me: a photo drawn as a moving caricature, GIF/sticker/SVG export (stage 1)
