@@ -140,6 +140,8 @@ test("the length is counted, and a story over two minutes says so", () => {
   assert.ok(film.length > 25 && film.length < 60, `${film.length} s`);
   assert.equal(film.over, false);
   assert.equal(clock(107), "1:47");
+  assert.equal(clock(59.6), "1:00");
+  assert.equal(clock(-0.02), "0:00");
   const long = SAMPLE + "\n\n" + Array.from({ length: 30 }, (_, i) => `"This is line number ${i} and it goes on for a while, as lines in an argument do," said ${i % 2 ? "Tom" : "Maya"}.`).join("\n\n");
   const f = block(readStory(long, { pronouns: P }));
   assert.ok(f.length > LIMIT_SECONDS && f.over === true, `${f.length}`);

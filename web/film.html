@@ -196,9 +196,10 @@ $("play").onclick = async () => {
     const { frameFn } = stageMod;
     const draw = frameFn(stage);
     state.playing = true; $("stop").hidden = false; $("play").textContent = "Play again"; update();
-    const start = performance.now();
+    let start = null;
     await new Promise(done => {
       const tick = now => {
+        start ??= now;
         const t = (now - start) / 1000;
         if (!state.playing || t > state.film.length) return done();
         draw(t);

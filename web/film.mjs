@@ -505,7 +505,7 @@ export function placesAt(film, t) {
 }
 
 /** m:ss */
-export const clock = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+export const clock = s => { const r = Math.max(0, Math.round(s)); return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")}`; };
 
 // ---------------------------------------------------------------- the camera
 /**
