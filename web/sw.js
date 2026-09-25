@@ -17,7 +17,7 @@
 //                   re-download.
 const VERSION = "sketchgpt-v11";
 const SHELL = ["./", "./index.html", "./browser.html", "./sketch.mjs",
-               "./stamps.mjs", "./rough.mjs", "./book.mjs", "./story.mjs", "./picture.mjs", "./scene.mjs",
+               "./stamps.mjs", "./rough.mjs", "./book.mjs", "./story.mjs", "./picture.mjs", "./gif.mjs", "./scene.mjs",
                "./art.mjs", "./art-names.mjs", "./animate.mjs", "./voice.mjs", "./share.mjs",
                "./selfie.html", "./face.mjs", "./face-mean.mjs", "./face-find.mjs"];
 // selfie.html's vendor/ files (runtime and models, ~13 MB) are not precached:

@@ -50,7 +50,9 @@ try {
       const url = new URL(r.request().url());
       const name = url.pathname.replace(/^.*\//, '');
       fetched.push(name);
-      const file = /^(sketch|stamps|rough|book|story|scene|art|art-names|animate|voice|share)\.mjs$/.test(name) ? name : 'browser.html';
+      if (url.pathname.startsWith('/vendor/'))       // gifenc, for "Save this page as a GIF"
+        return r.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('../web' + url.pathname, import.meta.url), 'utf8') });
+      const file = /^(sketch|stamps|rough|book|story|picture|gif|scene|art|art-names|animate|voice|share)\.mjs$/.test(name) ? name : 'browser.html';
       await r.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
         body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
     });
@@ -141,6 +143,27 @@ try {
     await page.evaluate(() => window.spoken.at(-1).onend());
     await page.waitForFunction(() => [...document.querySelectorAll('.book-actions button')].some(b => b.textContent === 'Read aloud'));
     assert.equal(await book.locator('.reading').count(), 0, 'the mark stays after the reading ended');
+
+    // ---- A page as a GIF: it moves, it has the page's words, the page moves on ----
+    await page.evaluate(() => document.querySelector('.book .sheet:nth-of-type(4)').scrollIntoView({ block: 'center' }));
+    await book.locator('.book-bar .more-btn').click();
+    const t0 = Date.now();
+    const [gifFile] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }),
+      book.locator('.more-panel button.gif').click()]);
+    const gifMs = Date.now() - t0;
+    assert.equal(gifFile.suggestedFilename(), STORY.title.replace(/\s+/g, '-') + '-page-3.gif');
+    const bytes = await readFile(await gifFile.path());
+    assert.equal(bytes.subarray(0, 6).toString(), 'GIF89a');
+    // Every frame starts with a graphic control extension (21 F9); the frames differ, so the picture moved.
+    const frames = bytes.toString('latin1').split('\x21\xF9').slice(1);
+    // (The byte pair can also occur inside compressed image data: at least 20.)
+    assert.ok(frames.length >= 20, `${frames.length} frames`);
+    assert.ok(new Set(frames).size > 5, `only ${new Set(frames).size} different frames: the picture did not move`);
+    assert.match(await book.locator('.book-top .share-note').textContent(), /Page 3 saved as a GIF .* silent/);
+    assert.ok(await page.evaluate(() => document.querySelector('.book .sheet:nth-of-type(4) svg').getAnimations()
+      .some(a => a.playState === 'running')), 'the page stopped moving after its GIF was made');
+    console.log(`  GIF: ${frames.length} frames, ${Math.round(bytes.length / 1024)} KB, ${gifMs} ms`);
+    await book.locator('.book-bar .more-btn').click();
 
     // ---- Printing stops everything still, then it moves again -------------------
     await book.locator('.book-bar .more-btn').click();

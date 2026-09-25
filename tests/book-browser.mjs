@@ -34,7 +34,7 @@ const route = (page, seen) => page.route('**/*', async r => {
   const url = new URL(r.request().url());
   if (url.pathname === '/mock.mjs') { seen.lib++; return r.fulfill({ contentType: 'text/javascript', body: stub }); }
   const name = url.pathname.replace(/^.*\//, '');
-  const file = /^(sketch|stamps|rough|book|story|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
+  const file = /^(sketch|stamps|rough|book|story|picture|gif|scene|art|art-names)\.mjs$/.test(name) ? name : 'browser.html';
   await r.fulfill({ contentType: file.endsWith('.mjs') ? 'text/javascript' : 'text/html',
     body: await readFile(new URL('../web/' + file, import.meta.url), 'utf8') });
 });

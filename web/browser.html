@@ -1819,14 +1819,57 @@ function bookActions(book) {
   });
   if (!book.voice && !SHARING) { row.append(print, save); return row; }   // the public page: as it was
   print.className = "";
-  return bookBar(book, row, print, save);
+  const extra = [];
+  // A moving page as a GIF to send (web/gif.mjs): the page nearest the
+  // middle of the screen, its picture moving and its words underneath.
+  if (book.motions) {
+    const gif = document.createElement("button");
+    gif.type = "button"; gif.className = "gif"; gif.textContent = "Save this page as a GIF";
+    gif.addEventListener("click", async () => {
+      const sheets = [...book.querySelectorAll(".sheet")].filter(x => x.querySelector(".art svg"));
+      if (!sheets.length) return;
+      const mid = innerHeight / 2;
+      const sheet = sheets.reduce((a, b) => Math.abs(b.getBoundingClientRect().top + b.offsetHeight / 2 - mid) <
+        Math.abs(a.getBoundingClientRect().top + a.offsetHeight / 2 - mid) ? b : a);
+      const n = sheets.indexOf(sheet);
+      const words = sheet.querySelector(".page-text") ? sheet.querySelector(".page-text").textContent.trim() : book.dataset.title;
+      const was = gif.textContent;
+      gif.disabled = true; gif.textContent = "Making the GIF…";
+      try {
+        const { pageGif } = await import("./gif.mjs?v=1");
+        const blob = await pageGif(sheet.querySelector(".art svg"), words);
+        const name = (book.dataset.title || "book").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-") +
+          (n ? `-page-${n}` : "-cover") + ".gif";
+        await deliver(blob, name);
+        book.bar.note.textContent = `${n ? "Page " + n : "The cover"} saved as a GIF (${Math.round(blob.size / 1024)} KB). ` +
+          "It moves but is silent: a browser cannot record the device's voice.";
+      } catch (e) { book.bar.note.textContent = "Could not make the GIF: " + (e && e.message || e); }
+      finally { gif.disabled = false; gif.textContent = was; }
+    });
+    extra.push(gif);
+  }
+  return bookBar(book, row, print, save, extra);
+}
+
+// A file to the person: the share sheet on a phone (to Messages, WhatsApp…),
+// a download anywhere else.
+async function deliver(blob, name) {
+  const file = new File([blob], name, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] }) && matchMedia("(pointer: coarse)").matches) {
+    try { await navigator.share({ files: [file], title: name }); return; }
+    catch (err) { if (err.name === "AbortError") return; }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 }
 
 // The book's bar (not with ?animate=0): one bar at the top of the book, which stays in
 // reach while the book is read. The thing most people came for (reading it)
 // comes first; what is used once (print, download) is behind "⋯"; editing
 // is a mode, so the book reads clean until someone chooses to change it.
-function bookBar(book, row, print, save) {
+function bookBar(book, row, print, save, extra = []) {
   book.classList.add("has-bar");
   row.classList.add("book-bar");
   row.setAttribute("role", "toolbar");
@@ -1854,7 +1897,7 @@ function bookBar(book, row, print, save) {
     toggle(voiceBtn, voicePanel);
   }
   const more = document.createElement("div"); more.className = "more-panel";
-  more.append(print, save);
+  more.append(print, save, ...extra);
   const moreBtn = barButton("⋯", "more-btn", "More: print or download");
   row.append(moreBtn);
   toggle(moreBtn, more);
