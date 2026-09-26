@@ -1,15 +1,19 @@
 # Film — a grown-up version of Book, without a model — a plan
 
-**Status: stages 0–4 are built (4: sounds from the story's events, each place's sound, heads that move with the voice) (2: seven sets, light by time of day, props in hand; 3: acting measured on real writing, 63% of action verbs acted, Build one). Stage 0 has run on the owner's iPhone,
-which made the 2-minute 720p MP4 with sound in 43 s ("Stage 0 measured"
-below). Stage 1 has not run on a phone yet.**
+**Status: stages 0–4 are built and live; 5–6 are not.**
 
-- Stage 0 is `web/film-probe.html`, a probe of what a phone can render.
-- Stage 1 is `web/film.html`: plain prose in, a 3D scene and its video out.
+- Stage 0, `web/film-probe.html`, has run on the owner's iPhone: a 2-minute
+  720p MP4 with sound in 43 s ("Stage 0 measured" below).
+- Stages 1–4 have not run on a phone yet. All of them are in
+  `web/film.html`:
+  - 1: plain prose in, a 3D scene and its video out;
+  - 2: seven sets, light by time of day, props in hand;
+  - 3: acting measured on real writing, and Build one;
+  - 4: sounds from the story's events, each place's sound, heads that move
+    with the voice.
 
-Both are described under "as built" below. The free tiers turned out smaller
-than their "60–70%": two bodies, no clothes, no faces that move. Stages 2–6
-are not built.**
+The free tiers turned out smaller than their "60–70%": two bodies, no
+clothes, and faces that can't open their mouths.
 
 The owner said: "The general direction of this works, can we have an adult
 version? No AI, better and more realistic libraries, actual moving objects and
