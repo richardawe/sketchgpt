@@ -371,3 +371,18 @@ test("a speaking head follows the words' syllables", async () => {
   for (let i = 1; i < t.length - 1; i++) if (t[i] > t[i - 1] && t[i] >= t[i + 1] && t[i] > 0.2) peaks++;
   assert.ok(peaks >= 5 && peaks <= 9, `${peaks} syllable pulses`);
 });
+
+test("a close-up is never shot through someone else standing in the way", () => {
+  // A faces +z; B stands 1 m in front of A, on the straight line to where A's camera would be.
+  const heads = { A: [0, 1.6, 0], B: [0.1, 1.6, 1] }, facing = { A: 0, B: Math.PI };
+  const c = cameraFor("A", heads, facing, ["A", "B"]);
+  const [ax, , az] = heads.A, vx = ax - c.at[0], vz = az - c.at[2], l2 = vx * vx + vz * vz;
+  const u = ((heads.B[0] - c.at[0]) * vx + (heads.B[2] - c.at[2]) * vz) / l2;
+  const miss = Math.hypot(c.at[0] + vx * u - heads.B[0], c.at[2] + vz * u - heads.B[2]);
+  assert.ok(!(u > 0.05 && u < 0.95) || miss >= 0.35, `the view passes ${miss.toFixed(2)} m from B`);
+  // …and still from the audience's side of the line between them.
+  const mid = [0.05, 0.5];
+  assert.ok((c.at[0] - mid[0]) * c.side[0] + (c.at[2] - mid[1]) * c.side[2] > 0, "same side of the line");
+  // With nobody in the way, the shot is the usual one.
+  assert.deepEqual(cameraFor("A", { A: heads.A }, facing, ["A"]).at.map(v => +v.toFixed(3)), [0, 1.58, 2.3]);
+});

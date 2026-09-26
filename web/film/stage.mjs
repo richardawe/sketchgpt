@@ -5,9 +5,9 @@
 // No model, no network after the assets. three.js (MIT), Quaternius (CC0),
 // Kenney (CC0), Poly Haven (CC0), Mediabunny (MPL-2.0). docs/film-plan.md.
 import * as T from "../vendor/three.mjs?v=1";
-import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope } from "../film.mjs?v=7";
+import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope } from "../film.mjs?v=8";
 import { cue, place } from "./sound.mjs?v=1";
-import { dressBody } from "./costume.mjs?v=1";
+import { dressBody } from "./costume.mjs?v=2";
 
 const ASSETS = new URL("./assets/", import.meta.url).href;
 
@@ -381,7 +381,13 @@ function poseAll(world, film, t) {
       const pa = action(world, p, prev[1]);
       pa.enabled = true; pa.play(); pa.time = (t - prev[0]) * pspeed; pa.setEffectiveWeight(1 - fade);
     }
+    // The mixer only writes a bone when its animated value changes, so a held pose
+    // would keep last frame's speaking nod and the next nod would add to it: the head
+    // rolled back until it faced the ceiling (the owner's first video). Put the head
+    // back where the pose left it before posing again.
+    if (p.headPose) p.head.quaternion.copy(p.headPose);
     p.mixer.update(0);
+    if (p.head) (p.headPose ||= new T.Quaternion()).copy(p.head.quaternion);
     const pl = places[name];
     p.holder.visible = !pl.off;
     p.holder.position.set(pl.at[0], pl.lift, pl.at[1]);

@@ -1078,6 +1078,38 @@ page says so beside the video button.
 - the drape's cost on an iPhone;
 - whether the tab layout suits a long story on a small phone.
 
+## The owner's first video with costumes (55 s, iPhone, MP4)
+
+Watched frame by frame, every 2 s:
+- The costumes read as clothes: a green top over a beige skirt, a red dress,
+  a dark suit.
+- The sound was the music bed, which was switched on, plus footsteps; no
+  voices, as designed.
+- Two faults showed.
+
+**Speaking heads rolled back until they faced the ceiling**, some upside
+down, mid-line.
+- A speaking head nods by a small rotation added to the posed head each
+  frame.
+- three.js's mixer only rewrites a bone when its animated value *changes*
+  (`PropertyMixer.apply` compares with the last value it wrote).
+- So whenever a pose held still, the mixer left the head alone and the nods
+  added up. That happens in a clip that has ended, a held pose, or the
+  preview drawing the same moment while it waits for the phone's voice.
+- Fixed: the pose's head is remembered after posing and restored before the
+  next.
+- `tests/film-browser.mjs` draws a line's moment 60 times and requires the
+  head not to move. Without the fix it moved 1.0–2.4 radians, which is the
+  video's heads.
+
+**A listener's back filled half of a close-up.**
+- The close-up camera stands 1.9 m in front of the speaker, and the other
+  person was standing in that line.
+- `cameraFor` now swings round the speaker in 20° steps to the first view
+  that passes no one within 0.35 m and stays on the audience's side of the
+  line (the 180° rule).
+- A unit test covers it, mutation-checked.
+
 ## What is not known, and how each gets known
 
 - **What the free tiers actually contain.** Stage 0's inventory. The kits

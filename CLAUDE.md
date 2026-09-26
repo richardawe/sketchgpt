@@ -273,6 +273,12 @@ serves **4-bit**, and that gap explains most surprises.
   cache-first for the version-pinned WebLLM bundle, and hands off entirely on
   the weight hosts. `tests/offline.mjs` shuts the server down *and* sets the
   browser offline, so the claim is checked rather than assumed.
+- **three.js's mixer only writes a bone when its value changes**, so anything
+  added on top of a pose each frame (Film's speaking nod) accumulates whenever
+  the pose holds still — a finished clip, or the preview redrawing one moment
+  while a voice finishes. In the owner's first costume video, heads rolled back
+  to face the ceiling. Restore the posed value before re-posing (`headPose`);
+  `tests/film-browser.mjs` holds a moment 60 frames and fails on any drift.
 - `navigator.gpu` can exist while `requestAdapter()` returns **null** (headless,
   GPU-less VMs, blocklisted drivers). Check for an adapter, not the API.
 - **Running into the context window fails two different ways, and one is

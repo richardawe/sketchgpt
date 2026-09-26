@@ -134,6 +134,15 @@ try {
   const shots = await page.evaluate(ls => ls.map(([a, b]) => window.__film.still((a + b) / 2)), film.lines);
   assert.deepEqual(shots, film.lines.map(l => l[2]));
   assert.equal(await page.evaluate(() => window.__film.still(0.5)), "wide");
+  // A held moment (the preview waits on a voice by drawing the same t again) must not
+  // move a speaking head: the nods used to pile up until heads faced the ceiling.
+  const drift = await page.evaluate(ls => ls.map(([a, b, who]) => {
+    const t = (a + b) / 2, head = window.__film.state.stage.world.cast[who].head;
+    window.__film.still(t); const q0 = head.quaternion.clone();
+    for (let i = 0; i < 60; i++) window.__film.still(t);
+    return head.quaternion.angleTo(q0);
+  }), film.lines);
+  assert.ok(Math.max(...drift) < 1e-3, `speaking heads drift when held: ${drift.map(d => d.toFixed(3))}`);
 
   // The costumes are real garments: Ruth's dress (a top, a skirt that hangs, shoes), Sam's suit
   // (shirt, jacket, trousers, shoes); the skin under them isn't drawn; her skin is lighter.

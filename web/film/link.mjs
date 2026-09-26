@@ -4,7 +4,7 @@
 // look, voice (by name) and pitch, the speakers the writer chose, and the sound
 // switches. What never travels: recordings (they are the writer's own voice)
 // and anything from a photo. Opening a link rebuilds the same film from rules.
-import { cleanLook, PITCH } from "../film.mjs?v=7";
+import { cleanLook, PITCH } from "../film.mjs?v=8";
 
 export const LIMITS = { text: 6000, name: 40, cast: 8, voice: 80, speakers: 300, key: 400 };
 

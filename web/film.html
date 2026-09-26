@@ -237,8 +237,8 @@
 </div></div>
 
 <script type="module">
-import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, LOOKS, HAIRS, SKINS, COSTUMES, cleanLook, soundCues, ambience, isFountain, fromFountain, toFountain } from "./film.mjs?v=7";
-import { encodeFilm, decodeFilm } from "./film/link.mjs?v=2";
+import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, LOOKS, HAIRS, SKINS, COSTUMES, cleanLook, soundCues, ambience, isFountain, fromFountain, toFountain } from "./film.mjs?v=8";
+import { encodeFilm, decodeFilm } from "./film/link.mjs?v=3";
 import { voiceOptions } from "./voice.mjs?v=10";
 
 const $ = id => document.getElementById(id);
@@ -445,7 +445,7 @@ async function ensureStage() {
   const story = state.story;
   const castKey = lookKey(story);
   if (state.stage && state.stageCast === castKey) { const { recast } = stageMod; recast(state.stage, state.film); return state.stage; }
-  stageMod ||= await import("./film/stage.mjs?v=7");
+  stageMod ||= await import("./film/stage.mjs?v=8");
   const { setup } = stageMod;
   const looks = Object.fromEntries(story.cast.map((c, i) => [c.name, cleanLook(state.looks[c.name] || defaultLook(c, i))]));
   if (state.stage) { state.stage.renderer.dispose(); const gl = $("gl"), fresh = gl.cloneNode(); gl.replaceWith(fresh); }

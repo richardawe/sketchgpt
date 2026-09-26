@@ -992,7 +992,25 @@ export function cameraFor(shot, heads, facing, pair, wide = SETS["living room"].
   // A speaker facing away from the audience's side is shot from that side anyway.
   if (fwd[0] * side[0] + fwd[2] * side[2] < -0.2) fwd = side;
   // A medium close-up: head and chest, far enough back that talking hands stay below the face.
-  return { fov: 36, at: [h[0] + fwd[0] * 1.9 + side[0] * 0.4, h[1] - 0.02, h[2] + fwd[2] * 1.9 + side[2] * 0.4], look: [h[0], h[1] - 0.22, h[2]], side };
+  // Nobody may stand in the way (the owner's first video: a listener's back filled half
+  // the frame): the camera swings round the speaker, a step at a time, to the first
+  // clear view that stays on the audience's side of the line.
+  const place = turn => {
+    const c = Math.cos(turn), s = Math.sin(turn), dx = fwd[0] * c - fwd[2] * s, dz = fwd[0] * s + fwd[2] * c;
+    return [h[0] + dx * 1.9 + side[0] * 0.4, h[1] - 0.02, h[2] + dz * 1.9 + side[2] * 0.4];
+  };
+  const blocked = at => Object.entries(heads).some(([n, o]) => {
+    if (n === shot) return false;
+    // The other person as a vertical line through their head: does the view pass within 0.35 m of it?
+    const vx = h[0] - at[0], vz = h[2] - at[2], l2 = vx * vx + vz * vz;
+    const u = ((o[0] - at[0]) * vx + (o[2] - at[2]) * vz) / l2;
+    return u > 0.05 && u < 0.95 && Math.hypot(at[0] + vx * u - o[0], at[2] + vz * u - o[2]) < 0.35;
+  });
+  const mid = [(A[0] + B[0]) / 2, (A[2] + B[2]) / 2];
+  const audience = at => a === b || (at[0] - mid[0]) * side[0] + (at[2] - mid[1]) * side[2] > 0;
+  let at = place(0);
+  for (const turn of [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05]) { const p = place(turn); if (!blocked(p) && audience(p)) { at = p; break; } }
+  return { fov: 36, at, look: [h[0], h[1] - 0.22, h[2]], side };
 }
 
 /** Which side of the line A→B a point is on: >0 left, <0 right. */
