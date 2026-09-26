@@ -1,6 +1,6 @@
 # Film — a grown-up version of Book, without a model — a plan
 
-**Status: stages 0–4 are built and live; 5–6 are not.**
+**Status: stages 0–6 are all built. 0–4 are live; 5–6 go live with this change.**
 
 - Stage 0, `web/film-probe.html`, has run on the owner's iPhone: a 2-minute
   720p MP4 with sound in 43 s ("Stage 0 measured" below).
@@ -10,7 +10,10 @@
   - 2: seven sets, light by time of day, props in hand;
   - 3: acting measured on real writing, and Build one;
   - 4: sounds from the story's events, each place's sound, heads that move
-    with the voice.
+    with the voice;
+  - 5: the two-minute video: a smaller "For sharing" size, a notice when the
+    last video died, a copyable failure report;
+  - 6: a film as a link, a screenplay download, a pasted screenplay read.
 
 The free tiers turned out smaller than their "60–70%": two bodies, no
 clothes, and faces that can't open their mouths.
@@ -823,6 +826,122 @@ the place per scene, and both envelopes.
 **Not tested:** how any of it *sounds*. Levels are measured; whether a
 synthesised gunshot or bar murmur sounds real is a judgement for someone
 listening, on a phone speaker. Also not tested on a phone at all.
+
+## Stage 5 as built: the two-minute video
+
+**Resumable scene-by-scene rendering was not built, on purpose.** Stage 0
+measured the owner's iPhone making two minutes in **43 s**. Starting again
+costs less than a minute, so a resume (saving encoder state and stitching
+scenes together) would add risk to the one path that already works. If a
+real phone dies part-way, the notice below says where it stopped, and that
+will show whether a resume is needed.
+
+What stage 5 adds to the Make button, which already had a progress bar with
+time left, a screen wake lock, Stop, and MP4 or WebM:
+
+- **Size:** "Best" (3 Mbps, 13.5 MB a minute measured on the iPhone) or
+  **"For sharing"** (1.2 Mbps: a smaller file with a softer picture, for
+  messaging apps that shrink big videos anyway). `makeVideo` takes
+  `bitrate`.
+- **A video that died is reported on the next visit.** Every 24 frames the
+  page writes how far it got to `sketchgpt.film.run`, including whether the
+  page ever went into the background. If the tab is killed, which is how a
+  phone runs out of memory, the next visit says: "The last video stopped at
+  0:20 of 2:00 (9 s in), after the page went to the background". It says so
+  once.
+- **A failure that is caught leaves a copyable report.** It has the error,
+  the frame reached, length, fps, size, bitrate, sets, number of people,
+  browser, and whether WebCodecs exists. The rule from the rest of the
+  project applies: a failure on a device nobody here can reach has to be
+  reported, not rumoured.
+- **Found while testing:** a tap on Play or Make within 250 ms of typing ran
+  the *previous* story, because the text is read a moment after typing
+  stops. A tap now reads what's on screen first.
+
+**Tested** (`tests/film-share-browser.mjs`, touch screen):
+- a two-minute fixture (about 2:00 of six-to-twenty-word lines) renders at
+  4 fps as WebM with sound, and the video's own duration matches the film's
+  to within a second;
+- "For sharing" reaches the encoder as 1.2 Mbps;
+- progress is written while rendering, and a finished video is marked
+  finished;
+- a planted unfinished run is reported once;
+- a browser without WebCodecs gets the report.
+
+**Not tested:**
+- how the smaller size looks, or its real size on a phone (SwiftShader's
+  encoder isn't the iPhone's);
+- whether the notice ever fires for real;
+- the MP4 path here, since headless Chromium has no H.264 encoder.
+
+## Stage 6 as built: share and export
+
+**A film as a link** (`web/film/link.mjs`). "Share as a link" puts the
+whole film after `#film=` (deflate-raw, base64url), which never reaches the
+server:
+- the words;
+- who is she, he or they;
+- each person's look, voice (by name) and pitch;
+- the speakers the writer chose;
+- the three sound switches.
+
+**Recordings never travel**, since they are the writer's own voice, and the
+page says so beside the link. Whoever opens it hears their own phone's
+voice. A voice is matched by name whenever the phone lists its voices, which
+on phones is late.
+
+The link is shorter than the story it carries: under 800 characters for the
+test's two-scene story. The longest story a link holds, 6,000 characters of
+English, compresses to fewer characters than it has.
+
+**A link is someone else's input:**
+- every field is capped and type-checked (`cleanFilm`): names 40
+  characters, 8 people, only she/he/they, pitches from the list, looks
+  through `cleanLook`, switches only as real booleans;
+- decompression stops at 256 KB, so a small link can't inflate into
+  gigabytes;
+- a damaged, foreign or too-new link says so in words.
+
+Opening a link fills the page but **does not replace the recipient's own
+saved draft** until they edit.
+
+**Screenplays (Fountain), out and in:**
+- **"Download as a screenplay"** writes `film.fountain`:
+  - scene headings from the set and light (`INT. KITCHEN - DAY`,
+    `EXT. STREET - NIGHT`);
+  - cues from the speakers (chosen ones included), and parentheticals from
+    how a line is said;
+  - `UNKNOWN` for a line the writer gave to nobody.
+  Highland, Slugline, WriterSolo and Fade In open it.
+- **A pasted screenplay is recognised** (`isFountain`: a heading plus a cue,
+  or three cues) and read through `fromFountain` as the prose it describes:
+  - headings become scenes;
+  - NIGHT/EVENING/DAWN/DAY set the light;
+  - NAMES in capitals become who speaks;
+  - parentheticals become how.
+  The page says it read a screenplay. Prose written out and read back gives
+  the same speakers, sets and light (a unit test), and so does a screenplay
+  written by hand.
+
+**Tested:**
+- `tests/film-share.test.mjs`: the link round trip; what is and isn't
+  carried; caps and types; damaged, foreign, too-new, oversized and
+  decompression-bomb links; the Fountain round trip and a hand-written
+  screenplay.
+- `tests/film-share-browser.mjs`:
+  - the link opened on a second phone with its own saved draft: the same
+    words, pronoun, look, pitch, voice, chosen speaker and switches, with
+    the draft untouched until the recipient edits;
+  - a damaged link;
+  - the download;
+  - the downloaded screenplay pasted back in.
+- Mutation-checked: the pronoun filter, the switch types, both size caps,
+  the draft guard, opening links, reading pasted screenplays, the died
+  notice said once, the failure report, and the read-before-play.
+
+**Not tested:** `navigator.share` on a real phone (headless has none, so the
+test uses the clipboard); whether the named screenplay apps open the file;
+any of this on the owner's phone.
 
 ## What is not known, and how each gets known
 

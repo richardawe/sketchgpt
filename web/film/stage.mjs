@@ -5,7 +5,7 @@
 // No model, no network after the assets. three.js (MIT), Quaternius (CC0),
 // Kenney (CC0), Poly Haven (CC0), Mediabunny (MPL-2.0). docs/film-plan.md.
 import * as T from "../vendor/three.mjs?v=1";
-import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope } from "../film.mjs?v=5";
+import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope } from "../film.mjs?v=6";
 import { cue, place } from "./sound.mjs?v=1";
 
 const ASSETS = new URL("./assets/", import.meta.url).href;
@@ -555,20 +555,20 @@ function sliceAudio(buf, from, to) {
 }
 
 // ---------------------------------------------------------------- the video
-export async function makeVideo(stage, { seconds, fps, voices = [], music = true, cues = [], places = [], onProgress, onFrame }) {
+export async function makeVideo(stage, { seconds, fps, voices = [], music = true, cues = [], places = [], bitrate = 3e6, onProgress, onFrame }) {
   const mb = await import("../vendor/mediabunny-film.mjs?v=1");
   const { ctx } = stage;
   const W = ctx.canvas.width, H = ctx.canvas.height;
   let v = null;
   for (const [codec, format, ext, type] of [["avc", "Mp4OutputFormat", "mp4", "video/mp4"], ["vp9", "WebMOutputFormat", "webm", "video/webm"]])
-    try { if (await mb.canEncodeVideo(codec, { width: W, height: H, bitrate: 3e6 })) { v = { codec, format, ext, type }; break; } } catch {}
+    try { if (await mb.canEncodeVideo(codec, { width: W, height: H, bitrate })) { v = { codec, format, ext, type }; break; } } catch {}
   if (!v) throw new Error("This browser cannot encode video (no WebCodecs VideoEncoder for H.264 or VP9).");
   let audioCodec = null;
   for (const c of v.ext === "mp4" ? ["aac", "opus"] : ["opus"])
     try { if (await mb.canEncodeAudio(c, { numberOfChannels: 2, sampleRate: 48000, bitrate: 128e3 })) { audioCodec = c; break; } } catch {}
 
   const output = new mb.Output({ format: new mb[v.format](v.ext === "mp4" ? { fastStart: "in-memory" } : {}), target: new mb.BufferTarget() });
-  const vsrc = new mb.CanvasSource(ctx.canvas, { codec: v.codec, bitrate: 3e6, keyFrameInterval: 2 });
+  const vsrc = new mb.CanvasSource(ctx.canvas, { codec: v.codec, bitrate, keyFrameInterval: 2 });
   output.addVideoTrack(vsrc, { frameRate: fps });
   let asrc = null, audio = null, audioMs = 0;
   if (audioCodec) {
@@ -604,7 +604,7 @@ export async function makeVideo(stage, { seconds, fps, voices = [], music = true
   await output.finalize();
   const finalizeMs = performance.now() - f0;
   const blob = new Blob([output.target.buffer], { type: v.type });
-  return { blob, ext: v.ext, videoCodec: v.codec, audioCodec, frames: total, wallMs: performance.now() - t0, drawMs, encMs, audioMs, finalizeMs };
+  return { blob, ext: v.ext, videoCodec: v.codec, audioCodec, frames: total, bitrate, wallMs: performance.now() - t0, drawMs, encMs, audioMs, finalizeMs };
 }
 
 // ---------------------------------------------------------------- setup

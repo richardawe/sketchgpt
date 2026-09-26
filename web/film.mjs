@@ -744,6 +744,106 @@ export function placesAt(film, t) {
   return out;
 }
 
+// ---------------------------------------------------------------- screenplays
+// Fountain (fountain.io, an open plain-text screenplay format) in and out, so a
+// writer can paste a screenplay, or take their prose away as one. In: the
+// screenplay becomes prose the reader already knows ("…," said NAME), so every
+// rule above applies unchanged. Out: scene headings from the sets and light,
+// action from the narration, a cue and dialogue for every line — "UNKNOWN"
+// where the page gave a line to nobody, so the gap stays visible.
+const FOUNTAIN_HEADING = /^(?:INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/i;
+export function isFountain(text) {
+  const lines = String(text || "").replace(/\r/g, "").split("\n");
+  const headings = lines.filter(l => FOUNTAIN_HEADING.test(l.trim())).length;
+  let cues = 0;
+  for (let i = 1; i < lines.length - 1; i++)
+    if (!lines[i - 1].trim() && /^[A-Z][A-Z0-9 .'’-]{1,30}(?: \(.*\))?\s*\^?$/.test(lines[i].trim()) && lines[i + 1].trim() && !FOUNTAIN_HEADING.test(lines[i].trim())) cues++;
+  return headings >= 1 && cues >= 1 || cues >= 3;
+}
+
+const HOW = { whispering: "whispered", whispers: "whispered", quietly: "murmured", softly: "murmured", shouting: "shouted", yelling: "yelled",
+  angrily: "snapped", angry: "snapped", laughing: "laughed", crying: "cried", begging: "begged", pleading: "begged" };
+const titleCase = s => s.toLowerCase().replace(/(^|[\s'-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+
+/** A Fountain screenplay as prose the reader understands. */
+export function fromFountain(text) {
+  const lines = String(text || "").replace(/\r/g, "").split("\n");
+  const out = [];
+  // A scene heading opens the paragraph after it, so heading and scene are one
+  // (the reader starts a scene at a paragraph with a new place or time).
+  let heading = "";
+  const push = p => { out.push(heading ? heading + " " + p : p); heading = ""; };
+  // Screenplays write a character's name in capitals in the action ("BEN walks
+  // in"): the same person as the cue, so written as the cue's name is.
+  const cueNames = new Set();
+  lines.forEach((l, i) => { const m = l.trim().match(/^@?([A-Z][A-Z0-9 .'’-]{1,30}?)(?:\s*\(.*\))?\s*\^?$/); if (m && !lines[i - 1]?.trim() && lines[i + 1]?.trim() && !FOUNTAIN_HEADING.test(l.trim())) cueNames.add(m[1].trim()); });
+  const names = s => [...cueNames].reduce((t, n) => t.replace(new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), titleCase(n)), s);
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim();
+    if (!l || /^(?:Title|Credit|Author|Draft date|Contact|Source):/i.test(l) || /^[=#]/.test(l) || /^\[\[.*\]\]$/.test(l)) continue;
+    if (/^(?:>?\s*(?:CUT|FADE|DISSOLVE|SMASH CUT|MATCH CUT)(?: TO)?[:.]?\s*<?)$/i.test(l)) continue;
+    const head = l.match(/^\.?(?:INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s+-\s+(.+))?$/i);
+    if (head && (FOUNTAIN_HEADING.test(l) || l.startsWith("."))) {
+      const place = head[1].replace(/[.#].*$/, "").toLowerCase().trim(), time = (head[2] || "").toLowerCase();
+      const when = /night/.test(time) ? "That night, " : /evening|dusk/.test(time) ? "That evening, " : /dawn|sunrise/.test(time) ? "At dawn, "
+        : /morning/.test(time) ? "In the morning, " : /day|afternoon|noon/.test(time) ? "In daylight, " : "";
+      if (heading) out.push(heading);
+      heading = `${when}in the ${place}.`.replace(/^i/, "I");
+      continue;
+    }
+    const cue = l.match(/^@?([A-Z][A-Z0-9 .'’-]{1,30}?)(?:\s*\(.*\))?\s*\^?$/);
+    if (cue && !lines[i - 1]?.trim() && lines[i + 1]?.trim()) {
+      const name = titleCase(cue[1].trim());
+      let manner = "said", said = [];
+      for (i = i + 1; i < lines.length && lines[i].trim(); i++) {
+        const d = lines[i].trim(), par = d.match(/^\((.+)\)$/);
+        if (par) { const w = par[1].toLowerCase().split(/\s+/).find(x => HOW[x]); if (w) manner = HOW[w]; continue; }
+        said.push(d);
+      }
+      if (said.length) { const d = said.join(" ").replace(/"/g, "'").replace(/[.,]$/, ""); push(`"${d}${/[?!]$/.test(d) ? "" : ","}" ${name} ${manner}.`); }
+      continue;
+    }
+    // Action: kept as written, one paragraph per block.
+    let block = [l];
+    while (i + 1 < lines.length && lines[i + 1].trim()) block.push(lines[++i].trim());
+    push(names(block.join(" ").replace(/^!/, "")));
+  }
+  if (heading) out.push(heading);
+  return out.join("\n\n");
+}
+
+const PLACE_HEADING = { "living room": "INT. LIVING ROOM", kitchen: "INT. KITCHEN", bedroom: "INT. BEDROOM", office: "INT. OFFICE", bar: "INT. BAR",
+  street: "EXT. STREET", car: "INT. CAR", park: "EXT. PARK", hospital: "INT. HOSPITAL", rooftop: "EXT. ROOFTOP" };
+const LIGHT_HEADING = { day: "DAY", dawn: "DAWN", evening: "EVENING", night: "NIGHT" };
+const MANNER_PAREN = { quiet: "quietly", angry: "angrily", laugh: "laughing", upset: "pleading" };
+
+/** Prose, as the page read it, out as a Fountain screenplay. */
+export function toFountain(text, story, { title = "Untitled" } = {}) {
+  const paragraphs = String(text || "").replace(/\r/g, "").split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+  const lines = story.scenes.flatMap(s => s.beats).filter(b => b.kind === "line");
+  let li = 0;
+  const out = [`Title: ${title}`, "Credit: Written in Film (sketchgpt), no AI model", ""];
+  story.scenes.forEach(scene => {
+    out.push(`${PLACE_HEADING[scene.place] || "INT. " + scene.place.toUpperCase()} - ${LIGHT_HEADING[scene.light] || "DAY"}`, "");
+    for (const pi of scene.paragraphs) {
+      for (const piece of pieces(paragraphs[pi] || "")) {
+        if (piece.kind === "narration") {
+          // Speech tags go: the cue already says who speaks.
+          const action = clean(piece.text.replace(new RegExp(`^\\s*[,;:—–-]?\\s*(?:(?:${SPEECH_RE})\\s+\\S+|\\S+\\s+(?:${SPEECH_RE}))\\b[,.]?`, "i"), "")
+            .replace(new RegExp(`\\S+\\s+(?:${SPEECH_RE})[^.!?]*[,:]\\s*$`, "i"), "")).replace(/^[,.;:\s]+/, "");
+          if (action && /[A-Za-z]/.test(action)) out.push(action, "");
+        } else if (clean(piece.text)) {
+          const b = lines[li++] || {};
+          out.push((b.speaker || "UNKNOWN").toUpperCase());
+          if (MANNER_PAREN[b.manner]) out.push(`(${MANNER_PAREN[b.manner]})`);
+          out.push(clean(piece.text).replace(/,$/, "."), "");
+        }
+      }
+    }
+  });
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
+}
+
 // ---------------------------------------------------------------- sound
 /**
  * The sounds a film's own events make, by rule: [{ t, kind, who }]. Kinds:

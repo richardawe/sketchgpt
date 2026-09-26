@@ -34,6 +34,8 @@
   .guessed { background: var(--guess); }
   .badge { font-size: 12px; padding: 1px 6px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
   .notes li { color: var(--warn); }
+  .warn { color: var(--warn); }
+  #failure { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .stage { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
   @media (min-width: 720px) { .stage { grid-template-columns: 300px minmax(0, 1fr); } }
   canvas#out { width: 100%; max-width: 300px; aspect-ratio: 9 / 16; background: #000; border-radius: 10px; display: block; margin: 0 auto; }
@@ -66,9 +68,10 @@
     <p class="muted">Write a scene in plain prose. The page finds who speaks and what they do, stages it (a living room, kitchen, bedroom, office, bar, street or park, by day or night), and makes the video, on this device. No AI model, nothing uploaded. <a href="film-probe.html">How fast is this phone?</a></p>
 
     <h2>1. Write</h2>
+    <p id="opened" class="muted" hidden></p>
     <textarea id="story" spellcheck="true" aria-label="Your story"></textarea>
     <div class="row"><span>Length <span id="length" class="length">0:00</span> of 2:00</span><button id="sample">Use the sample</button><button id="clear">Clear</button></div>
-    <p class="muted">Quotes are lines: <em>"Sit down," Tom said.</em> Blank lines separate paragraphs; a new place or "that night" starts a new scene.</p>
+    <p class="muted">Quotes are lines: <em>"Sit down," Tom said.</em> Blank lines separate paragraphs; a new place or "that night" starts a new scene. A screenplay (Fountain: INT. KITCHEN - NIGHT, NAMES in capitals) can be pasted too.</p>
 
     <h2>2. Cast</h2>
     <div id="cast" class="card"><p class="muted">Names appear here as you write.</p></div>
@@ -90,15 +93,23 @@
         <div class="row"><button id="play" class="primary">Load and play (~7–9 MB, once)</button><button id="stop" hidden>Stop</button></div>
         <div id="status" class="muted"></div>
         <h2>5. Make the video</h2>
+        <p id="lastrun" class="warn" hidden></p>
+        <div class="row"><label>Size <select id="quality"><option value="3000000">Best (about 14 MB a minute)</option><option value="1200000">For sharing (smaller)</option></select></label></div>
         <div class="row"><button id="make" disabled>Make the video</button><button id="cancel" hidden>Stop</button></div>
         <progress id="prog" value="0" max="1" hidden></progress>
         <div id="result"></div>
+        <pre id="failure" hidden></pre><button id="copyfail" hidden>Copy the report</button>
+        <h2>6. Share</h2>
+        <p class="muted">A link holds the whole story, the cast, their looks and voices: whoever opens it gets the same film, made on their device. Nothing is uploaded, and your recordings stay here.</p>
+        <div class="row"><button id="sharelink">Share as a link</button><button id="fountain">Download as a screenplay</button></div>
+        <div id="shared" class="muted"></div>
       </div>
     </div>
   </div>
 </main>
 <script type="module">
-import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds, LOOKS, HAIRS, SKINS, cleanLook, soundCues, ambience, rmsEnvelope } from "./film.mjs?v=5";
+import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds, LOOKS, HAIRS, SKINS, cleanLook, soundCues, ambience, rmsEnvelope, isFountain, fromFountain, toFountain } from "./film.mjs?v=6";
+import { encodeFilm, decodeFilm } from "./film/link.mjs?v=1";
 import { voiceOptions } from "./voice.mjs?v=10";
 
 const $ = id => document.getElementById(id);
@@ -130,15 +141,18 @@ $("story").value = safe(() => localStorage.getItem(DRAFT)) ?? SAMPLE;
 $("sample").onclick = () => { $("story").value = SAMPLE; update(); };
 $("clear").onclick = () => { $("story").value = ""; update(); };
 let timer = 0;
-$("story").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(update, 250); });
+$("story").addEventListener("input", () => { state.fromLink = false; clearTimeout(timer); timer = setTimeout(() => { timer = 0; update(); }, 250); });
 
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
 
 // The person's corrections sit on top of the rules: a speaker chosen here wins.
 function read() {
   const text = $("story").value;
-  safe(() => localStorage.setItem(DRAFT, text));
-  const story = readStory(text, { pronouns: state.pronouns });
+  if (!state.fromLink) safe(() => localStorage.setItem(DRAFT, text));
+  // A pasted screenplay is read as the prose it says; the page says so.
+  const screenplay = isFountain(text);
+  const story = readStory(screenplay ? fromFountain(text) : text, { pronouns: state.pronouns });
+  if (screenplay) story.notes.unshift("Read as a screenplay (Fountain): headings are scenes, NAMES in capitals are who speaks.");
   let i = 0;
   for (const s of story.scenes) for (const b of s.beats) if (b.kind === "line") {
     const key = i++ + ":" + b.text;
@@ -193,7 +207,9 @@ function renderCast(story) {
 function voiceOf(name, i = state.story?.cast.findIndex(c => c.name === name) ?? 0) {
   const all = deviceVoices();
   if (!all.length) return null;
-  return all.find(o => o.id === state.voices[name]) || all[Math.max(0, i) % all.length];
+  // A shared film names its voices; phones list them late, so the name is matched whenever they arrive.
+  const named = state.linkVoices?.[name] && all.find(o => o.voice.name === state.linkVoices[name]);
+  return all.find(o => o.id === state.voices[name]) || named || all[Math.max(0, i) % all.length];
 }
 function pitchOf(name) {
   if (state.pitch[name]) return state.pitch[name];
@@ -312,7 +328,7 @@ async function ensureStage() {
   const story = state.story;
   const castKey = lookKey(story);
   if (state.stage && state.stageCast === castKey) { const { recast } = stageMod; recast(state.stage, state.film); return state.stage; }
-  stageMod ||= await import("./film/stage.mjs?v=5");
+  stageMod ||= await import("./film/stage.mjs?v=6");
   const { setup } = stageMod;
   const looks = Object.fromEntries(story.cast.map((c, i) => [c.name, cleanLook(state.looks[c.name] || defaultLook(c, i))]));
   if (state.stage) { state.stage.renderer.dispose(); const gl = $("gl"), fresh = gl.cloneNode(); gl.replaceWith(fresh); }
@@ -323,7 +339,10 @@ async function ensureStage() {
   return state.stage;
 }
 
+// Typing is read a moment after it stops; a tap before then reads it now, so it plays what's on screen.
+const flush = () => { if (timer) { clearTimeout(timer); timer = 0; update(); } };
 $("play").onclick = async () => {
+  flush();
   if (!state.story.cast.length || !state.film.lines.length) { $("status").textContent = "Write at least one line someone says first."; return; }
   // Inside the tap, before anything waits: iOS speaks and plays sound only
   // when a tap asked for it, so both are unlocked here, once.
@@ -404,6 +423,8 @@ $("stop").onclick = () => { state.playing = false; synth?.cancel(); };
 
 let cancelled = false;
 $("make").onclick = async () => {
+  flush();
+  if ($("make").disabled) { $("status").textContent = "The story changed: press Play to load its people first."; return; }
   $("make").disabled = $("play").disabled = true; $("cancel").hidden = false; $("prog").hidden = false; cancelled = false;
   let lock = null;
   try { lock = await navigator.wakeLock?.request("screen"); } catch {}
@@ -412,9 +433,15 @@ $("make").onclick = async () => {
     const voices = state.film.lines.filter(l => l[2] && state.takes[l[5]])
       .map(l => ({ at: l[0], buffer: state.takes[l[5]].buffer, rate: PITCH[pitchOf(l[2])].rate }));
     stage.speech = speechEnvelopes(state.film);
-    const r = await stageMod.makeVideo(stage, { seconds: state.film.length, fps: FPS, voices, music: $("music").checked,
+    run = { total: Math.round(state.film.length * FPS), frame: 0, fps: FPS, started: new Date().toISOString(), finished: false, hidden: false };
+    const t0 = performance.now();
+    const r = await stageMod.makeVideo(stage, { seconds: state.film.length, fps: FPS, voices, music: $("music").checked, bitrate: +$("quality").value,
       cues: $("fx").checked ? soundCues(state.film) : [], places: $("amb").checked ? ambience(state.film).filter(a => a.kind !== "room") : [],
-      onFrame: () => { if (cancelled) throw new Error("stopped"); },
+      onFrame: (f) => {
+        if (cancelled) throw new Error("stopped");
+        // How far it got, written as it goes: if the tab dies, the next visit says so.
+        if (f % 24 === 0) { run.frame = f; run.elapsedMs = Math.round(performance.now() - t0); run.hidden ||= document.hidden; safe(() => localStorage.setItem(RUN, JSON.stringify(run))); }
+      },
       onProgress: (k, ms) => { $("prog").value = k; $("status").textContent = `Making the video: ${Math.round(k * 100)}% — about ${Math.ceil(ms / k * (1 - k) / 1000)} s left`; } });
     const url = URL.createObjectURL(r.blob), name = `film.${r.ext}`;
     $("result").innerHTML = "";
@@ -425,17 +452,87 @@ $("make").onclick = async () => {
     const spoken = voices.length, total = state.film.lines.filter(l => l[2]).length;
     $("status").textContent = `Made ${clock(state.film.length)} of video in ${(r.wallMs / 1000).toFixed(0)} s (${r.ext.toUpperCase()}). ` +
       (!r.audioCodec ? "Silent: this browser has no audio encoder." : spoken === total ? "Every line is in your voice." : `${spoken} of ${total} lines are heard; record the rest in step 3.`);
-    window.__film.video = { ok: true, ext: r.ext, audio: r.audioCodec, frames: r.frames, bytes: r.blob.size, voices: voices.map(v => v.at) };
+    window.__film.video = { ok: true, ext: r.ext, audio: r.audioCodec, frames: r.frames, bytes: r.blob.size, bitrate: r.bitrate, voices: voices.map(v => v.at) };
+    run.finished = true; safe(() => localStorage.setItem(RUN, JSON.stringify(run)));
+    $("failure").hidden = $("copyfail").hidden = true;
   } catch (e) {
+    run && (run.finished = true, safe(() => localStorage.setItem(RUN, JSON.stringify(run))));
     $("status").textContent = e.message === "stopped" ? "Stopped." : "The video failed: " + e.message;
     window.__film.video = { ok: false, error: String(e) };
+    // A failure on a device nobody here can reach has to be reported, not rumoured.
+    if (e.message !== "stopped") {
+      $("failure").textContent = JSON.stringify({ page: "film", when: new Date().toISOString(), error: String(e && e.stack || e), reachedFrame: run?.frame, of: run?.total,
+        seconds: state.film.length, fps: FPS, size: `${WIDTH}x${HEIGHT}`, bitrate: +$("quality").value, sets: (state.film.sets || []).map(s => s.set),
+        people: state.story.cast.length, ua: navigator.userAgent, webcodecs: typeof VideoEncoder !== "undefined" }, null, 2);
+      $("failure").hidden = $("copyfail").hidden = false;
+    }
   } finally { lock?.release?.(); $("cancel").hidden = true; $("prog").hidden = true; $("play").disabled = false; update(); }
 };
 $("cancel").onclick = () => { cancelled = true; };
+$("copyfail").onclick = () => navigator.clipboard?.writeText($("failure").textContent);
+
+// ---------------------------------------------------------------- stage 5: a video that died
+const RUN = "sketchgpt.film.run";
+let run = null;
+const lastRun = safe(() => JSON.parse(localStorage.getItem(RUN) || "null"));
+if (lastRun && !lastRun.finished) {
+  $("lastrun").hidden = false;
+  $("lastrun").textContent = `The last video stopped at ${clock(lastRun.frame / lastRun.fps)} of ${clock(lastRun.total / lastRun.fps)}` +
+    `${lastRun.elapsedMs ? ` (${Math.round(lastRun.elapsedMs / 1000)} s in)` : ""}${lastRun.hidden ? ", after the page went to the background" : ""}. ` +
+    `Keep the screen on and this page in front, or try "For sharing", which is smaller.`;
+  safe(() => localStorage.setItem(RUN, JSON.stringify({ ...lastRun, finished: true, reported: true })));
+}
+
+// ---------------------------------------------------------------- stage 6: share and export
+function filmData() {
+  const cast = state.story.cast.map(c => c.name), pick = o => Object.fromEntries(cast.filter(n => o[n] !== undefined).map(n => [n, o[n]]));
+  return { text: $("story").value, pronouns: pick(state.pronouns), looks: pick(state.looks), pitch: pick(state.pitch),
+    voices: Object.fromEntries(cast.map(n => [n, voiceOf(n)?.voice?.name]).filter(([, v]) => v)),
+    speakers: state.speakers, fx: $("fx").checked, amb: $("amb").checked, music: $("music").checked };
+}
+$("sharelink").onclick = async () => {
+  if (!$("story").value.trim()) { $("shared").textContent = "Write something first."; return; }
+  const frag = await encodeFilm(filmData());
+  const url = location.origin + location.pathname + "#" + frag;
+  window.__film.link = url;
+  const note = `The link is ${url.length.toLocaleString()} characters: the whole story is in it. Recordings aren't — whoever opens it hears their own phone's voice.`;
+  try {
+    if (navigator.share) { await navigator.share({ url, title: "A film" }); $("shared").textContent = note; return; }
+  } catch (e) { if (e.name === "AbortError") return; }
+  try { await navigator.clipboard.writeText(url); $("shared").textContent = "Link copied. " + note; }
+  catch { $("shared").innerHTML = ""; const a = document.createElement("a"); a.href = url; a.textContent = "Your link"; $("shared").append(a, " — " + note); }
+};
+$("fountain").onclick = () => {
+  const text = toFountain(isFountain($("story").value) ? fromFountain($("story").value) : $("story").value, state.story, { title: "Untitled" });
+  window.__film.fountain = text;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" })); a.download = "film.fountain"; a.click();
+  $("shared").textContent = "Saved as a screenplay (Fountain). Screenplay apps like Highland, Slugline, WriterSolo and Fade In open it.";
+};
+
+// Opening a shared film: its story replaces the draft on screen (the draft on this device is kept until it's edited).
+async function openLink() {
+  if (!/^#film=/.test(location.hash)) return;
+  try {
+    const f = await decodeFilm(location.hash);
+    Object.assign(state.pronouns, f.pronouns); Object.assign(state.looks, f.looks); Object.assign(state.pitch, f.pitch);
+    Object.assign(state.speakers, f.speakers);
+    state.linkVoices = f.voices;
+    $("fx").checked = f.fx; $("amb").checked = f.amb; $("music").checked = f.music;
+    $("story").value = f.text;
+    $("opened").hidden = false;
+    $("opened").textContent = "Opened from a link: the story, cast and looks are the sender's. Any recordings stayed on their device; the phone's voice reads the lines here.";
+    state.fromLink = true;
+    update();
+  } catch (e) {
+    $("opened").hidden = false; $("opened").className = "warn"; $("opened").textContent = e.message;
+  }
+}
 
 // For the tests: the page's state, and single frames.
 window.__film = { state, still: t => stageMod.frameFn(state.stage)(t) };
 update();
+openLink();
 </script>
 </body>
 </html>

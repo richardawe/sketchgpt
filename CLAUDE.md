@@ -82,11 +82,13 @@ docs/storybook.md         a story written by the model, illustrated by the page 
 docs/story-rules.md       Book without the model — all six stages built: rules, no download, own story, scenery, pictures, GIF
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
-docs/film-plan.md         "Film": user prose → 2-min 3D video, phone first, no model; stages 0–4 built, 5–6 planned;
+docs/film-plan.md         "Film": user prose → 2-min 3D video, phone first, no model; stages 0–6 built;
                           mature tier only (explicit content is banned on GitHub — read before building)
 web/film.html             Film stage 1: adult notice → write prose → cast (pronouns asked) → check (guesses shown) → watch → video
 web/film.mjs              Film's rules, pure: prose → cast/lines/moves (readStory), timelines (block), shots + 180° rule
 web/film/stage.mjs        the shared three.js stage: sets, people, painted-on clothes, camera, head-with-voice, soundtrack, video
+web/film/link.mjs         a film as a link (#film=, deflate-raw): story, cast, looks, voices by name — never recordings;
+                          every decoded field capped and type-checked (cleanFilm)
 web/film/sound.mjs        every Film sound synthesised on the page (cues: gunshot, punch, thud, clink, ring, door, step;
                           places: bar, street, park) — no audio files
 web/film-probe.html       Film stage 0: can this phone make a 2-minute 3D video? numbers in a copyable report
@@ -679,6 +681,15 @@ practical fine-tuning.
   the free Quaternius tiers are **two bodies, no clothes, no facial morphs**
   (84 clips, which is plenty for a two-hander); clothes are painted on by skin
   weight for now.
+- **Film stages 5–6 are built and never run on a phone.** Stage 5: "For
+  sharing" (1.2 Mbps), a notice when the last video died (progress written
+  every 24 frames to `sketchgpt.film.run`), a copyable failure report; the
+  resumable scene-by-scene render was **skipped on purpose** (43 s on the
+  iPhone makes a restart cheap). Stage 6: Share as a link (`#film=`, no
+  recordings), Download as a screenplay (.fountain), a pasted screenplay read
+  as one. A tap within 250 ms of typing used to play the previous story; the
+  page now reads the text first. `tests/film-share.test.mjs`,
+  `tests/film-share-browser.mjs` (a 2:00 fixture renders; `FILM_SHORT=1` skips it).
 - **Next idea: product specification manuals with diagrams.** Researched,
   nothing built. The design that follows from the findings above: the model
   fills a JSON plan (blocks, links, labels) and the page lays it out — elkjs
