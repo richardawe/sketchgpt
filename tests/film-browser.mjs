@@ -76,6 +76,14 @@ try {
   assert.deepEqual(s.scenes[0].beats.filter(b => b.kind === "line").map(l => [l.speaker, l.how])[2], ["Sam", "chosen"]);
   await page.selectOption('tr.beat-line:has-text("no traffic") select', "Ruth");
 
+  // Build one: Ruth's own look — skin, hair, top. The menu says it's her own now.
+  await page.tap('details[data-lookof="Ruth"] summary');
+  await page.selectOption('select[data-lk="skin"][data-who="Ruth"]', "light");
+  await page.selectOption('select[data-lk="hair"][data-who="Ruth"]', "buzzed-female");
+  await page.fill('input[data-lk="top"][data-who="Ruth"]', "#d8b12a");
+  assert.equal(await page.evaluate(() => document.querySelector('select[data-look="Ruth"]').selectedOptions[0].textContent), "Your own look");
+  assert.deepEqual(await page.evaluate(() => { const l = window.__film.state.looks.Ruth; return [l.skin, l.hair, l.outfit.top]; }), ["light", "buzzed-female", "#d8b12a"]);
+
   // Voices: each person a different phone voice by default; a pitch per person.
   const ruthVoice = await page.inputValue('select[data-voice="Ruth"]'), samVoice = await page.inputValue('select[data-voice="Sam"]');
   assert.ok(ruthVoice && samVoice && ruthVoice !== samVoice, `${ruthVoice} / ${samVoice}`);
@@ -118,6 +126,14 @@ try {
   const shots = await page.evaluate(ls => ls.map(([a, b]) => window.__film.still((a + b) / 2)), film.lines);
   assert.deepEqual(shots, film.lines.map(l => l[2]));
   assert.equal(await page.evaluate(() => window.__film.still(0.5)), "wide");
+  // …and the stage drew her that way: a lighter skin gain, the fine buzzed hair.
+  const ruth = await page.evaluate(() => {
+    const p = window.__film.state.stage.world.cast.Ruth; let gain = null, meshes = [];
+    p.body.traverse(o => { if (o.isSkinnedMesh) { meshes.push(o.geometry.attributes.position.count); if (o.geometry.attributes.garment) gain = o.material.color.r; } });
+    return { gain, meshes: meshes.length };
+  });
+  assert.ok(ruth.gain > 1.3, `skin gain ${ruth.gain}`);
+  assert.ok(ruth.meshes >= 4, "body, eyes, eyebrows and the chosen hair");
 
   // The video: every frame of the film, with sound.
   await page.tap("#make");
@@ -148,6 +164,8 @@ try {
   await page.reload();
   assert.equal(await page.isVisible("#app"), true);
   assert.equal(await page.inputValue("#story"), STORY);
+  await page.waitForFunction(() => window.__film.state.looks.Ruth);
+  assert.equal(await page.evaluate(() => window.__film.state.looks.Ruth.hair), "buzzed-female", "her look is kept on this device");
 
   assert.deepEqual(errors, []);
   assert.equal(navigations, 2, "only the load and the deliberate reload");

@@ -1,6 +1,6 @@
 # Film — a grown-up version of Book, without a model — a plan
 
-**Status: stages 0–2 are built (2: seven sets, light by time of day, props in hand). Stage 0 has run on the owner's iPhone,
+**Status: stages 0–3 are built (2: seven sets, light by time of day, props in hand; 3: acting measured on real writing, 63% of action verbs acted, Build one). Stage 0 has run on the owner's iPhone,
 which made the 2-minute 720p MP4 with sound in 43 s ("Stage 0 measured"
 below). Stage 1 has not run on a phone yet.**
 
@@ -645,6 +645,107 @@ the props' rules.
 measured with one room; a street set is more geometry, and nobody has timed
 it on the iPhone. Also untested: whether the sets read as their places to
 anyone but the page's tests.
+
+## Stage 3 as built: acting, measured on real writing
+
+**The measurement first** (`scripts/film/verb-bench.mjs`). Five public-domain
+collections from Project Gutenberg: Doyle's *Adventures of Sherlock Holmes*,
+Joyce's *Dubliners*, O. Henry's *The Four Million*, Mansfield's *The Garden
+Party* and Chekhov's *The Lady with the Dog*. That's 490 passages of 15
+paragraphs and 347k words, read by Film's own `readStory`, exactly as a
+writer's paste would be. Runs in 2 s.
+
+| | before stage 3 | after |
+|---|---|---|
+| Action verbs acted (acted ÷ acted + "no move") | 24.5% raw; **33.6%** once non-actions stopped counting | **63.1%** |
+| Moves acted in the corpus | 928 | 1,874 |
+| Speakers found, pronouns set as a writer would (bench guesses them; the page asks) | 50.1% (tag 20.6, paragraph 8.8, continues 15.6, guessed 4.9) | same |
+
+- **Half of all lines get no speaker** in this corpus. It's multi-character
+  Victorian and Edwardian prose, where who speaks is carried by context no
+  rule reads. The page marks those lines instead of guessing. A writer
+  pasting their own two-hander gets far more (the tests' stories are 100%),
+  but that's a claim about tests, not writers.
+- **The "no move" list was mostly not missing moves.** Before filtering, its
+  top entries were "seemed", "wanted", "remembered", "Holmes", "eyes" and
+  "years": states, thoughts, and false matches (a case-insensitive flag read
+  "Holmes" as a verb). Now only a person's deeds count (a cast name or a
+  pronoun as subject), and states and thoughts are never listed.
+- Also found: **speech verbs the reader didn't know** (remarked, explained,
+  exclaimed, stammered, retorted…). 16 were added, with manners.
+
+**What was added**, each to a free-tier clip:
+- give (a hand-off: the item changes hands);
+- follow (walk up to them);
+- run (jog, 3.2 m/s);
+- turn (to someone, or away, which lasts until they next speak);
+- lean (Idle_Rail);
+- jump (start + land);
+- kneel (crouch);
+- lie down (LayToIdle held at its first frame; lasts, even to speak, until
+  they get up);
+- climb, throw, eat;
+- flinch (gasp);
+- bow (a nod);
+- carry (Walk_Carry);
+- handle (Interact: opened, reached, pulled, pressed, touched, lifted and
+  more);
+- bare "walked", "stepped" and "moved", "passed through", "returned to".
+
+Cut, and why:
+- **Point**: the free rig's only aiming pose is two-handed, so pointing read
+  as an invisible gun.
+- **Kiss, hug, wave, shrug**: no free clip exists. They stay on the "no
+  move" list rather than being faked.
+
+**Moves done to someone** (punch, push, shoot, give, follow, turn) find their
+target:
+- "punched him" is never the puncher himself;
+- the pronoun can resolve to someone named a sentence later;
+- an ambiguous one goes to nobody, with a note.
+
+Then:
+- a punch or a push **walks up first** (to 0.75 m) and the punch starts
+  when he gets there;
+- the target **reacts** (Hit_Head / Hit_Knockback / Hit_Chest), facing the
+  one who did it;
+- a hand-off moves the glass, gun or phone into the other hand.
+
+**How a line is said changes how it's acted**: shouted/snapped 1.3× speed,
+whispered 0.75×, laughed 1.15×, upset 0.85×. The speaker faces whoever spoke
+last, not just "the other one", which matters with three people.
+
+**Build one** (Cast → "Change …'s look"):
+- body, hair (6: long, parted, buns, buzzed, buzzed fine, none), beard;
+- **skin tone** (light, tan, brown, deep);
+- hair, top, trousers and shoe colours.
+
+A look is kept per name on the device and sanitised by `cleanLook` (a test
+feeds it junk, and a `null` look crashed it before that test existed). Two
+new free hairstyles add 0.1 MB.
+
+**Found by looking:** the pack's "Light" and "Dark" skin textures are **the
+same tone** (mean sRGB 169/121/87 vs 163/115/81). Swapping them changed
+nothing. Skin tone is now a per-channel gain on the one texture, which keeps
+lips redder than cheeks. The painted clothes read their shading from the
+texture before that gain, or a light skin washed out the clothes.
+
+**Tested:**
+- `tests/film.test.mjs`: punch walks up / lands / reaction, hand-off, lying
+  lasts through someone else's line, run faster than walk, shout faster
+  than whisper, turn away then face again, ambiguous pronoun acted by
+  nobody, `cleanLook`, and every clip (reactions included) read from the
+  shipped GLBs. Mutation-checked: no reaction, no walking up, hand-off
+  keeping the item, lying not lasting (survived until a test with someone
+  else speaking was added), manner ignored, turn ignored, an object pronoun
+  resolving to the doer.
+- `tests/film-browser.mjs`: builds Ruth's own look on a touch screen and
+  checks the stage drew it (skin gain, the chosen hair), and that it
+  survives a reload.
+- The acting's pictures were checked by eye (a punch landing, lying on the
+  floor, running, leaning, a hand-off), not by an automated test.
+
+**Not tested:** any of it on a phone, and on a writer's real scene.
 
 ## What is not known, and how each gets known
 

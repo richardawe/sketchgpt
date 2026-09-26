@@ -5,19 +5,14 @@
 // No model, no network after the assets. three.js (MIT), Quaternius (CC0),
 // Kenney (CC0), Poly Haven (CC0), Mediabunny (MPL-2.0). docs/film-plan.md.
 import * as T from "../vendor/three.mjs?v=1";
-import { placesAt, cameraFor, segIndex, setAt, SETS } from "../film.mjs?v=3";
+import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook } from "../film.mjs?v=4";
 
 const ASSETS = new URL("./assets/", import.meta.url).href;
 
-// What each person looks like. Two bodies in the free tier; hair, colour and
-// clothes make more people of them.
-export const LOOKS = [
-  { body: "woman", hair: "long", hairTint: "#3a2418", outfit: { top: "#7b1e2b", bottom: "#1d2330", shoes: "#141414" } },
-  { body: "man", hair: "parted", beard: true, hairTint: "#2a2320", outfit: { top: "#c9c3b8", bottom: "#3b3f46", shoes: "#3a2a1e" } },
-  { body: "woman", hair: "buns", hairTint: "#b08a5a", outfit: { top: "#2f5d50", bottom: "#c8bfae", shoes: "#5a3b22" } },
-  { body: "man", hair: "parted", hairTint: "#6b4a2b", outfit: { top: "#1f2f4a", bottom: "#1c1c1c", shoes: "#111" } },
-];
-export const HAIR = { long: "hair-long.glb", parted: "hair-parted.glb", buns: "hair-buns.glb" };
+// What each person looks like lives in film.mjs (LOOKS, cleanLook), so the page
+// can offer it without loading this module.
+export { LOOKS };
+export const HAIR = { long: "hair-long.glb", parted: "hair-parted.glb", buns: "hair-buns.glb", buzzed: "hair-buzzed.glb", "buzzed-female": "hair-buzzed-female.glb" };
 
 // ---------------------------------------------------------------- loading
 const bytesLoaded = { total: 0 };
@@ -60,7 +55,13 @@ function wear(body, hairScene, tint) {
 // by which bones move it (skin weights), and the shader lays the colour over
 // the skin texture. No download; it reads as a fitted outfit, not as cloth.
 const TOP = /^(spine_0[123]|clavicle_|upperarm_|lowerarm_)/, BOTTOM = /^(pelvis|thigh_|calf_)/, SHOES = /^(foot_|ball_)/;
-function dress(body, { top, bottom, shoes }) {
+// A skin tone as a colour gain (linear, may exceed 1) on the texture's own average.
+function skinGain(target) {
+  if (!target) return new T.Color(1, 1, 1);
+  const t = new T.Color(target), b = new T.Color(SKIN_BASE);
+  return new T.Color(t.r / b.r, t.g / b.g, t.b / b.b);
+}
+function dress(body, { top, bottom, shoes }, gain = new T.Color(1, 1, 1)) {
   body.traverse(m => {
     if (!m.isSkinnedMesh || m.geometry.attributes.position.count < 3000) return;
     if (!m.geometry.attributes.garment) {
@@ -76,18 +77,20 @@ function dress(body, { top, bottom, shoes }) {
       m.geometry.setAttribute("garment", new T.BufferAttribute(g, 3));
     }
     const mat = m.material = m.material.clone();
-    const u = { topC: { value: new T.Color(top) }, botC: { value: new T.Color(bottom) }, shoeC: { value: new T.Color(shoes) } };
+    mat.color = gain;
+    const u = { topC: { value: new T.Color(top) }, botC: { value: new T.Color(bottom) }, shoeC: { value: new T.Color(shoes) }, skinGain: { value: gain.clone() } };
     mat.onBeforeCompile = sh => {
       Object.assign(sh.uniforms, u);
       sh.vertexShader = "attribute vec3 garment;\nvarying vec3 vGarment;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvGarment = garment;");
-      sh.fragmentShader = "uniform vec3 topC, botC, shoeC;\nvarying vec3 vGarment;\n" + sh.fragmentShader.replace("#include <map_fragment>",
+      sh.fragmentShader = "uniform vec3 topC, botC, shoeC, skinGain;\nvarying vec3 vGarment;\n" + sh.fragmentShader.replace("#include <map_fragment>",
         `#include <map_fragment>
         float cloth = 0.0; vec3 cc = diffuseColor.rgb;
         if (vGarment.x > 0.5) { cc = topC; cloth = 1.0; }
         if (vGarment.y > 0.5) { cc = botC; cloth = 1.0; }
         if (vGarment.z > 0.5) { cc = shoeC; cloth = 1.0; }
-        // Keep a little of the body's shading so the skin texture's folds read as cloth.
-        float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
+        // Keep a little of the body's shading so the skin texture's folds read as cloth
+        // (from the texture itself: a skin tone's gain must not lighten the clothes).
+        float lum = dot(diffuseColor.rgb / max(skinGain, vec3(0.01)), vec3(0.3, 0.59, 0.11));
         diffuseColor.rgb = mix(diffuseColor.rgb, cc * (0.75 + 0.5 * lum), cloth);`)
         .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\n if (max(vGarment.x, max(vGarment.y, vGarment.z)) > 0.5) roughnessFactor = 0.9;");
     };
@@ -285,7 +288,9 @@ async function buildWorld(renderer, film, looks, { shadows }) {
   const outside = usedSets.some(s => !SETS[s]?.inside);
   const kitsNeeded = new Set(usedSets.flatMap(s => NEEDS[s] || ["room"]));
   const need = new Set(["moves-1.glb", "moves-2.glb", ...[...kitsNeeded].map(k => KIT[k][0])]);
-  for (const n of names) { const l = looks[n]; need.add(`${l.body}.glb`); if (l.hair) need.add(HAIR[l.hair]); if (l.beard) need.add("beard.glb"); }
+  for (const n of names) looks[n] = cleanLook(looks[n]);
+  for (const n of names) { const l = looks[n]; need.add(`${l.body}.glb`); if (HAIR[l.hair]) need.add(HAIR[l.hair]); if (l.beard) need.add("beard.glb"); }
+
   const [hdrBuf, skyBuf] = await Promise.all([fetchBytes("lebombo_1k.hdr"), outside ? fetchBytes("sky_1k.hdr") : null, ...[...need].map(loadGltf)]);
   const got = async n => loadGltf(n);
 
@@ -337,9 +342,9 @@ async function buildWorld(renderer, film, looks, { shadows }) {
     const l = looks[name];
     const body = T.cloneSkinned((await got(`${l.body}.glb`)).scene);
     body.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
-    dress(body, l.outfit);
+    dress(body, l.outfit, skinGain(SKINS[l.skin]));
     tintHair(body, l.hairTint);
-    if (l.hair) wear(body, T.cloneSkinned((await got(HAIR[l.hair])).scene), l.hairTint);
+    if (HAIR[l.hair]) wear(body, T.cloneSkinned((await got(HAIR[l.hair])).scene), l.hairTint);
     if (l.beard) wear(body, T.cloneSkinned((await got("beard.glb")).scene), l.hairTint);
     const holder = new T.Group();
     holder.add(body);
@@ -407,10 +412,12 @@ function poseAll(world, film, t) {
     for (const a of Object.values(p.actions)) a.setEffectiveWeight(0);
     const fade = prev ? smooth(Math.min(1, (t - seg[0]) / 0.35)) : 1;
     const cur = action(world, p, seg[1]);
-    cur.enabled = true; cur.play(); cur.time = Math.max(0, t - seg[0]); cur.setEffectiveWeight(fade);
+    // A segment's speed: how a line is said (a shout is quicker), 0 to hold a pose (lying down).
+    const speed = seg[2].speed ?? 1, pspeed = prev?.[2].speed ?? 1;
+    cur.enabled = true; cur.play(); cur.time = Math.max(0, t - seg[0]) * speed; cur.setEffectiveWeight(fade);
     if (prev && fade < 1) {
       const pa = action(world, p, prev[1]);
-      pa.enabled = true; pa.play(); pa.time = t - prev[0]; pa.setEffectiveWeight(1 - fade);
+      pa.enabled = true; pa.play(); pa.time = (t - prev[0]) * pspeed; pa.setEffectiveWeight(1 - fade);
     }
     p.mixer.update(0);
     const pl = places[name];

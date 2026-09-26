@@ -79,7 +79,8 @@ for (const [src, name] of [["Superhero_Female_FullBody.gltf", "woman.glb"], ["Su
   for (const a of doc.getRoot().listAnimations()) a.dispose();
   await write(doc, name);
 }
-for (const [src, name] of [["Hair_Long.gltf", "hair-long.glb"], ["Hair_SimpleParted.gltf", "hair-parted.glb"], ["Hair_Beard.gltf", "beard.glb"], ["Hair_Buns.gltf", "hair-buns.glb"]]) {
+for (const [src, name] of [["Hair_Long.gltf", "hair-long.glb"], ["Hair_SimpleParted.gltf", "hair-parted.glb"], ["Hair_Beard.gltf", "beard.glb"], ["Hair_Buns.gltf", "hair-buns.glb"],
+  ["Hair_Buzzed.gltf", "hair-buzzed.glb"], ["Hair_BuzzedFemale.gltf", "hair-buzzed-female.glb"]]) {
   const doc = await shrink(await readLoose(join(HAIR, src)), { size: 512 });
   await write(doc, name);
 }

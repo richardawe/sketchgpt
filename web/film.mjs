@@ -25,6 +25,9 @@ const SPEECH = {
   hissed: "angry", barked: "angry", growled: "angry", roared: "angry", spat: "angry",
   laughed: "laugh", laughs: "laugh", joked: "laugh", teased: "laugh", grinned: "laugh", smiled: "laugh",
   cried: "upset", begged: "upset", pleaded: "upset", sobbed: "upset", called: "plain", calls: "plain",
+  remarked: "plain", explained: "plain", observed: "plain", suggested: "plain", responded: "plain", declared: "plain",
+  announced: "plain", insisted: "angry", interrupted: "angry", retorted: "angry", protested: "angry", ordered: "angry",
+  exclaimed: "angry", stammered: "upset", faltered: "upset", wailed: "upset",
 };
 delete SPEECH.went;
 const SPEECH_RE = Object.keys(SPEECH).join("|");
@@ -46,11 +49,15 @@ const TITLE = /^(Mr|Mrs|Ms|Miss|Dr|Detective|Officer|Doctor|Aunt|Uncle|Captain|P
 // What people do, and the move each is. Clip names are the free Quaternius
 // tier's (scripts/film/inventory.mjs); `sit`/`stand` change where they are.
 export const MOVES = [
-  ["enter", /\b(c[ao]me[s]? (?:in|back|home|inside)|walk(?:s|ed)? in|enter(?:s|ed)?|arriv(?:e|es|ed)|burst(?:s)? in|stepp?(?:ed|s) in|let (?:herself|himself|themselves) in)\b/i],
+  ["enter", /\b(c[ao]me[s]? (?:in|back|home|inside)|walk(?:s|ed)? in|enter(?:s|ed)?|arriv(?:e|es|ed)|burst(?:s)? in|stepp?(?:ed|s) in|let (?:herself|himself|themselves) in|return(?:s|ed) (?:to|home|from|with))\b/i],
   ["exit", /\b(le(?:ft|aves?)(?! (?:it|the|a|her|his|them|him)\b)|walk(?:s|ed)? out|went out|goes out|storm(?:s|ed)? out|exit(?:s|ed)?)\b/i],
   ["sit", /\b(s(?:its?|at)(?: back)? down|s(?:its?|at) on|s(?:its?|at)\b(?! up))\b/i],
   ["stand", /\b(st(?:ands?|ood) up|st(?:ands?|ood)\b(?! (?:still|there|by|in|at|behind|beside|near))|got to (?:her|his|their) feet|gets up|got up|rose|rises)\b/i],
-  ["walk", /\b(walk(?:s|ed)? (?:to|over|across|toward|towards|back|down|along|up|away)|cross(?:es|ed) (?:to|the room)|went (?:to|over)|goes (?:to|over)|pac(?:es|ed))\b/i],
+  ["give", /\b((?:hand(?:s|ed)|gave|gives|pass(?:es|ed)|offer(?:s|ed)|toss(?:es|ed)) (?:him|her|them|[A-Z][a-z]+)\b)/],
+  ["follow", /\b(follow(?:s|ed)|went after|goes after|walk(?:s|ed)? after|c[ao]me[s]? after)\b/i],
+  ["run", /\b(ran|runs?|rush(?:es|ed)|hurr(?:y|ies|ied)|dash(?:es|ed)|rac(?:es|ed)|fled|flees|sprint(?:s|ed))\b/i],
+  ["walk", /\b(walk(?:s|ed)?|stepp?(?:ed|s)|mov(?:es|ed)(?! (?:her|him|them|me|us)\b)|pass(?:es|ed) (?:through|by|along|into|out|down|up|across)|cross(?:es|ed) (?:to|the room|over)|went (?:to|over)|goes (?:to|over)|pac(?:es|ed)|led|leads|stroll(?:s|ed)|wander(?:s|ed)|approach(?:es|ed))\b/i],
+  ["turn", /\b(turn(?:s|ed)? (?:to|towards?|away|round|around|back)|turn(?:s|ed)\b(?! (?:on|off|up|down|into|out|over|the|a|his|her|their)\b))/i],
   ["nod", /\b(nod(?:s|ded)?)\b/i],
   ["no", /\b(shook (?:her|his|their) head|shakes (?:her|his|their) head)\b/i],
   ["arms", /\b((?:crossed|crosses|folded|folds) (?:her|his|their) arms)\b/i],
@@ -65,6 +72,17 @@ export const MOVES = [
   ["dance", /\b(danc(?:e|es|ed|ing))\b/i],
   ["push", /\b(push(?:es|ed)|shov(?:es|ed))\b/i],
   ["hold", /\b(with a (?:drink|glass|beer|bottle|coffee|cup|whisky|whiskey|wine)|(?:holding|held|holds) (?:a|her|his|their) (?:drink|glass|beer|bottle|coffee|cup))\b/i],
+  ["lean", /\b(lean(?:s|ed|t|ing)?)\b/i],
+  ["jump", /\b(jump(?:s|ed)|leapt|leap(?:s|ed)|spr[au]ng|springs)\b/i],
+  ["kneel", /\b(kn(?:elt|eels?|eeled)|crouch(?:es|ed)|squatted)\b/i],
+  ["lie", /\b(lay (?:down|on|in|back|there)|lies (?:down|on|in|there)|lying (?:down|on|in|there)|slept|sleeps|(?:was|is|fell) asleep)\b/i],
+  ["climb", /\b(climb(?:s|ed))\b/i],
+  ["throw", /\b(thr(?:ew|ows)|flung|flings|hurl(?:s|ed))\b/i],
+  ["eat", /\b(ate|eats|eating|dined|dines|chew(?:s|ed))\b/i],
+  ["flinch", /\b(gasp(?:s|ed)|flinch(?:es|ed)|recoil(?:s|ed)|jumped back|started back)\b/i],
+  ["bow", /\b(bow(?:s|ed))\b/i],
+  ["carry", /\b(carr(?:y|ies|ied))\b/i],
+  ["handle", /\b(open(?:s|ed)|clos(?:es|ed)|reach(?:es|ed)|pull(?:s|ed)|press(?:es|ed)|touch(?:es|ed)|plac(?:es|ed)|dropp?(?:ed|s)|play(?:s|ed)|show(?:s|ed)|lift(?:s|ed)|rais(?:es|ed)|seiz(?:es|ed)|snatch(?:es|ed)|receiv(?:es|ed)|knock(?:s|ed)|unlock(?:s|ed)|lock(?:s|ed)|rang the bell|picked|tapp?(?:ed|s)|rubb?(?:ed|s)|brush(?:es|ed)|clutch(?:es|ed)|tuck(?:s|ed)|tugg?(?:ed|s)|clapp?(?:ed|s)|extend(?:s|ed)|smooth(?:s|ed)|fold(?:s|ed))\b/i],
   ["getup", /\b(got up off the floor|gets up off the floor|picked (?:herself|himself|themselves) up)\b/i],
 ];
 // Clips for each move, standing and (if it differs) seated.
@@ -76,9 +94,16 @@ export const CLIPS = {
   nod: ["Yes"], no: ["Idle_No_Loop"], arms: ["Idle_FoldArms_Loop"], drink: ["Consume"], phone: ["Idle_TalkingPhone_Loop"],
   punch: ["Punch_Cross"], fall: ["Hit_Knockback"], die: ["Death01"], shoot: ["Pistol_Shoot"], gun: ["Pistol_Idle_Loop"],
   pick: ["PickUp_Table"], dance: ["Dance_Loop"], push: ["Push_Loop"], getup: ["LayToIdle"],
+  give: ["Interact"], follow: ["Walk_Loop"], run: ["Jog_Fwd_Loop"], turn: ["Idle_Loop"], lean: ["Idle_Rail_Loop"],
+  jump: ["Jump_Start"], kneel: ["Crouch_Idle_Loop"], lie: ["LayToIdle"], climb: ["ClimbUp_1m"],
+  throw: ["OverhandThrow"], eat: ["Consume", "Consume"], flinch: ["Hit_Chest"], bow: ["Yes"], carry: ["Walk_Carry_Loop"], handle: ["Interact"],
 };
+// What a target does when something is done to them.
+export const REACT = { punch: "Hit_Head", push: "Hit_Knockback", shoot: "Hit_Chest" };
 // How long a move takes on screen, seconds (a loop is held for this long).
 const HOLD = { nod: 2.2, no: 2.4, arms: 2.5, drink: 1.6, phone: 3, punch: 1.1, fall: 1.2, die: 2.6, shoot: 1.2, gun: 2,
+  give: 1.6, turn: 0.9, lean: 2.6, jump: 1.3, kneel: 2.4, lie: 3, climb: 1.2, throw: 1.3, eat: 1.6, flinch: 0.9,
+  bow: 1.8, handle: 1.8,
   pick: 1.4, dance: 3, push: 2.5, getup: 1.6, sit: 1.4, stand: 1.1 };
 
 // A wish, a plan, a refusal or a question is not a deed ("She wanted to leave",
@@ -101,6 +126,11 @@ const LIGHTS = [
 ];
 export function lightOf(text) { return (LIGHTS.find(([, re]) => re.test(text)) || [null])[0]; }
 const TIME = /\b(that night|that evening|the next (?:morning|day|night|evening)|next morning|at dawn|later that|hours later|days later|weeks later|the following (?:morning|day)|meanwhile|a week later|years later)\b/i;
+
+// Moves done to someone: the reader looks for who.
+// ("point" was tried and dropped: the free rig's only aiming pose is two-handed,
+// so pointing read as holding an invisible gun. It stays on the "no move" list.)
+const TARGETED = new Set(["punch", "push", "shoot", "give", "follow", "turn"]);
 
 // ---------------------------------------------------------------- reading
 const words = s => (s.match(/[A-Za-z0-9'’-]+/g) || []).length;
@@ -231,7 +261,9 @@ export function readStory(text, { pronouns = {} } = {}) {
             tagless = tagless.replace(new RegExp(`\\S+\\s+(?:${SPEECH_RE})[^.!?]*[,:]\\s*$`, "i"), "");
           const who = firstPerson(tagless || s);
           if (who) actor = who;
-          const doer = who || (tagless.trim() ? actor : null);
+          // A sentence whose subject is a pronoun nobody fits is nobody's — not the last actor's.
+          const lostPronoun = !who && /^\W*(she|he|they)\b/i.test(tagless || s);
+          const doer = lostPronoun ? null : who || (tagless.trim() ? actor : null);
           if (nameRe) for (const m of (tagless || s).matchAll(new RegExp(nameRe.source, "g"))) {
             const c = byName.get(m[1].toLowerCase());
             if (c && !present.includes(c)) present.push(c);
@@ -244,11 +276,21 @@ export function readStory(text, { pronouns = {} } = {}) {
               ? [...subject.matchAll(new RegExp(nameRe.source, "g"))].map(x => byName.get(x[1].toLowerCase())).filter(Boolean) : [doer];
             for (const d of group) {
               if (!present.includes(d)) present.push(d);
-              scene.beats.push({ kind: "action", who: d.name, move: m.move, text: clean(m.text) });
+              const beat = { kind: "action", who: d.name, move: m.move, text: clean(m.text) };
+              // Who it's done to: "punched him", "shot Tom", "handed her the gun", "followed Maya".
+              if (TARGETED.has(m.move)) {
+                const word = m.move === "give" ? m.text.split(/\s+/).pop()
+                  : (m.clause.slice(m.at + m.text.length).match(/^\s*(?:at|to|towards?|after|on|round to)?\s*(him|her|them|[A-Z][a-z'’-]+)\b/) || [])[1];
+                const who = word && targetOf(word, d);
+                if (who) beat.target = who.name;
+                else if (word && /^(him|her|them)$/i.test(word)) note(`target-${m.text}-${word}`, `“${clean(m.text)} ${word}”: “${word}” could be anyone here; it's acted without a target.`);
+              }
+              if (m.move === "give") beat.item = (ITEM.find(([, re]) => re.test(m.clause.slice(m.at))) || [null])[0];
+              scene.beats.push(beat);
             }
           }
           if (who && !present.includes(who)) present.push(who);
-          const unmapped = verbsIn(tagless).filter(v => !MOVES.some(([, re]) => re.test(v)));
+          const unmapped = verbsIn(tagless, names).filter(v => !MOVES.some(([, re]) => re.test(v)) && !movesIn(tagless).some(m => m.text.toLowerCase().startsWith(v.split(" ")[0].toLowerCase())));
           for (const v of unmapped) note(`verb-${v}`, `No move for “${v}”: shown as standing or talking.`);
         });
         return;
@@ -296,6 +338,24 @@ export function readStory(text, { pronouns = {} } = {}) {
     });
   });
 
+  // An object pronoun is never the one doing it: "Tom punched him" means another man.
+  function targetOf(word, doer) {
+    const direct = byName.get(word.toLowerCase());
+    if (direct) return direct !== doer ? direct : null;
+    const p = { her: "she", him: "he", them: "they" }[word.toLowerCase()];
+    if (!p) return null;
+    // Who's here first; then anyone in the story (the one hit may be named a sentence later).
+    for (const pool of [present, cast]) {
+      const fits = pool.filter(c => c !== doer && c.pronoun === p);
+      if (fits.length === 1) return fits[0];
+      if (fits.length > 1) return null;
+    }
+    const room = (present.length ? present : cast).filter(c => c !== doer);
+    // Two people in the scene and no pronouns set: the other one.
+    if (room.length === 1 && !room[0].pronoun) return room[0];
+    return null;
+  }
+
   function firstPerson(s) {
     if (!s) return null;
     const m = nameRe && s.match(nameRe);
@@ -326,10 +386,28 @@ function movesIn(s) {
   return found;
 }
 
-// Past-tense-ish verbs after a subject, for the "no move for …" list.
-function verbsIn(s) {
-  return [...s.matchAll(/\b(?:she|he|they|[A-Z][a-z]+)\s+((?:[a-z]+ed|[a-z]+s)(?:\s+(?:up|down|out|in|back|away|over|around))?)\b/g)]
-    .map(m => m[1]).filter(v => !/^(was|is|has|does|goes|says|seems|looks|feels|this|his|hers|its|yes|less|unless|was|waited|waits|paused|pauses|stayed|stays|listened|listens|watched|watches|stared|stares|looked|glanced|glances|lingered|remained|remains)$/i.test(v.split(" ")[0]) && !new RegExp(`^(${SPEECH_RE})$`, "i").test(v.split(" ")[0]));
+// Verbs that aren't something to act: states, thoughts, wants, habits. A
+// passage saying "she seemed tired" or "he remembered" is not missing a move,
+// and listing them as missing would bury the real gaps (scripts/film/verb-bench.mjs).
+const NOT_ACTION = new Set(`was is were are has had have does did goes went says said seems seemed looks looked feels felt
+wants wanted wished wishes hoped hopes longed loved loves liked likes hated hates feared fears used tried tries
+remembered remembers forgot forgets knew knows thought thinks believed believes meant means needed needs understood
+realised realized decided decides lived lives agreed agrees noticed notices sounded sounds appeared appears expected
+supposed became becomes began begins started starts continued seemed kept keeps let lets made makes got gets saw sees
+heard hears found finds waited waits paused pauses stayed stays listened listens watched watches stared stares
+glanced glances gazed gazes lingered remained remains stood stands sat sits smiled smiles laughed laughs frowned
+added answered asked replied cried whispered shouted called recognised recognized considered flushed blushed
+as is his has this thus always years minutes hours towards perhaps unless whereas besides upwards afterwards
+was yes less stopped stops halted halts settled reflected learned learns dined suffered imagined fancied hesitated
+finished helped times boys talked talks stretched`.split(/\s+/));
+
+// Past-tense-ish verbs after a person (a cast name or a pronoun), for the
+// "no move for …" list. Only a person's deeds: "Her eyes" and "The years" are not.
+function verbsIn(s, names = []) {
+  const subj = ["she", "he", "they", ...names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))].join("|");
+  const pro = "[Ss]he|[Hh]e|[Tt]hey";
+  return [...s.matchAll(new RegExp(`\\b(?:${pro}|${subj})\\s+((?:[a-z]+ed|[a-z]+s)(?:\\s+(?:up|down|out|in|back|away|over|around))?)\\b`, "g"))]
+    .map(m => m[1]).filter(v => !NOT_ACTION.has(v.split(" ")[0].toLowerCase()) && !new RegExp(`^(${SPEECH_RE})$`, "i").test(v.split(" ")[0]));
 }
 
 // ---------------------------------------------------------------- blocking
@@ -382,6 +460,11 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 // What each move puts in a hand. A glass stays in hand once drunk from, a gun
 // once drawn; a phone only while it's in use. A new scene empties every hand.
 const PROP_OF = { drink: "glass", hold: "glass", gun: "gun", shoot: "gun", phone: "phone" };
+// What a hand-off's words name, as the prop that changes hands (null: not drawn).
+const ITEM = [["gun", /\b(gun|pistol|revolver)\b/i], ["glass", /\b(glass|drink|beer|wine|whisk(?:e)?y|bottle|cup)\b/i], ["phone", /\b(phone|mobile)\b/i]];
+// How fast a line is acted, by how its tag says it's said.
+const MANNER_SPEED = { angry: 1.3, quiet: 0.75, laugh: 1.15, upset: 0.85, ask: 1, plain: 1 };
+const RUN = 3.2; // m/s
 const KEEPS = new Set(["glass", "gun"]);
 
 /**
@@ -415,8 +498,20 @@ export function block(story, { gap = 0.25 } = {}) {
     const st = state[name];
     if (!st.here) seg(name, start, "Idle_Loop", { at: set.off, off: true });
     else if (st.dead) return;
-    else seg(name, start, st.seated ? CLIPS.idle[1] : CLIPS.idle[0], { at: st.at, sit: st.seated, face: st.seated ? st.seatFace : face(name), prop: st.prop, lift: st.seated ? st.lift : 0 });
+    else if (st.lying) seg(name, start, "LayToIdle", { at: st.at, face: st.lieFace, speed: 0, prop: st.prop });
+    else seg(name, start, st.seated ? CLIPS.idle[1] : CLIPS.idle[0], { at: st.at, sit: st.seated, face: st.seated ? st.seatFace : st.faceTo || face(name), prop: st.prop, lift: st.seated ? st.lift : 0 });
   };
+  // Walk up to someone (for a punch, a push, a hand-off, following): stop `gap` metres short, facing them.
+  const approach = (name, target, gapM = 0.8, clip = "Walk_Loop", pace = SPEED) => {
+    const st = state[name], other = state[target];
+    if (!other?.here) return;
+    const dx = st.at[0] - other.at[0], dz = st.at[1] - other.at[1], d = Math.hypot(dx, dz);
+    if (d <= gapM + 0.35) return;
+    const to = [+(other.at[0] + dx / d * gapM).toFixed(3), +(other.at[1] + dz / d * gapM).toFixed(3)];
+    seg(name, t, clip, { from: st.at, to, prop: st.prop, pace });
+    t += (d - gapM) / pace; st.at = to;
+  };
+  let lastSpeaker = null;
 
   for (const scene of story.scenes) {
     set = SETS[scene.set] || SETS[PLACE_SET[scene.place]] || SETS["living room"];
@@ -429,10 +524,11 @@ export function block(story, { gap = 0.25 } = {}) {
     const firstBeat = name => scene.beats.find(b => b.who === name || b.speaker === name);
     for (const c of cast) {
       const st = state[c.name];
-      Object.assign(st, { seated: false, prop: null, dead: false, lift: 0 });
+      Object.assign(st, { seated: false, prop: null, dead: false, lift: 0, lying: false, faceTo: null });
       st.here = inScene.has(c.name) && !(firstBeat(c.name)?.move === "enter");
       st.at = st.here ? markOf(c.name) : set.off;
     }
+    lastSpeaker = null;
     for (const c of cast) settle(c.name, t);
     t += 2.0; // the wide shot that opens every scene
     for (const beat of scene.beats) {
@@ -442,7 +538,12 @@ export function block(story, { gap = 0.25 } = {}) {
         if (beat.speaker && people[beat.speaker] && !state[beat.speaker].dead) {
           const st = state[beat.speaker];
           if (!st.here) walkIn(beat.speaker);
-          seg(beat.speaker, t, st.seated ? CLIPS.talk[1] : CLIPS.talk[0], { at: st.at, sit: st.seated, face: st.seated ? st.seatFace : face(beat.speaker), prop: st.prop, lift: st.seated ? st.lift : 0 });
+          st.faceTo = null;
+          const listener = lastSpeaker && lastSpeaker !== beat.speaker && state[lastSpeaker]?.here ? lastSpeaker : face(beat.speaker);
+          const speed = MANNER_SPEED[beat.manner] || 1;
+          if (st.lying) seg(beat.speaker, t, "LayToIdle", { at: st.at, face: st.lieFace, speed: 0, prop: st.prop });
+          else seg(beat.speaker, t, st.seated ? CLIPS.talk[1] : CLIPS.talk[0], { at: st.at, sit: st.seated, face: st.seated ? st.seatFace : listener, prop: st.prop, lift: st.seated ? st.lift : 0, speed });
+          lastSpeaker = beat.speaker;
           lines.push([+t.toFixed(3), +(t + d).toFixed(3), beat.speaker, beat.text, beat.how, beat.key]);
           t += d + gap;
           settle(beat.speaker, t);
@@ -455,9 +556,13 @@ export function block(story, { gap = 0.25 } = {}) {
       const name = beat.who;
       if (!people[name] || state[name].dead) continue;
       const st = state[name];
-      const start = t;
+      let start = t;
       if (beat.move === "enter") { if (!st.here) walkIn(name); actions.push([+start.toFixed(3), +t.toFixed(3), name, "enter"]); continue; }
       if (!st.here) walkIn(name);
+      if (st.lying && !["lie", "die"].includes(beat.move) && beat.move !== "hold") {
+        seg(name, t, "LayToIdle", { at: st.at, face: st.lieFace, once: true, prop: st.prop }); t += HOLD.getup; st.lying = false;
+        if (beat.move === "stand" || beat.move === "getup") { settle(name, t); actions.push([+start.toFixed(3), +t.toFixed(3), name, "getup"]); continue; }
+      }
       const standUp = () => { seg(name, t, "Sitting_Exit", { at: st.at, sit: true, face: st.seatFace, once: true, prop: st.prop, lift: st.lift }); t += HOLD.stand; st.seated = false; st.lift = 0; };
       if (beat.move === "hold") { st.prop = "glass"; settle(name, t); continue; }
       if (beat.move === "exit") {
@@ -498,16 +603,85 @@ export function block(story, { gap = 0.25 } = {}) {
         actions.push([+start.toFixed(3), +t.toFixed(3), name, "walk"]);
         continue;
       }
+      if (["follow", "run", "carry"].includes(beat.move)) {
+        if (st.seated) standUp();
+        const clip = CLIPS[beat.move][0], pace = beat.move === "run" ? RUN : SPEED;
+        if (beat.move === "follow" && (beat.target || face(name))) approach(name, beat.target || others(name)[0], 0.9, clip, pace);
+        else {
+          const to = dist(st.at, markOf(name)) > 0.5 ? markOf(name) : set.window;
+          seg(name, t, clip, { from: st.at, to, prop: st.prop, pace });
+          t += dist(st.at, to) / pace; st.at = to;
+        }
+        st.faceTo = null;
+        settle(name, t);
+        actions.push([+start.toFixed(3), +t.toFixed(3), name, beat.move]);
+        continue;
+      }
+      if (beat.move === "turn") {
+        const other = beat.target && state[beat.target]?.here ? state[beat.target].at : state[others(name)[0]]?.at;
+        const away = /away|round|around|back/i.test(beat.text) && !beat.target;
+        st.faceTo = other ? (away ? [2 * st.at[0] - other[0], 2 * st.at[1] - other[1]] : other) : null;
+        if (st.seated) { t += HOLD.turn; continue; }
+        seg(name, t, "Idle_Loop", { at: st.at, face: st.faceTo || face(name), prop: st.prop });
+        t += HOLD.turn;
+        actions.push([+start.toFixed(3), +t.toFixed(3), name, "turn"]);
+        continue;
+      }
+      if (beat.move === "lie") {
+        if (st.seated) standUp();
+        st.lying = true; st.lieFace = [st.at[0], st.at[1] + 1];
+        seg(name, t, "LayToIdle", { at: st.at, face: st.lieFace, speed: 0, prop: st.prop });
+        t += HOLD.lie;
+        actions.push([+start.toFixed(3), +t.toFixed(3), name, "lie"]);
+        continue;
+      }
+      if (beat.move === "give" && beat.target && state[beat.target]) {
+        const to = beat.target, other = state[to];
+        if (!other.here) continue;
+        if (st.seated) standUp();
+        approach(name, to, 0.9);
+        const item = beat.item || st.prop;
+        seg(name, t, "Interact", { at: st.at, face: to, once: true, prop: item });
+        if (!other.seated && !other.lying) seg(to, t + 0.6, "Interact", { at: other.at, face: name, once: true, prop: other.prop });
+        t += HOLD.give;
+        if (st.prop === item) st.prop = null;
+        if (item) other.prop = item;
+        settle(name, t); settle(to, t);
+        actions.push([+start.toFixed(3), +t.toFixed(3), name, "give", to]);
+        continue;
+      }
+      if (["punch", "push"].includes(beat.move) && beat.target && state[beat.target]?.here) {
+        if (st.seated) standUp();
+        approach(name, beat.target, beat.move === "punch" ? 0.75 : 0.7);
+        start = t; // the punch starts when he gets there
+      }
+      if (beat.move === "jump") {
+        if (st.seated) standUp();
+        seg(name, t, "Jump_Start", { at: st.at, face: face(name), once: true, prop: st.prop });
+        seg(name, t + 1.0, "Jump_Land", { at: st.at, face: face(name), once: true, prop: st.prop });
+        t += 2.2;
+        settle(name, t);
+        actions.push([+start.toFixed(3), +t.toFixed(3), name, "jump"]);
+        continue;
+      }
       // Everything else plays where they are; seated people stand first, except to drink, talk or gesture.
       const clip = CLIPS[beat.move]?.[0];
       if (!clip) continue;
-      if (st.seated && !["drink", "phone", "nod", "no", "arms"].includes(beat.move)) { standUp(); st.at = markOf(name); }
+      if (st.seated && !["drink", "phone", "nod", "no", "arms", "eat", "handle", "bow", "flinch"].includes(beat.move)) { standUp(); st.at = markOf(name); }
       const prop = PROP_OF[beat.move] || st.prop;
       if (KEEPS.has(PROP_OF[beat.move])) st.prop = PROP_OF[beat.move];
       const seatedClip = st.seated && beat.move === "phone" ? "Sitting_Talking_Loop" : st.seated ? CLIPS.idle[1] : clip;
-      seg(name, t, st.seated ? seatedClip : clip, { at: st.at, sit: st.seated, face: st.seated ? st.seatFace : face(name), once: !/_Loop$/.test(clip), prop, lift: st.seated ? st.lift : 0 });
-      t += HOLD[beat.move] || 2;
-      actions.push([+start.toFixed(3), +t.toFixed(3), name, beat.move]);
+      const aim = beat.target && state[beat.target]?.here ? beat.target : null;
+      seg(name, t, st.seated ? seatedClip : clip, { at: st.at, sit: st.seated, face: st.seated ? st.seatFace : aim || face(name), once: !/_Loop$/.test(clip), prop, lift: st.seated ? st.lift : 0 });
+      // The one it's done to reacts: a punch lands, a push shoves, a shot hits.
+      if (aim && REACT[beat.move] && !state[aim].dead) {
+        const o = state[aim], hit = beat.move === "shoot" ? 0.35 : 0.3;
+        if (o.seated) { o.seated = false; o.lift = 0; }
+        seg(aim, t + hit, REACT[beat.move], { at: o.at, face: name, once: true, prop: o.prop });
+        settle(aim, t + Math.max(HOLD[beat.move] || 1, hit + 0.9));
+      }
+      t += Math.max(HOLD[beat.move] || 2, aim && REACT[beat.move] ? 1.3 : 0);
+      actions.push([+start.toFixed(3), +t.toFixed(3), name, beat.move, ...(aim ? [aim] : [])]);
       if (beat.move === "die") { st.dead = true; continue; }
       if (beat.move === "fall") { seg(name, t, "LayToIdle", { at: st.at, face: face(name), once: true, prop: st.prop }); t += HOLD.getup; }
       settle(name, t);
@@ -555,7 +729,7 @@ export function placesAt(film, t) {
     const end = (tl[i + 1] || [Infinity])[0];
     let at = o.at;
     if (o.from) {
-      const d = dist(o.from, o.to), k = Math.min(1, (t - seg[0]) / Math.max(0.01, Math.min(end, seg[0] + d / SPEED) - seg[0]));
+      const d = dist(o.from, o.to), k = Math.min(1, (t - seg[0]) / Math.max(0.01, Math.min(end, seg[0] + d / (o.pace || SPEED)) - seg[0]));
       at = [o.from[0] + (o.to[0] - o.from[0]) * k, o.from[1] + (o.to[1] - o.from[1]) * k];
     }
     out[name] = { at, seg, off: !!o.off, lift: o.lift || 0 };
@@ -563,10 +737,38 @@ export function placesAt(film, t) {
   for (const [name, p] of Object.entries(out)) {
     const o = p.seg[2];
     const others = Object.entries(out).filter(([n, q]) => n !== name && !q.off).map(([, q]) => q.at);
-    const look = o.to ? o.to : o.face === "other" && others.length ? others[0] : Array.isArray(o.face) ? o.face : [p.at[0], p.at[1] + 1];
+    const named = typeof o.face === "string" && o.face !== "other" && out[o.face] && !out[o.face].off ? out[o.face].at : null;
+    const look = o.to ? o.to : named || (o.face === "other" && others.length ? others[0] : Array.isArray(o.face) ? o.face : [p.at[0], p.at[1] + 1]);
     p.facing = Math.hypot(look[0] - p.at[0], look[1] - p.at[1]) > 0.02 ? Math.atan2(look[0] - p.at[0], look[1] - p.at[1]) : 0;
   }
   return out;
+}
+
+// ---------------------------------------------------------------- looks
+// What a person can look like. The free tier has two bodies; hair, skin,
+// colours and painted-on clothes make everyone else. Pure data, so the page
+// can show the choices without loading three.js; web/film/stage.mjs draws them.
+export const HAIRS = { long: "Long", parted: "Short, parted", buns: "Buns", buzzed: "Buzzed", "buzzed-female": "Buzzed (fine)", none: "None" };
+// Skin tones as the colour a face should average. The free pack's "Light" and
+// "Dark" textures turned out to be the same tone (mean sRGB 169/121/87 vs
+// 163/115/81), so tone is a per-channel gain on the one texture instead, which
+// keeps its detail: lips stay redder than cheeks. null = the texture as it is.
+export const SKIN_BASE = "#a37351";
+export const SKINS = { light: "#e6c0a0", tan: "#c69570", brown: null, deep: "#6b4531" };
+export const LOOKS = [
+  { name: "Woman, long dark hair, red top", body: "woman", hair: "long", skin: "brown", hairTint: "#3a2418", outfit: { top: "#7b1e2b", bottom: "#1d2330", shoes: "#141414" } },
+  { name: "Man, beard, pale shirt", body: "man", hair: "parted", beard: true, skin: "brown", hairTint: "#2a2320", outfit: { top: "#c9c3b8", bottom: "#3b3f46", shoes: "#3a2a1e" } },
+  { name: "Woman, fair hair in buns, green top", body: "woman", hair: "buns", skin: "light", hairTint: "#b08a5a", outfit: { top: "#2f5d50", bottom: "#c8bfae", shoes: "#5a3b22" } },
+  { name: "Man, brown hair, navy top", body: "man", hair: "parted", skin: "tan", hairTint: "#6b4a2b", outfit: { top: "#1f2f4a", bottom: "#1c1c1c", shoes: "#111" } },
+];
+/** A look with anything missing or unknown filled in, so a stored or hand-made look can't break the stage. */
+export function cleanLook(l) {
+  l = l && typeof l === "object" ? l : {};
+  const base = LOOKS[l.body === "man" ? 1 : 0];
+  const hex = (v, d) => /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(v || "") ? v : d;
+  return { body: l.body === "man" ? "man" : "woman", hair: HAIRS[l.hair] ? l.hair : base.hair, beard: !!l.beard && l.body === "man",
+    skin: SKINS[l.skin] ? l.skin : "brown", hairTint: hex(l.hairTint, base.hairTint),
+    outfit: { top: hex(l.outfit?.top, base.outfit.top), bottom: hex(l.outfit?.bottom, base.outfit.bottom), shoes: hex(l.outfit?.shoes, base.outfit.shoes) } };
 }
 
 // ---------------------------------------------------------------- voices

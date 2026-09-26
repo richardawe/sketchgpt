@@ -90,10 +90,13 @@ test("the words' deeds become moves; wishes, refusals and speech tags do not", (
 });
 
 test("a verb with no move is listed, not acted out as something else", () => {
-  const r = readStory(`Tom contemplated the ceiling. Maya hesitated.`, { pronouns: P });
+  const r = readStory(`Tom contemplated the ceiling. Maya kissed him.`, { pronouns: P });
   assert.deepEqual(r.scenes[0].beats, []);
   assert.ok(r.notes.some(n => /No move for “contemplated”/.test(n)), r.notes.join("\n"));
-  assert.ok(r.notes.some(n => /No move for “hesitated”/.test(n)));
+  assert.ok(r.notes.some(n => /No move for “kissed”/.test(n)), "no free clip for a kiss, and the page says so");
+  // States and thoughts are not missing moves: nothing is listed for them.
+  const quiet = readStory(`Tom seemed tired. Maya remembered the house. Tom hesitated.`, { pronouns: P });
+  assert.ok(!quiet.notes.some(n => /No move/.test(n)), quiet.notes.join("\n"));
 });
 
 test("scenes break on a blank line with a new place or a time jump, not on a blank line alone", () => {
@@ -163,9 +166,10 @@ test("the sample reads as its writer meant, with one guess shown", () => {
 
 const film = block(readStory(SAMPLE, { pronouns: P }));
 
-test("every clip the page asks for is in the free packs it ships", () => {
+test("every clip the page asks for is in the free packs it ships", async () => {
   assert.equal(SHIPPED.size, 84);
-  for (const c of Object.values(CLIPS).flat().filter(Boolean)) assert.ok(SHIPPED.has(c), `${c} is not in moves-1/2.glb`);
+  const { REACT } = await import("../web/film.mjs");
+  for (const c of [...Object.values(CLIPS).flat().filter(Boolean), ...Object.values(REACT), "Jump_Land", "LayToIdle", "Interact", "Walk_Formal_Loop"]) assert.ok(SHIPPED.has(c), `${c} is not in moves-1/2.glb`);
   for (const p of Object.values(film.people)) for (const [, clip] of p.timeline) assert.ok(SHIPPED.has(clip), clip);
 });
 
@@ -273,4 +277,78 @@ test("one pitch setting shapes both the phone's voice and the recording", () => 
     assert.ok(p.rate > 0.5 && p.rate < 1.5, name);
     assert.equal(Math.sign(p.tts - 1), Math.sign(p.rate - 1), `${name} moves both the same way`);
   }
+});
+
+// ---------------------------------------------------------------- stage 3: acting
+const segAtT = (f, who, t) => placesAt(f, t)[who].seg;
+const gapAt = (f, a, b, t) => { const p = placesAt(f, t); return Math.hypot(p[a].at[0] - p[b].at[0], p[a].at[1] - p[b].at[1]); };
+
+test("a punch walks up to its target, lands, and the target reacts", () => {
+  const f = block(readStory(`Tom and Sam stood in the kitchen, far apart.\n\nTom punched him.\n\n"Why?" said Sam.`, { pronouns: { Tom: "he", Sam: "he" } }));
+  const punch = f.actions.find(a => a[3] === "punch");
+  assert.equal(punch[4], "Sam", "the reader found who 'him' is: the other man");
+  assert.equal(segAtT(f, "Tom", punch[0] + 0.1)[1], "Punch_Cross");
+  assert.ok(gapAt(f, "Tom", "Sam", punch[0] + 0.1) < 1.0, "close enough to land it");
+  assert.equal(segAtT(f, "Sam", punch[0] + 0.5)[1], "Hit_Head");
+  assert.equal(segAtT(f, "Sam", punch[0] + 0.5)[2].face, "Tom", "he reacts towards the one who hit him");
+  const before = f.actions.find(a => a[3] === "punch")[0];
+  assert.ok(placesAt(f, before - 0.5).Tom.seg[1] === "Walk_Loop", "he walked over first");
+});
+
+test("a hand-off moves the item from one hand to the other", () => {
+  const f = block(readStory(`Maya drew a gun.\n\n"Take it," Maya said.\n\nMaya handed Tom the gun.\n\n"Now what?" Tom asked.`, { pronouns: P }));
+  const give = f.actions.find(a => a[3] === "give");
+  assert.equal(give[4], "Tom");
+  const now = f.lines.find(l => l[3] === "Now what?");
+  const mid = (now[0] + now[1]) / 2;
+  assert.equal(segAtT(f, "Tom", mid)[2].prop, "gun", "Tom has it");
+  assert.equal(segAtT(f, "Maya", mid)[2].prop ?? null, null, "Maya doesn't");
+});
+
+test("someone lying down stays down, even to speak, until they get up", () => {
+  const f = block(readStory(`Tom and Maya were in the bedroom. Tom lay down on the floor.\n\n"Leave me," said Tom.\n\n"Get up," said Maya.\n\nTom got up.\n\n"Fine," said Tom.`, { pronouns: P }));
+  const leave = f.lines.find(l => l[3] === "Leave me"), fine = f.lines.find(l => l[3] === "Fine"), up = f.lines.find(l => l[3] === "Get up");
+  const l1 = segAtT(f, "Tom", (leave[0] + leave[1]) / 2);
+  assert.equal(l1[1], "LayToIdle"); assert.equal(l1[2].speed, 0, "held at its first frame: lying");
+  const l2 = segAtT(f, "Tom", (up[0] + up[1]) / 2);
+  assert.equal(l2[1], "LayToIdle", "still down while Maya speaks"); assert.equal(l2[2].speed, 0);
+  assert.match(segAtT(f, "Tom", (fine[0] + fine[1]) / 2)[1], /Talking/, "up again, talking");
+});
+
+test("running is faster than walking; a shout is acted faster than a whisper", () => {
+  const walk = block(readStory(`Tom walked to the window.`, { pronouns: P })).actions.find(a => a[3] === "walk");
+  const run = block(readStory(`Tom ran to the window.`, { pronouns: P })).actions.find(a => a[3] === "run");
+  assert.ok(run[1] - run[0] < (walk[1] - walk[0]) * 0.6, `${run[1] - run[0]} vs ${walk[1] - walk[0]}`);
+  const f = block(readStory(`"Get out!" Tom shouted.\n\n"Please," Maya whispered.`, { pronouns: P }));
+  const speed = text => { const l = f.lines.find(x => x[3] === text); return segAtT(f, l[2], (l[0] + l[1]) / 2)[2].speed; };
+  assert.equal(speed("Get out!"), 1.3);
+  assert.equal(speed("Please"), 0.75);
+});
+
+test("turning away faces away from the other, until they speak", () => {
+  const f = block(readStory(`Tom and Maya stood in the kitchen.\n\n"Look at me," said Maya.\n\nTom turned away.\n\n"No," said Maya.\n\n"Fine," said Tom.`, { pronouns: P }));
+  const facingAway = text => {
+    const l = f.lines.find(x => x[3] === text), t = (l[0] + l[1]) / 2, p = placesAt(f, t);
+    const toMaya = Math.atan2(p.Maya.at[0] - p.Tom.at[0], p.Maya.at[1] - p.Tom.at[1]);
+    return Math.abs(Math.cos(p.Tom.facing - toMaya)) > 0.5 && Math.cos(p.Tom.facing - toMaya) < 0;
+  };
+  assert.equal(facingAway("No"), true, "back turned while she speaks");
+  assert.equal(facingAway("Fine"), false, "faces her again to answer");
+});
+
+test("an ambiguous 'him' or 'he' is acted by nobody, and the page says so", () => {
+  const r = readStory(`Tom, Sam and Maya waited. He turned away.`, { pronouns: { Tom: "he", Sam: "he", Maya: "she" } });
+  assert.equal(r.scenes[0].beats.filter(b => b.move === "turn").length, 0);
+  assert.ok(r.notes.some(n => /could be Tom or Sam/.test(n)));
+});
+
+test("a look from storage or a hand can't break the stage: unknowns become defaults", async () => {
+  const { cleanLook, LOOKS, HAIRS, SKINS } = await import("../web/film.mjs");
+  for (const l of LOOKS) assert.deepEqual(cleanLook(cleanLook(l)), cleanLook(l), l.name);
+  const bad = cleanLook({ body: "robot", hair: "<script>", skin: "green", beard: true, hairTint: "red; x", outfit: { top: "url(x)", bottom: "#123", shoes: 7 } });
+  assert.equal(bad.body, "woman"); assert.ok(HAIRS[bad.hair]); assert.ok(bad.skin in SKINS);
+  assert.equal(bad.beard, false, "a beard only on the man's body");
+  assert.match(bad.hairTint, /^#[0-9a-f]{6}$/i); assert.match(bad.outfit.top, /^#[0-9a-f]{6}$/i);
+  assert.equal(bad.outfit.bottom, "#123", "a valid short hex is kept");
+  assert.deepEqual(cleanLook(null), cleanLook({}));
 });

@@ -46,6 +46,10 @@
   .take button { font-size: 14px; padding: 4px 9px; }
   .take .rec { border-color: #b3261e; color: #b3261e; }
   .take .rec.on { background: #b3261e; color: #fff; }
+  details.look { flex-basis: 100%; }
+  details.look summary { cursor: pointer; color: var(--muted); font-size: 15px; }
+  .lookgrid { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 8px; align-items: center; }
+  input[type=color] { width: 44px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: none; vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -91,7 +95,7 @@
   </div>
 </main>
 <script type="module">
-import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds } from "./film.mjs?v=3";
+import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds, LOOKS, HAIRS, SKINS, cleanLook } from "./film.mjs?v=4";
 import { voiceOptions } from "./voice.mjs?v=10";
 
 const $ = id => document.getElementById(id);
@@ -99,7 +103,7 @@ const safe = f => { try { return f(); } catch { return null; } };
 const GATE = "sketchgpt.film.adult", DRAFT = "sketchgpt.film.draft";
 const q = new URLSearchParams(location.search);
 const WIDTH = Math.max(180, Math.min(1080, +q.get("width") || 720)), HEIGHT = Math.round(WIDTH * 16 / 9), FPS = Math.max(4, Math.min(60, +q.get("fps") || 24));
-const LOOK_NAMES = ["Woman, long dark hair, red top", "Man, beard, pale shirt", "Woman, fair hair in buns, green top", "Man, brown hair, navy top"];
+const LOOKS_KEY = "sketchgpt.film.looks";
 
 // Everything the page knows, rebuilt from the text on every edit.
 const state = { pronouns: {}, looks: {}, speakers: {}, voices: {}, pitch: {}, takes: {}, recording: null, story: null, film: null, stage: null, stageCast: null, playing: false, ttsBlocked: false };
@@ -109,6 +113,11 @@ let actx = null;
 const audio = () => (actx ||= new (globalThis.AudioContext || globalThis.webkitAudioContext)());
 const deviceVoices = () => synth ? voiceOptions(synth.getVoices(), (navigator.language || "en").slice(0, 2)).filter(o => /^en/i.test(o.voice.lang) || /^en/i.test(navigator.language || "en")) : [];
 synth?.addEventListener?.("voiceschanged", () => update());
+
+// Looks are kept per name on this device, so a character keeps their face and clothes across reloads.
+Object.assign(state.looks, safe(() => JSON.parse(localStorage.getItem(LOOKS_KEY) || "{}")) || {});
+const saveLooks = () => safe(() => localStorage.setItem(LOOKS_KEY, JSON.stringify(state.looks)));
+const lookKey = story => story.cast.map(c => c.name + "=" + JSON.stringify(state.looks[c.name] || null)).join("|");
 
 function open() { $("gate").hidden = true; $("app").hidden = false; }
 if (safe(() => localStorage.getItem(GATE)) === "yes") open(); else $("gate").hidden = false;
@@ -148,7 +157,7 @@ function update() {
   renderCast(story);
   renderCheck(story);
   // A stage built for other people can't play this cast.
-  const castKey = story.cast.map(c => c.name + "=" + (state.looks[c.name] ?? "")).join("|");
+  const castKey = lookKey(story);
   if (state.stage && state.stageCast !== castKey) { $("play").textContent = "Reload and play"; }
   $("make").disabled = !state.stage || state.stageCast !== castKey || !film.lines.length;
 }
@@ -157,14 +166,24 @@ function renderCast(story) {
   if (!story.cast.length) { $("cast").innerHTML = `<p class="muted">Names appear here as you write.</p>`; return; }
   const voices = deviceVoices();
   $("cast").innerHTML = story.cast.map((c, i) => {
-    const look = state.looks[c.name] ?? (state.looks[c.name] = defaultLook(c, i));
+    const look = state.looks[c.name] = cleanLook(state.looks[c.name] || defaultLook(c, i));
     return `<div class="person"><div><strong>${esc(c.name)}</strong> <span class="muted">${c.lines} line${c.lines === 1 ? "" : "s"}</span></div>
       <label>Pronoun <select data-pronoun="${esc(c.name)}"><option value="">choose</option>${["she", "he", "they"].map(p => `<option ${c.pronoun === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>
-      <label>Looks like <select data-look="${esc(c.name)}">${LOOK_NAMES.map((n, j) => `<option value="${j}" ${look === j ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+      <label>Looks like <select data-look="${esc(c.name)}">${LOOKS.map((l, j) => `<option value="${j}" ${sameLook(look, l) ? "selected" : ""}>${esc(l.name)}</option>`).join("")}${LOOKS.some(l => sameLook(look, l)) ? "" : `<option selected value="">Your own look</option>`}</select></label>
       <label>Voice <select data-voice="${esc(c.name)}">${voices.length ? voices.map(o => `<option value="${esc(o.id)}" ${voiceOf(c.name, i)?.id === o.id ? "selected" : ""}>${esc(o.label)}</option>`).join("") : `<option value="">this browser has no voices</option>`}</select></label>
-      <label>Pitch <select data-pitch="${esc(c.name)}">${Object.keys(PITCH).map(p => `<option ${pitchOf(c.name) === p ? "selected" : ""}>${p}</option>`).join("")}</select></label></div>`;
+      <label>Pitch <select data-pitch="${esc(c.name)}">${Object.keys(PITCH).map(p => `<option ${pitchOf(c.name) === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>
+      <details class="look" ${state.openLook === c.name ? "open" : ""} data-lookof="${esc(c.name)}"><summary>Change ${esc(c.name)}'s look</summary><div class="lookgrid">
+        <label>Body <select data-lk="body" data-who="${esc(c.name)}">${["woman", "man"].map(b => `<option ${look.body === b ? "selected" : ""}>${b}</option>`).join("")}</select></label>
+        <label>Hair <select data-lk="hair" data-who="${esc(c.name)}">${Object.entries(HAIRS).map(([k, n]) => `<option value="${k}" ${look.hair === k ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+        ${look.body === "man" ? `<label><input type="checkbox" data-lk="beard" data-who="${esc(c.name)}" ${look.beard ? "checked" : ""}> Beard</label>` : ""}
+        <label>Skin <select data-lk="skin" data-who="${esc(c.name)}">${Object.keys(SKINS).map(k => `<option ${look.skin === k ? "selected" : ""}>${k}</option>`).join("")}</select></label>
+        <label>Hair colour <input type="color" data-lk="hairTint" data-who="${esc(c.name)}" value="${fullHex(look.hairTint)}"></label>
+        <label>Top <input type="color" data-lk="top" data-who="${esc(c.name)}" value="${fullHex(look.outfit.top)}"></label>
+        <label>Trousers <input type="color" data-lk="bottom" data-who="${esc(c.name)}" value="${fullHex(look.outfit.bottom)}"></label>
+        <label>Shoes <input type="color" data-lk="shoes" data-who="${esc(c.name)}" value="${fullHex(look.outfit.shoes)}"></label>
+      </div></details></div>`;
   }).join("") + `
-  <p class="muted">The free CC0 tier has two bodies; hair, colour and clothes make four people of them.</p>`;
+  <p class="muted">The free CC0 tier has two bodies; hair, skin, colours and painted-on clothes make everyone else. Looks are kept on this device.</p>`;
 }
 // Each person gets a different phone voice by default, and "he" a deeper pitch;
 // both are one tap to change, and the pitch also shapes their recordings.
@@ -178,18 +197,32 @@ function pitchOf(name) {
   return state.pronouns[name] === "he" ? "deeper" : "natural";
 }
 // A look matching the pronoun once it's chosen; otherwise in order.
-function defaultLook(c, i) { return c.pronoun === "he" ? (i < 2 ? 1 : 3) : c.pronoun === "she" ? (i < 2 ? 0 : 2) : i % 4; }
+function defaultLook(c, i) { return cleanLook(LOOKS[c.pronoun === "he" ? (i < 2 ? 1 : 3) : c.pronoun === "she" ? (i < 2 ? 0 : 2) : i % 4]); }
+const sameLook = (a, b) => JSON.stringify(cleanLook(a)) === JSON.stringify(cleanLook(b));
+const fullHex = h => /^#[0-9a-f]{3}$/i.test(h) ? "#" + [...h.slice(1)].map(x => x + x).join("") : h;
 $("cast").addEventListener("change", e => {
   const t = e.target;
   if (t.dataset.pronoun) { state.pronouns[t.dataset.pronoun] = t.value || undefined; if (!t.value) delete state.pronouns[t.dataset.pronoun]; const c = state.story.cast.findIndex(x => x.name === t.dataset.pronoun); state.looks[t.dataset.pronoun] = defaultLook({ pronoun: t.value }, c); }
-  if (t.dataset.look) state.looks[t.dataset.look] = +t.value;
+  if (t.dataset.look && t.value !== "") state.looks[t.dataset.look] = cleanLook(LOOKS[+t.value]);
+  // Build your own: each change is kept, and the look becomes "Your own look".
+  if (t.dataset.lk) {
+    const who = t.dataset.who, l = cleanLook(state.looks[who]), k = t.dataset.lk;
+    if (k === "beard") l.beard = t.checked;
+    else if (["top", "bottom", "shoes"].includes(k)) l.outfit[k] = t.value;
+    else l[k] = t.value;
+    state.looks[who] = cleanLook(l);
+    state.openLook = who;
+  }
+  saveLooks();
   if (t.dataset.voice) { state.voices[t.dataset.voice] = t.value; sayOnce(t.dataset.voice); }
   if (t.dataset.pitch) { state.pitch[t.dataset.pitch] = t.value; sayOnce(t.dataset.pitch); }
   update();
 });
 
 const MOVE_WORDS = { enter: "comes in", exit: "leaves", sit: "sits", stand: "stands", walk: "walks", nod: "nods", no: "shakes head", arms: "folds arms",
-  drink: "drinks", phone: "on the phone", punch: "punches", fall: "falls", die: "dies", shoot: "shoots", gun: "draws a gun", pick: "picks up", dance: "dances", push: "pushes", getup: "gets up", hold: "holds a glass" };
+  drink: "drinks", phone: "on the phone", punch: "punches", fall: "falls", die: "dies", shoot: "shoots", gun: "draws a gun", pick: "picks up", dance: "dances", push: "pushes", getup: "gets up", hold: "holds a glass",
+  give: "hands over", follow: "follows", run: "runs", turn: "turns", lean: "leans", jump: "jumps", kneel: "kneels", lie: "lies down",
+  climb: "climbs", throw: "throws", eat: "eats", flinch: "flinches", bow: "bows", carry: "carries", handle: "handles something" };
 function renderCheck(story) {
   $("notes").innerHTML = story.notes.map(n => `<li>${esc(n)}</li>`).join("");
   const names = story.cast.map(c => c.name);
@@ -201,7 +234,7 @@ function renderCheck(story) {
            ? `<button class="rec on" data-rec="${esc(b.key)}">■ Stop</button>`
            : `<button class="rec" data-rec="${esc(b.key)}">🎙 ${state.takes[b.key] ? "Again" : "Record"}</button>`}${state.takes[b.key]
            ? `<button data-listen="${esc(b.key)}">▶ ${state.takes[b.key].buffer.duration.toFixed(1)} s</button><button data-drop="${esc(b.key)}" aria-label="Remove the recording">✕</button>` : ""}</div>` : ""}</td></tr>`
-      : `<tr><td>${esc(b.who)}</td><td class="muted">${MOVE_WORDS[b.move] || b.move} <span class="badge">“${esc(b.text)}”</span></td></tr>`).join("")).join("");
+      : `<tr><td>${esc(b.who)}</td><td class="muted">${MOVE_WORDS[b.move] || b.move}${b.target ? ` → ${esc(b.target)}` : ""}${b.item ? ` (${esc(b.item)})` : ""} <span class="badge">“${esc(b.text)}”</span></td></tr>`).join("")).join("");
   $("check").innerHTML = rows ? `<table>${rows}</table>` : `<p class="muted">Nothing yet.</p>`;
 }
 $("check").addEventListener("change", e => { if (e.target.dataset.line) { state.speakers[e.target.dataset.line] = e.target.value; update(); } });
@@ -268,11 +301,11 @@ function sayOnce(name) { synth?.cancel(); sayLine(`This is ${name}.`, name); }
 let stageMod = null;
 async function ensureStage() {
   const story = state.story;
-  const castKey = story.cast.map(c => c.name + "=" + (state.looks[c.name] ?? "")).join("|");
+  const castKey = lookKey(story);
   if (state.stage && state.stageCast === castKey) { const { recast } = stageMod; recast(state.stage, state.film); return state.stage; }
-  stageMod ||= await import("./film/stage.mjs?v=3");
-  const { setup, LOOKS } = stageMod;
-  const looks = Object.fromEntries(story.cast.map(c => [c.name, LOOKS[state.looks[c.name] ?? 0]]));
+  stageMod ||= await import("./film/stage.mjs?v=4");
+  const { setup } = stageMod;
+  const looks = Object.fromEntries(story.cast.map((c, i) => [c.name, cleanLook(state.looks[c.name] || defaultLook(c, i))]));
   if (state.stage) { state.stage.renderer.dispose(); const gl = $("gl"), fresh = gl.cloneNode(); gl.replaceWith(fresh); }
   $("status").textContent = "Loading people, movements and the room…";
   state.stage = await setup($("gl"), $("out"), state.film, { looks, shotAt: t => shotAt(state.stage ? state.stage.film : state.film, t), width: WIDTH, height: HEIGHT });

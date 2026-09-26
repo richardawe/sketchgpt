@@ -4,7 +4,9 @@ WebP, geometry and animation meshopt-compressed; nothing else changed).
 
 woman.glb, man.glb            Quaternius — Universal Base Characters [Standard]
 hair-long.glb, hair-parted.glb,
-hair-buns.glb, beard.glb      Quaternius — Universal Base Characters [Standard]
+hair-buns.glb, hair-buzzed.glb,
+hair-buzzed-female.glb,
+beard.glb                     Quaternius — Universal Base Characters [Standard]
 moves-1.glb                   Quaternius — Universal Animation Library [Standard]
 moves-2.glb                   Quaternius — Universal Animation Library 2 [Standard]
                               https://quaternius.com  (CC0 1.0)

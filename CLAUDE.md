@@ -82,7 +82,7 @@ docs/storybook.md         a story written by the model, illustrated by the page 
 docs/story-rules.md       Book without the model — all six stages built: rules, no download, own story, scenery, pictures, GIF
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
-docs/film-plan.md         "Film": user prose → 2-min 3D video, phone first, no model; stages 0–2 built, 3–6 planned;
+docs/film-plan.md         "Film": user prose → 2-min 3D video, phone first, no model; stages 0–3 built, 4–6 planned;
                           mature tier only (explicit content is banned on GitHub — read before building)
 web/film.html             Film stage 1: adult notice → write prose → cast (pronouns asked) → check (guesses shown) → watch → video
 web/film.mjs              Film's rules, pure: prose → cast/lines/moves (readStory), timelines (block), shots + 180° rule
@@ -91,7 +91,8 @@ web/film-probe.html       Film stage 0: can this phone make a 2-minute 3D video?
 web/film/probe.mjs        the probe's hand-written 30 s scene, drawn on the shared stage
 web/film/assets/          CC0 people, 84 movements, furniture/city/car/nature/food kits, 2 HDRIs — regenerate, never hand-edit
 web/vendor/three.mjs      three.js 0.186.1 bundle; mediabunny-film.mjs = Book's writer + audio (scripts/film/vendor.mjs)
-scripts/film/             inventory.mjs (what a glTF pack contains), build-assets.mjs, vendor.mjs
+scripts/film/             inventory.mjs (what a glTF pack contains), build-assets.mjs, vendor.mjs,
+                          verb-bench.mjs (Gutenberg fiction through readStory: how much real writing is acted)
 web/selfie.html           Draw me: a photo drawn as a moving caricature, GIF/sticker/SVG export (stage 1)
 web/face.mjs              selfie drawing: alignment, caricature rules, colour, hair, SVG, poses (pure)
 web/face-find.mjs         MediaPipe's face/hair/person models on LiteRT.js — never MediaPipe's runtime (it logs)
@@ -165,6 +166,7 @@ serves **4-bit**, and that gap explains most surprises.
 | **Rules write a story the page can check; a model's can only be read** | The owner: the model's stories were "faulty and never good". `web/story.mjs` writes the six pages from word lists, and because every drawable word is marked, a test holds 7,800 books (every combination, 12 seeds) to it: the picture draws exactly the marked words, the helper can do what the problem needs, and the animation acts out deeds, not wishes. Against the four real Qwen3 books: hero named on 192/192 pages vs 21/24, 0 pictures of only the hero vs 4. What rules cost is sameness: 278–910 versions per set of choices and 0.2–0.5 identical pages per pair of books, but the frames repeat. Writing the tests found three matcher bugs that affected model books too: lighthouse → light bulb, "buses" never drawn, rivers and roads never drawn. `docs/story-rules.md`. |
 | **A library can log even when the page never asks it to** | MediaPipe's `tasks-vision` runtime POSTs usage statistics to Google from every task it creates. The owner's rule is **use nothing that logs**, not "block it". MediaPipe's models (weights) are kept; they run on LiteRT.js, whose every URL was checked. `tests/face.test.mjs` fails on any logging endpoint in `web/vendor/`. Read a vendored bundle's URLs before shipping it. |
 | **A phone renders a 2-minute 3D film faster than real time** | Owner's iPhone, Safari 26.6.1, `film-probe.html` at its defaults: two skinned people (72k triangles with shadows, 119 draw calls) in a lit room, 2,880 frames at 720×1280, 24 fps, **MP4 H.264 + AAC in 43.1 s (2.79× real time)**, 27.1 MB, the tab never died. Draw 0.8 ms/frame; **encode wait 13.5 ms/frame is the cost**. The guessed phone budget (≤4 people, baked light, resumable render) was far too cautious. The MP4 path that headless Chromium cannot test works on iOS. `docs/film-plan.md`. |
+| **Real writing: 63% of action verbs acted, half of lines speakerless** | `scripts/film/verb-bench.mjs`: 490 passages of Doyle, Joyce, O. Henry, Mansfield, Chekhov (347k words) through Film's own reader. Action verbs acted 33.6% → **63.1%** after stage 3 (moves 928 → 1,874). The raw "no move" list was mostly noise — states ("seemed", "wanted") and false matches ("Holmes" read as a verb by a case-insensitive flag). Speakers found for ~50% of lines even with pronouns set: multi-character classic prose carries who-speaks in context no rule reads; the page marks those lines instead of guessing. Kiss, hug, wave, shrug have no free clip and stay listed. |
 | **Skin colour: both obvious rules were wrong** | On 9 public-domain portraits: sampling lit pixels drew a dark-skinned woman several shades lighter; the whole-face median drew two side-lit people near-black; "the lit half" drew almost everyone lighter, since even studio portraits differ 12–25 L* between halves. Shipped: the median of face skin without *deep* shadow (>25 L* below the lit half), lightness kept exactly. A judgement for people to review, printed by `scripts/face-bench.mjs`. `docs/selfie.md`. |
 
 ### Browser gotchas already fixed
@@ -659,6 +661,11 @@ practical fine-tuning.
   scene's words (day/dawn/evening/night), only a scene's people on stage,
   props in hand (glass, phone, gun), bar stools lift. Found by looking, not by
   numbers: Kenney's nature kit is mint (recoloured by material name).
+  **Stage 3:** acting sized by `verb-bench.mjs` (63% of real action verbs):
+  hand-offs, follow, run, turn, lean, lie (lasts), jump, kneel…; punches walk
+  up and land, targets react; a shout is acted faster than a whisper; Build
+  one (body, hair, beard, skin tone, colours). The pack's "Light"/"Dark" skin
+  textures are the same tone — skin is a colour gain.
   **Stage 0 is measured on the owner's iPhone: 2 minutes of 720p MP4 + AAC in
   43 s** (table row above). Still owed: preview fps, whether the MP4 plays in
   Photos and shares, and stage 1 (`film.html`) on the phone. Found building it:
