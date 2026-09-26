@@ -1,6 +1,6 @@
 # Film — a grown-up version of Book, without a model — a plan
 
-**Status: stages 0–3 are built (2: seven sets, light by time of day, props in hand; 3: acting measured on real writing, 63% of action verbs acted, Build one). Stage 0 has run on the owner's iPhone,
+**Status: stages 0–4 are built (4: sounds from the story's events, each place's sound, heads that move with the voice) (2: seven sets, light by time of day, props in hand; 3: acting measured on real writing, 63% of action verbs acted, Build one). Stage 0 has run on the owner's iPhone,
 which made the 2-minute 720p MP4 with sound in 43 s ("Stage 0 measured"
 below). Stage 1 has not run on a phone yet.**
 
@@ -746,6 +746,79 @@ texture before that gain, or a light skin washed out the clothes.
   floor, running, leaning, a hand-off), not by an automated test.
 
 **Not tested:** any of it on a phone, and on a writer's real scene.
+
+## Stage 4 as built: sound and faces
+
+**Sounds from what the story does** (`film.mjs` `soundCues`, made in
+`web/film/sound.mjs`). They are made on the page from noise and tones: no
+audio files, no download, nothing recorded from anywhere.
+- a gunshot as the pistol fires;
+- a punch as it lands;
+- a thud when someone falls, is pushed, or dies;
+- a clink when someone drinks;
+- the phone ringing *before* it's answered;
+- a door when someone comes into or leaves a room (not outside);
+- footsteps while anyone walks, quicker when they run.
+
+Nothing is heard that the story didn't do. A letter handed over makes no
+clink, and a story with only talk has no sound but its voices. **On by
+default.**
+
+**Each place's sound** (`ambience`):
+- a bar's murmur, with glasses now and then;
+- a street's traffic, with cars passing (fewer and quieter at night);
+- a park's wind and birds (crickets at night);
+- **rooms are silent.** A room tone is what the owner heard as a hum.
+
+**Off by default**, one checkbox away. The music bed stays off by default
+too.
+
+The preview plays the same sounds as the scene reaches them. Each place's
+sound starts and stops with its scene. The video mixes them with the
+recordings.
+
+**Levels were measured, not guessed:** peak and RMS of every cue and place,
+rendered offline. The first gunshot peaked at **1.25** (clipping) and was
+cut to 0.74. Footsteps peaked at 0.016 (inaudible) and were raised to 0.056;
+the ring from 0.047 to 0.11.
+
+**Faces: the free bodies can't open their mouths.**
+- No morph targets and no jaw bone (stage 0's inventory).
+- **The meshes are completely closed.** Counting boundary edges finds 0 on
+  both bodies, head included, so there is no gap between the lips for any
+  jaw movement to open.
+- The planned "jaw morph test" was answered by that count and not built.
+
+What speaking can be instead: **the speaker's head moves with the voice**.
+It nods on loud syllables and tilts slowly through the line.
+- For a recorded line the loudness is the recording's own (`rmsEnvelope`,
+  at the pitch the person chose).
+- Otherwise it follows the words' syllables (`textEnvelope`: one pulse per
+  vowel group, with a pause at the end of the line).
+
+**Also found:** "walked **into** the kitchen" wasn't an entrance, because
+the rule wanted the word to end at "in". Fixed ("into" for came, walked,
+went, stepped and burst). The corpus score moved from 63.1% to 63.5%.
+
+**Tested** (`tests/film-sound-browser.mjs`, touch screen; mutation-checked:
+video without effects, video without the place, preview without effects,
+background on by default, no head movement):
+
+- effects on and background off by default;
+- the preview hears the street, the gunshot and the thud in that order;
+- in the video, a gunshot at the moment the gun fires, over silence where
+  only talk happens;
+- the street's sound only when switched on;
+- silence with both off;
+- the head posed differently under a loud and a silent voice.
+
+Unit tests cover the cues' timing and rules (one shot, a ring before the
+answer, a door only indoors, quicker steps when running, nothing for talk),
+the place per scene, and both envelopes.
+
+**Not tested:** how any of it *sounds*. Levels are measured; whether a
+synthesised gunshot or bar murmur sounds real is a judgement for someone
+listening, on a phone speaker. Also not tested on a phone at all.
 
 ## What is not known, and how each gets known
 

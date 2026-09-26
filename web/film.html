@@ -80,7 +80,10 @@
 
     <h2>4. Watch</h2>
     <p class="muted">While you watch, each person speaks with this phone's voice. In the saved video, only lines you've recorded are heard (🎙 in step 3); browsers can't record the phone's voice into a file.</p>
+    <div class="row"><label><input type="checkbox" id="fx" checked> Sound effects: steps, doors, a phone, punches, gunshots</label></div>
+    <div class="row"><label><input type="checkbox" id="amb"> Background sound for each place: a bar's murmur, traffic, birds</label></div>
     <div class="row"><label><input type="checkbox" id="music"> Quiet music under the scene</label></div>
+    <p class="muted">Every sound is made on this device from the story's own events. None of it is a recording from anywhere.</p>
     <div class="stage">
       <div><canvas id="out" width="720" height="1280"></canvas><canvas id="gl"></canvas></div>
       <div>
@@ -95,7 +98,7 @@
   </div>
 </main>
 <script type="module">
-import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds, LOOKS, HAIRS, SKINS, cleanLook } from "./film.mjs?v=4";
+import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds, LOOKS, HAIRS, SKINS, cleanLook, soundCues, ambience, rmsEnvelope } from "./film.mjs?v=5";
 import { voiceOptions } from "./voice.mjs?v=10";
 
 const $ = id => document.getElementById(id);
@@ -298,12 +301,18 @@ function sayLine(text, name) {
 function sayOnce(name) { synth?.cancel(); sayLine(`This is ${name}.`, name); }
 
 // ---------------------------------------------------------------- the stage
-let stageMod = null;
+let stageMod = null, soundMod = null;
+// A recorded line moves its speaker's head with the recording's own loudness.
+function speechEnvelopes(film) {
+  const out = {};
+  film.lines.forEach((l, i) => { const take = l[2] && state.takes[l[5]]; if (take) out[i] = rmsEnvelope(take.buffer.getChannelData(0), take.buffer.sampleRate, { fps: 24, rate: PITCH[pitchOf(l[2])].rate }); });
+  return out;
+}
 async function ensureStage() {
   const story = state.story;
   const castKey = lookKey(story);
   if (state.stage && state.stageCast === castKey) { const { recast } = stageMod; recast(state.stage, state.film); return state.stage; }
-  stageMod ||= await import("./film/stage.mjs?v=4");
+  stageMod ||= await import("./film/stage.mjs?v=5");
   const { setup } = stageMod;
   const looks = Object.fromEntries(story.cast.map((c, i) => [c.name, cleanLook(state.looks[c.name] || defaultLook(c, i))]));
   if (state.stage) { state.stage.renderer.dispose(); const gl = $("gl"), fresh = gl.cloneNode(); gl.replaceWith(fresh); }
@@ -323,9 +332,14 @@ $("play").onclick = async () => {
   $("play").disabled = true;
   try {
     const stage = await ensureStage();
+    soundMod ||= await import("./film/sound.mjs?v=1");
     const { frameFn } = stageMod;
-    const draw = frameFn(stage);
     const film = state.film;
+    stage.speech = speechEnvelopes(film);
+    const draw = frameFn(stage);
+    // The same sounds as the video, played as the scene reaches them.
+    const cues = $("fx").checked ? soundCues(film) : [], places = $("amb").checked ? ambience(film).filter(a => a.kind !== "room") : [];
+    let nextCue = 0, placeNode = null, placeAt = -1;
     state.playing = true; $("stop").hidden = false; $("play").textContent = "Play again"; update();
     // The clock runs in real time, but a line never starts over the one
     // before it: if someone is still speaking, the scene holds until they stop.
@@ -342,12 +356,22 @@ $("play").onclick = async () => {
           t = line[0];
           if (!speaking) { busy = voice(line); next++; }
         } else if (!(speaking && line && t >= line[0] - 0.05)) t += step;
+        while (nextCue < cues.length && cues[nextCue].t <= t) {
+          const c = cues[nextCue++];
+          if (c.t > t - 0.25) { soundMod.cue(audio(), audio().destination, audio().currentTime, c.kind); heard.push({ how: "cue", kind: c.kind }); }
+        }
+        const pi = places.findIndex(a => t >= a.start && t < a.end);
+        if (pi !== placeAt) {
+          placeNode?.disconnect(); placeNode = null; placeAt = pi;
+          if (pi >= 0) { const a = places[pi]; placeNode = soundMod.place(audio(), audio().destination, a.kind, a.light, audio().currentTime, audio().currentTime + (a.end - a.start) + 20); heard.push({ how: "place", kind: a.kind }); }
+        }
         draw(t);
         $("status").textContent = `${clock(t)} / ${clock(film.length)}${state.ttsBlocked ? " · subtitles only: this browser didn't speak" : ""}`;
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
     });
+    placeNode?.disconnect();
     // Speak one line: the person's own recording if there is one, else the phone's voice.
     function voice(line) {
       const [, , name, text, , key] = line;
@@ -387,7 +411,9 @@ $("make").onclick = async () => {
     const stage = await ensureStage();
     const voices = state.film.lines.filter(l => l[2] && state.takes[l[5]])
       .map(l => ({ at: l[0], buffer: state.takes[l[5]].buffer, rate: PITCH[pitchOf(l[2])].rate }));
+    stage.speech = speechEnvelopes(state.film);
     const r = await stageMod.makeVideo(stage, { seconds: state.film.length, fps: FPS, voices, music: $("music").checked,
+      cues: $("fx").checked ? soundCues(state.film) : [], places: $("amb").checked ? ambience(state.film).filter(a => a.kind !== "room") : [],
       onFrame: () => { if (cancelled) throw new Error("stopped"); },
       onProgress: (k, ms) => { $("prog").value = k; $("status").textContent = `Making the video: ${Math.round(k * 100)}% — about ${Math.ceil(ms / k * (1 - k) / 1000)} s left`; } });
     const url = URL.createObjectURL(r.blob), name = `film.${r.ext}`;

@@ -82,11 +82,13 @@ docs/storybook.md         a story written by the model, illustrated by the page 
 docs/story-rules.md       Book without the model — all six stages built: rules, no download, own story, scenery, pictures, GIF
 docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
-docs/film-plan.md         "Film": user prose → 2-min 3D video, phone first, no model; stages 0–3 built, 4–6 planned;
+docs/film-plan.md         "Film": user prose → 2-min 3D video, phone first, no model; stages 0–4 built, 5–6 planned;
                           mature tier only (explicit content is banned on GitHub — read before building)
 web/film.html             Film stage 1: adult notice → write prose → cast (pronouns asked) → check (guesses shown) → watch → video
 web/film.mjs              Film's rules, pure: prose → cast/lines/moves (readStory), timelines (block), shots + 180° rule
-web/film/stage.mjs        the shared three.js stage: room, people, painted-on clothes, camera, soundtrack, video
+web/film/stage.mjs        the shared three.js stage: sets, people, painted-on clothes, camera, head-with-voice, soundtrack, video
+web/film/sound.mjs        every Film sound synthesised on the page (cues: gunshot, punch, thud, clink, ring, door, step;
+                          places: bar, street, park) — no audio files
 web/film-probe.html       Film stage 0: can this phone make a 2-minute 3D video? numbers in a copyable report
 web/film/probe.mjs        the probe's hand-written 30 s scene, drawn on the shared stage
 web/film/assets/          CC0 people, 84 movements, furniture/city/car/nature/food kits, 2 HDRIs — regenerate, never hand-edit
@@ -666,6 +668,11 @@ practical fine-tuning.
   up and land, targets react; a shout is acted faster than a whisper; Build
   one (body, hair, beard, skin tone, colours). The pack's "Light"/"Dark" skin
   textures are the same tone — skin is a colour gain.
+  **Stage 4:** sounds by rule from the story's events (on by default), each
+  place's sound (off by default; rooms silent — the owner heard room tone as a
+  hum), levels measured (the first gunshot clipped at 1.25). The free bodies
+  are closed meshes (0 boundary edges): no mouth can open, so heads move with
+  the voice instead (a recording's loudness, or the words' syllables).
   **Stage 0 is measured on the owner's iPhone: 2 minutes of 720p MP4 + AAC in
   43 s** (table row above). Still owed: preview fps, whether the MP4 plays in
   Photos and shares, and stage 1 (`film.html`) on the phone. Found building it:

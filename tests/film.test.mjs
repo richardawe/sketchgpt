@@ -352,3 +352,40 @@ test("a look from storage or a hand can't break the stage: unknowns become defau
   assert.equal(bad.outfit.bottom, "#123", "a valid short hex is kept");
   assert.deepEqual(cleanLook(null), cleanLook({}));
 });
+
+// ---------------------------------------------------------------- stage 4: sound and faces
+test("sounds come only from what the story does, at the moment it does it", async () => {
+  const { soundCues, ambience } = await import("../web/film.mjs");
+  const f = block(readStory(`Tom walked into the kitchen. Maya was there.\n\n"Hi," said Tom.\n\nHer phone rang. She answered the phone.\n\nThat night, in the street, Tom ran to the corner. Maya shot him. He fell.\n\nMaya handed Tom a letter.`, { pronouns: P }));
+  const cues = soundCues(f), at = k => cues.filter(c => c.kind === k);
+  const shot = f.actions.find(a => a[3] === "shoot"), fall = f.actions.find(a => a[3] === "fall"), phone = f.actions.find(a => a[3] === "phone");
+  assert.equal(at("gunshot").length, 1, "one shot");
+  assert.ok(Math.abs(at("gunshot")[0].t - (shot[0] + 0.3)) < 1e-3, "as the pistol fires");
+  assert.ok(at("thud").some(c => c.t > fall[0] && c.t < fall[1]), "the fall lands");
+  assert.ok(at("ring")[0].t < phone[0], "the phone rings before it's answered");
+  assert.equal(at("door").length, 1, "a door for coming into the kitchen; none outside");
+  assert.equal(at("clink").length, 0, "a letter handed over makes no clink");
+  // Steps: while someone walks; closer together when they run.
+  const run = f.actions.find(a => a[3] === "run");
+  const inRun = at("step").filter(c => c.t >= run[0] && c.t <= run[1]);
+  assert.ok(inRun.length >= 2);
+  assert.ok(inRun[1].t - inRun[0].t < 0.4, "running steps come quicker");
+  assert.deepEqual(ambience(f).map(a => `${a.kind}/${a.light}`), ["room/day", "street/night"]);
+  // Nothing happens, nothing is heard.
+  assert.deepEqual(soundCues(block(readStory(`"Hello," said Tom.`, { pronouns: P }))), []);
+});
+
+test("a speaking head follows the voice: a recording's loudness, or the words' syllables", async () => {
+  const { rmsEnvelope, textEnvelope } = await import("../web/film.mjs");
+  const rate = 1000, s = new Float32Array(2000);
+  for (let i = 500; i < 1000; i++) s[i] = 0.5 * Math.sin(i);           // loud in the middle of the first second
+  const env = rmsEnvelope(s, rate, { fps: 10 });
+  assert.equal(env.length, 20);
+  assert.ok(env[7] > 0.9 && env[2] === 0 && env[15] === 0, Array.from(env).map(v => v.toFixed(1)).join(" "));
+  const t = textEnvelope("There's no traffic at seven.", 2, { fps: 24 });
+  assert.equal(t.length, 48);
+  assert.equal(t[t.length - 1], 0, "the end of a line is a pause");
+  let peaks = 0;
+  for (let i = 1; i < t.length - 1; i++) if (t[i] > t[i - 1] && t[i] >= t[i + 1] && t[i] > 0.2) peaks++;
+  assert.ok(peaks >= 5 && peaks <= 9, `${peaks} syllable pulses`);
+});

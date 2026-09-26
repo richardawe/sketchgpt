@@ -5,7 +5,8 @@
 // No model, no network after the assets. three.js (MIT), Quaternius (CC0),
 // Kenney (CC0), Poly Haven (CC0), Mediabunny (MPL-2.0). docs/film-plan.md.
 import * as T from "../vendor/three.mjs?v=1";
-import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook } from "../film.mjs?v=4";
+import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope } from "../film.mjs?v=5";
+import { cue, place } from "./sound.mjs?v=1";
 
 const ASSETS = new URL("./assets/", import.meta.url).href;
 
@@ -464,6 +465,24 @@ function subtitle(ctx, film, t, W, H) {
   for (const l of out) { ctx.strokeText(l, W / 2, y); ctx.fillText(l, W / 2, y); y += lh; }
 }
 
+// The speaker's head moves with their voice: nods on the loud syllables, a
+// slight turn as the line goes on. The free bodies have no mouths that open
+// (no morph targets, no jaw bone), so this is what "speaking" can be.
+// stage.speech[lineIndex] is a loudness envelope at 24 fps (a recording's own,
+// from film.mjs rmsEnvelope); without one, the words' syllables (textEnvelope).
+function speak(stage, film, t) {
+  const cache = stage.speechCache ||= {};
+  film.lines.forEach((line, i) => {
+    const [a, b, who] = line;
+    const p = who && stage.world.cast[who];
+    if (!p || t < a || t >= b || !p.head) return;
+    const env = stage.speech?.[i] || (cache[i + ":" + line[3]] ||= textEnvelope(line[3], b - a));
+    const e = env[Math.min(env.length - 1, Math.floor((t - a) * 24))] || 0;
+    p.head.rotateX(-0.09 * e);
+    p.head.rotateZ(0.035 * Math.sin((t - a) * 2.1) * (0.4 + e));
+  });
+}
+
 /** draw(t) → the shot's name. With `loop`, t wraps (the probe fills two minutes with 30 s). */
 export function frameFn(stage) {
   const { renderer, world, camera, ctx, film, shotAt, loop } = stage;
@@ -471,6 +490,7 @@ export function frameFn(stage) {
     const lt = loop ? t % loop : t;
     applySet(world, setAt(film, lt));
     const places = poseAll(world, film, lt);
+    speak(stage, film, lt);
     const shot = aim(camera, world, film, lt, shotAt, places);
     renderer.render(world.scene, camera);
     const W = ctx.canvas.width, H = ctx.canvas.height;
@@ -490,10 +510,14 @@ export function frameFn(stage) {
 // The soundtrack, made on the page (no file): recorded voice clips at their
 // times, [{ at, buffer, rate }] (rate < 1 is a deeper voice), and, if asked
 // for, a music bed.
-export async function soundtrack(seconds, voices = [], { music = true } = {}) {
+export async function soundtrack(seconds, voices = [], { music = true, cues = [], places = [] } = {}) {
   const rate = 48000, ctx = new OfflineAudioContext(2, Math.ceil(seconds * rate), rate);
   const master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
   if (music) addMusic(ctx, master, seconds, rate);
+  // What happens (film.mjs soundCues) and where (ambience), made on the page (sound.mjs).
+  const fx = ctx.createGain(); fx.gain.value = 0.8; fx.connect(ctx.destination);
+  for (const c of cues) if (c.t < seconds) cue(ctx, fx, c.t, c.kind);
+  for (const a of places) if (a.start < seconds) place(ctx, fx, a.kind, a.light, a.start, Math.min(seconds, a.end));
   for (const { at, buffer, rate: speed = 1 } of voices) {
     if (at >= seconds) continue;
     const v = ctx.createBufferSource(); v.buffer = buffer; v.playbackRate.value = speed;
@@ -531,7 +555,7 @@ function sliceAudio(buf, from, to) {
 }
 
 // ---------------------------------------------------------------- the video
-export async function makeVideo(stage, { seconds, fps, voices = [], music = true, onProgress, onFrame }) {
+export async function makeVideo(stage, { seconds, fps, voices = [], music = true, cues = [], places = [], onProgress, onFrame }) {
   const mb = await import("../vendor/mediabunny-film.mjs?v=1");
   const { ctx } = stage;
   const W = ctx.canvas.width, H = ctx.canvas.height;
@@ -551,7 +575,7 @@ export async function makeVideo(stage, { seconds, fps, voices = [], music = true
     asrc = new mb.AudioBufferSource({ codec: audioCodec, bitrate: 128e3 });
     output.addAudioTrack(asrc);
     const a0 = performance.now();
-    audio = await soundtrack(seconds, voices, { music });
+    audio = await soundtrack(seconds, voices, { music, cues, places });
     audioMs = performance.now() - a0;
   }
   await output.start();
@@ -619,6 +643,7 @@ export async function setup(glCanvas, outCanvas, film, { looks, shotAt, loop = 0
 export function recast(stage, film) {
   stage.film = film;
   stage.world.current = null;
+  stage.speechCache = {};
   for (const p of Object.values(stage.world.cast)) { p.mixer.stopAllAction(); p.actions = {}; }
   return stage;
 }

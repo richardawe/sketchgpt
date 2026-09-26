@@ -112,7 +112,7 @@ try {
   await page.waitForFunction(() => window.__film.state.stage, null, { timeout: 240000 });
   await page.waitForFunction(() => window.__film.state.playing === false && window.__film.heard, null, { timeout: 180000 });
   const film = await page.evaluate(() => window.__film.state.film);
-  const heard = await page.evaluate(() => window.__film.heard);
+  const heard = await page.evaluate(() => window.__film.heard.filter(h => h.how === "recording" || h.how === "voice"));
   const said = await page.evaluate(() => window.__said.filter(x => x.volume !== 0));
   assert.deepEqual(heard.map(h => h.how), ["recording", "voice", "voice", "voice"]);
   assert.deepEqual(said.map(x => x.text), film.lines.slice(1).map(l => l[3]), "every other line, in order, in the phone's voice");
@@ -136,6 +136,8 @@ try {
   assert.ok(ruth.meshes >= 4, "body, eyes, eyebrows and the chosen hair");
 
   // The video: every frame of the film, with sound.
+  // Sound effects off for this check: the voice alone must be what's heard (tests/film-sound-browser.mjs covers effects).
+  await page.uncheck("#fx");
   await page.tap("#make");
   await page.waitForFunction(() => window.__film.video, null, { timeout: 300000 });
   const video = await page.evaluate(() => window.__film.video);

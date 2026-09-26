@@ -49,7 +49,7 @@ const TITLE = /^(Mr|Mrs|Ms|Miss|Dr|Detective|Officer|Doctor|Aunt|Uncle|Captain|P
 // What people do, and the move each is. Clip names are the free Quaternius
 // tier's (scripts/film/inventory.mjs); `sit`/`stand` change where they are.
 export const MOVES = [
-  ["enter", /\b(c[ao]me[s]? (?:in|back|home|inside)|walk(?:s|ed)? in|enter(?:s|ed)?|arriv(?:e|es|ed)|burst(?:s)? in|stepp?(?:ed|s) in|let (?:herself|himself|themselves) in|return(?:s|ed) (?:to|home|from|with))\b/i],
+  ["enter", /\b(c[ao]me[s]? (?:into|in|back|home|inside)|walk(?:s|ed)? in(?:to)?|went into|goes into|enter(?:s|ed)?|arriv(?:e|es|ed)|burst(?:s)? in(?:to)?|stepp?(?:ed|s) in(?:to)?|let (?:herself|himself|themselves) in|return(?:s|ed) (?:to|home|from|with))\b/i],
   ["exit", /\b(le(?:ft|aves?)(?! (?:it|the|a|her|his|them|him)\b)|walk(?:s|ed)? out|went out|goes out|storm(?:s|ed)? out|exit(?:s|ed)?)\b/i],
   ["sit", /\b(s(?:its?|at)(?: back)? down|s(?:its?|at) on|s(?:its?|at)\b(?! up))\b/i],
   ["stand", /\b(st(?:ands?|ood) up|st(?:ands?|ood)\b(?! (?:still|there|by|in|at|behind|beside|near))|got to (?:her|his|their) feet|gets up|got up|rose|rises)\b/i],
@@ -740,6 +740,78 @@ export function placesAt(film, t) {
     const named = typeof o.face === "string" && o.face !== "other" && out[o.face] && !out[o.face].off ? out[o.face].at : null;
     const look = o.to ? o.to : named || (o.face === "other" && others.length ? others[0] : Array.isArray(o.face) ? o.face : [p.at[0], p.at[1] + 1]);
     p.facing = Math.hypot(look[0] - p.at[0], look[1] - p.at[1]) > 0.02 ? Math.atan2(look[0] - p.at[0], look[1] - p.at[1]) : 0;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- sound
+/**
+ * The sounds a film's own events make, by rule: [{ t, kind, who }]. Kinds:
+ * gunshot, punch, thud (a fall, a push landing, a body), clink (a glass),
+ * ring (a phone, before it's answered), door (in or out of a room), step.
+ * Nothing is heard that the story didn't do.
+ */
+export function soundCues(film) {
+  const cues = [];
+  const setAtT = t => setAt(film, t);
+  for (const [a, , who, move] of film.actions) {
+    const inside = SETS[setAtT(a).set]?.inside !== false;
+    if (move === "shoot") cues.push({ t: a + 0.3, kind: "gunshot", who });
+    else if (move === "punch") cues.push({ t: a + 0.3, kind: "punch", who });
+    else if (move === "push") cues.push({ t: a + 0.45, kind: "thud", who });
+    else if (move === "fall") cues.push({ t: a + 0.55, kind: "thud", who });
+    else if (move === "die") cues.push({ t: a + 1.1, kind: "thud", who });
+    else if (move === "drink") cues.push({ t: a + 0.7, kind: "clink", who });
+    else if (move === "phone") cues.push({ t: Math.max(0, a - 1.3), kind: "ring", who });
+    else if ((move === "enter" || move === "exit") && inside) cues.push({ t: move === "enter" ? a : a + 1.2, kind: "door", who });
+  }
+  // Footsteps: one per half-stride while someone walks, quicker when they run.
+  for (const [who, p] of Object.entries(film.people)) {
+    const tl = p.timeline;
+    tl.forEach((seg, i) => {
+      const o = seg[2];
+      if (!o.from || o.off) return;
+      const pace = o.pace || SPEED, end = Math.min((tl[i + 1] || [Infinity])[0], seg[0] + dist(o.from, o.to) / pace);
+      const every = pace > 2 ? 0.3 : 0.52;
+      for (let t = seg[0] + 0.15; t < end - 0.05; t += every) cues.push({ t: +t.toFixed(3), kind: "step", who });
+    });
+  }
+  return cues.sort((x, y) => x.t - y.t);
+}
+
+/** What each scene sounds like underneath: [{ start, end, kind }], kind room | bar | street | park, with the scene's light. */
+export function ambience(film) {
+  const sets = film.sets?.length ? film.sets : [{ start: 0, set: "living room", light: "day" }];
+  return sets.map((s, i) => ({ start: s.start, end: (sets[i + 1] || { start: film.length }).start,
+    kind: s.set === "bar" ? "bar" : s.set === "street" ? "street" : s.set === "park" ? "park" : "room", light: s.light }));
+}
+
+/**
+ * How loud someone is speaking, frame by frame, for a head that moves with the
+ * voice: from a recording's own loudness, 0..1.
+ */
+export function rmsEnvelope(samples, sampleRate, { fps = 24, rate = 1 } = {}) {
+  const hop = sampleRate / fps * rate, n = Math.ceil(samples.length / hop), out = new Float32Array(n);
+  let peak = 1e-6;
+  for (let f = 0; f < n; f++) {
+    let s = 0, c = 0;
+    for (let i = Math.floor(f * hop); i < Math.min(samples.length, Math.floor((f + 1) * hop)); i++) { s += samples[i] * samples[i]; c++; }
+    out[f] = Math.sqrt(s / Math.max(1, c)); peak = Math.max(peak, out[f]);
+  }
+  for (let f = 0; f < n; f++) out[f] = Math.min(1, out[f] / peak);
+  return out;
+}
+
+/** …or, with no recording, from the words' syllables spread over the line: a pulse each. */
+export function textEnvelope(text, seconds, { fps = 24 } = {}) {
+  const syll = Math.max(1, (String(text).toLowerCase().match(/[aeiouy]+/g) || []).length);
+  const n = Math.max(1, Math.round(seconds * fps)), out = new Float32Array(n);
+  const talk = Math.max(0.2, seconds - 0.25);   // the tail of a line is a pause
+  for (let f = 0; f < n; f++) {
+    const t = f / fps;
+    if (t > talk) break;
+    const phase = t / talk * syll;
+    out[f] = Math.pow(Math.sin(Math.PI * (phase % 1)), 2) * (0.6 + 0.4 * ((Math.floor(phase) * 7919) % 5) / 4);
   }
   return out;
 }
