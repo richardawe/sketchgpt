@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Film</title>
+<meta name="description" content="Write a scene in plain prose; this page stages it in 3D and makes the video, on your device. No AI model, nothing uploaded.">
+<style>
+  :root { --bg: #f6f2ea; --ink: #221e1a; --muted: #6f665c; --card: #fffdf8; --line: #ded6ca; --accent: #8a3b12; --warn: #9a5b00; --guess: #fff1cc; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #151311; --ink: #eee7dc; --muted: #a39888; --card: #1f1c19; --line: #36302a; --accent: #f0a070; --warn: #f0c060; --guess: #3a3020; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 22px 0 8px; }
+  p { margin: 0 0 10px; }
+  .muted { color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  textarea { width: 100%; min-height: 240px; font: inherit; font-size: 16px; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); resize: vertical; }
+  button, select, .dl { font: inherit; font-size: 16px; padding: 9px 13px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; text-decoration: none; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+  .length { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .over { color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: top; }
+  .beat-line td:first-child { width: 8.5em; }
+  select { max-width: 100%; }
+  .person { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+  .person:first-child { border-top: 0; padding-top: 0; }
+  .person > div { min-width: 7em; }
+  td { overflow-wrap: anywhere; }
+  .guessed { background: var(--guess); }
+  .badge { font-size: 12px; padding: 1px 6px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .notes li { color: var(--warn); }
+  .warn { color: var(--warn); }
+  #failure { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+  @media (min-width: 720px) { .stage { grid-template-columns: 300px minmax(0, 1fr); } }
+  canvas#out { width: 100%; max-width: 300px; aspect-ratio: 9 / 16; background: #000; border-radius: 10px; display: block; margin: 0 auto; }
+  canvas#gl { display: none; }
+  video { width: 100%; max-width: 300px; border-radius: 10px; display: block; margin: 8px auto; }
+  progress { width: 100%; }
+  .gate { max-width: 560px; margin: 12vh auto; }
+  [hidden] { display: none !important; }
+  .take { display: inline-flex; gap: 4px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+  .take button { font-size: 14px; padding: 4px 9px; }
+  .take .rec { border-color: #b3261e; color: #b3261e; }
+  .take .rec.on { background: #b3261e; color: #fff; }
+  details.look { flex-basis: 100%; }
+  details.look summary { cursor: pointer; color: var(--muted); font-size: 15px; }
+  .lookgrid { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 8px; align-items: center; }
+  input[type=color] { width: 44px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: none; vertical-align: middle; }
+</style>
+</head>
+<body>
+<main>
+  <section id="gate" class="gate card" hidden>
+    <h1>Film</h1>
+    <p><strong>Stories for adults.</strong> Scenes here can have violence, swearing, drinking and implied sex, written by whoever uses the page. Nothing explicit is drawn.</p>
+    <p class="muted">No AI model: the page reads your prose with fixed rules and stages it with free CC0 3D people and rooms. Nothing you write leaves this device.</p>
+    <button id="enter" class="primary">I'm an adult — continue</button>
+  </section>
+
+  <div id="app" hidden>
+    <h1>Film</h1>
+    <p class="muted">Write a scene in plain prose. The page finds who speaks and what they do, stages it (a living room, kitchen, bedroom, office, bar, street or park, by day or night), and makes the video, on this device. No AI model, nothing uploaded. <a href="film-probe.html">How fast is this phone?</a></p>
+
+    <h2>1. Write</h2>
+    <p id="opened" class="muted" hidden></p>
+    <textarea id="story" spellcheck="true" aria-label="Your story"></textarea>
+    <div class="row"><span>Length <span id="length" class="length">0:00</span> of 2:00</span><button id="sample">Use the sample</button><button id="clear">Clear</button></div>
+    <p class="muted">Quotes are lines: <em>"Sit down," Tom said.</em> Blank lines separate paragraphs; a new place or "that night" starts a new scene. A screenplay (Fountain: INT. KITCHEN - NIGHT, NAMES in capitals) can be pasted too.</p>
+
+    <h2>2. Cast</h2>
+    <div id="cast" class="card"><p class="muted">Names appear here as you write.</p></div>
+
+    <h2>3. Check</h2>
+    <p class="muted">Lines on a yellow background were given to someone by the novel's rule (lines alternate between two people). Change any speaker here.</p>
+    <ul id="notes" class="notes"></ul>
+    <div id="check" class="card"><p class="muted">Nothing yet.</p></div>
+
+    <h2>4. Watch</h2>
+    <p class="muted">While you watch, each person speaks with this phone's voice. In the saved video, only lines you've recorded are heard (🎙 in step 3); browsers can't record the phone's voice into a file.</p>
+    <div class="row"><label><input type="checkbox" id="fx" checked> Sound effects: steps, doors, a phone, punches, gunshots</label></div>
+    <div class="row"><label><input type="checkbox" id="amb"> Background sound for each place: a bar's murmur, traffic, birds</label></div>
+    <div class="row"><label><input type="checkbox" id="music"> Quiet music under the scene</label></div>
+    <p class="muted">Every sound is made on this device from the story's own events. None of it is a recording from anywhere.</p>
+    <div class="stage">
+      <div><canvas id="out" width="720" height="1280"></canvas><canvas id="gl"></canvas></div>
+      <div>
+        <div class="row"><button id="play" class="primary">Load and play (~7–9 MB, once)</button><button id="stop" hidden>Stop</button></div>
+        <div id="status" class="muted"></div>
+        <h2>5. Make the video</h2>
+        <p id="lastrun" class="warn" hidden></p>
+        <div class="row"><label>Size <select id="quality"><option value="3000000">Best (about 14 MB a minute)</option><option value="1200000">For sharing (smaller)</option></select></label></div>
+        <div class="row"><button id="make" disabled>Make the video</button><button id="cancel" hidden>Stop</button></div>
+        <progress id="prog" value="0" max="1" hidden></progress>
+        <div id="result"></div>
+        <pre id="failure" hidden></pre><button id="copyfail" hidden>Copy the report</button>
+        <h2>6. Share</h2>
+        <p class="muted">A link holds the whole story, the cast, their looks and voices: whoever opens it gets the same film, made on their device. Nothing is uploaded, and your recordings stay here.</p>
+        <div class="row"><button id="sharelink">Share as a link</button><button id="fountain">Download as a screenplay</button></div>
+        <div id="shared" class="muted"></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script type="module">
+import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds, LOOKS, HAIRS, SKINS, cleanLook, soundCues, ambience, rmsEnvelope, isFountain, fromFountain, toFountain } from "./film.mjs?v=6";
+import { encodeFilm, decodeFilm } from "./film/link.mjs?v=1";
+import { voiceOptions } from "./voice.mjs?v=10";
+
+const $ = id => document.getElementById(id);
+const safe = f => { try { return f(); } catch { return null; } };
+const GATE = "sketchgpt.film.adult", DRAFT = "sketchgpt.film.draft";
+const q = new URLSearchParams(location.search);
+const WIDTH = Math.max(180, Math.min(1080, +q.get("width") || 720)), HEIGHT = Math.round(WIDTH * 16 / 9), FPS = Math.max(4, Math.min(60, +q.get("fps") || 24));
+const LOOKS_KEY = "sketchgpt.film.looks";
+
+// Everything the page knows, rebuilt from the text on every edit.
+const state = { pronouns: {}, looks: {}, speakers: {}, voices: {}, pitch: {}, takes: {}, recording: null, story: null, film: null, stage: null, stageCast: null, playing: false, ttsBlocked: false };
+// Recorded takes stay in this tab only: never stored, never uploaded, gone on reload.
+const synth = globalThis.speechSynthesis || null;
+let actx = null;
+const audio = () => (actx ||= new (globalThis.AudioContext || globalThis.webkitAudioContext)());
+const deviceVoices = () => synth ? voiceOptions(synth.getVoices(), (navigator.language || "en").slice(0, 2)).filter(o => /^en/i.test(o.voice.lang) || /^en/i.test(navigator.language || "en")) : [];
+synth?.addEventListener?.("voiceschanged", () => update());
+
+// Looks are kept per name on this device, so a character keeps their face and clothes across reloads.
+Object.assign(state.looks, safe(() => JSON.parse(localStorage.getItem(LOOKS_KEY) || "{}")) || {});
+const saveLooks = () => safe(() => localStorage.setItem(LOOKS_KEY, JSON.stringify(state.looks)));
+const lookKey = story => story.cast.map(c => c.name + "=" + JSON.stringify(state.looks[c.name] || null)).join("|");
+
+function open() { $("gate").hidden = true; $("app").hidden = false; }
+if (safe(() => localStorage.getItem(GATE)) === "yes") open(); else $("gate").hidden = false;
+$("enter").onclick = () => { safe(() => localStorage.setItem(GATE, "yes")); open(); };
+
+$("story").value = safe(() => localStorage.getItem(DRAFT)) ?? SAMPLE;
+$("sample").onclick = () => { $("story").value = SAMPLE; update(); };
+$("clear").onclick = () => { $("story").value = ""; update(); };
+let timer = 0;
+$("story").addEventListener("input", () => { state.fromLink = false; clearTimeout(timer); timer = setTimeout(() => { timer = 0; update(); }, 250); });
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+
+// The person's corrections sit on top of the rules: a speaker chosen here wins.
+function read() {
+  const text = $("story").value;
+  if (!state.fromLink) safe(() => localStorage.setItem(DRAFT, text));
+  // A pasted screenplay is read as the prose it says; the page says so.
+  const screenplay = isFountain(text);
+  const story = readStory(screenplay ? fromFountain(text) : text, { pronouns: state.pronouns });
+  if (screenplay) story.notes.unshift("Read as a screenplay (Fountain): headings are scenes, NAMES in capitals are who speaks.");
+  let i = 0;
+  for (const s of story.scenes) for (const b of s.beats) if (b.kind === "line") {
+    const key = i++ + ":" + b.text;
+    if (state.speakers[key] !== undefined) { b.speaker = state.speakers[key] || null; b.how = "chosen"; }
+    b.key = key;
+    const take = state.takes[key];
+    if (take && b.speaker) b.seconds = take.buffer.duration / PITCH[pitchOf(b.speaker)].rate;
+  }
+  story.cast = story.cast.slice(0, 4);
+  return story;
+}
+
+function update() {
+  const story = state.story = read();
+  const film = state.film = block(story);
+  $("length").textContent = clock(film.length);
+  $("length").classList.toggle("over", film.over);
+  $("length").title = film.over ? `Over ${clock(LIMIT_SECONDS)}: the video will be long` : "";
+  renderCast(story);
+  renderCheck(story);
+  // A stage built for other people can't play this cast.
+  const castKey = lookKey(story);
+  if (state.stage && state.stageCast !== castKey) { $("play").textContent = "Reload and play"; }
+  $("make").disabled = !state.stage || state.stageCast !== castKey || !film.lines.length;
+}
+
+function renderCast(story) {
+  if (!story.cast.length) { $("cast").innerHTML = `<p class="muted">Names appear here as you write.</p>`; return; }
+  const voices = deviceVoices();
+  $("cast").innerHTML = story.cast.map((c, i) => {
+    const look = state.looks[c.name] = cleanLook(state.looks[c.name] || defaultLook(c, i));
+    return `<div class="person"><div><strong>${esc(c.name)}</strong> <span class="muted">${c.lines} line${c.lines === 1 ? "" : "s"}</span></div>
+      <label>Pronoun <select data-pronoun="${esc(c.name)}"><option value="">choose</option>${["she", "he", "they"].map(p => `<option ${c.pronoun === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>
+      <label>Looks like <select data-look="${esc(c.name)}">${LOOKS.map((l, j) => `<option value="${j}" ${sameLook(look, l) ? "selected" : ""}>${esc(l.name)}</option>`).join("")}${LOOKS.some(l => sameLook(look, l)) ? "" : `<option selected value="">Your own look</option>`}</select></label>
+      <label>Voice <select data-voice="${esc(c.name)}">${voices.length ? voices.map(o => `<option value="${esc(o.id)}" ${voiceOf(c.name, i)?.id === o.id ? "selected" : ""}>${esc(o.label)}</option>`).join("") : `<option value="">this browser has no voices</option>`}</select></label>
+      <label>Pitch <select data-pitch="${esc(c.name)}">${Object.keys(PITCH).map(p => `<option ${pitchOf(c.name) === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>
+      <details class="look" ${state.openLook === c.name ? "open" : ""} data-lookof="${esc(c.name)}"><summary>Change ${esc(c.name)}'s look</summary><div class="lookgrid">
+        <label>Body <select data-lk="body" data-who="${esc(c.name)}">${["woman", "man"].map(b => `<option ${look.body === b ? "selected" : ""}>${b}</option>`).join("")}</select></label>
+        <label>Hair <select data-lk="hair" data-who="${esc(c.name)}">${Object.entries(HAIRS).map(([k, n]) => `<option value="${k}" ${look.hair === k ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+        ${look.body === "man" ? `<label><input type="checkbox" data-lk="beard" data-who="${esc(c.name)}" ${look.beard ? "checked" : ""}> Beard</label>` : ""}
+        <label>Skin <select data-lk="skin" data-who="${esc(c.name)}">${Object.keys(SKINS).map(k => `<option ${look.skin === k ? "selected" : ""}>${k}</option>`).join("")}</select></label>
+        <label>Hair colour <input type="color" data-lk="hairTint" data-who="${esc(c.name)}" value="${fullHex(look.hairTint)}"></label>
+        <label>Top <input type="color" data-lk="top" data-who="${esc(c.name)}" value="${fullHex(look.outfit.top)}"></label>
+        <label>Trousers <input type="color" data-lk="bottom" data-who="${esc(c.name)}" value="${fullHex(look.outfit.bottom)}"></label>
+        <label>Shoes <input type="color" data-lk="shoes" data-who="${esc(c.name)}" value="${fullHex(look.outfit.shoes)}"></label>
+      </div></details></div>`;
+  }).join("") + `
+  <p class="muted">The free CC0 tier has two bodies; hair, skin, colours and painted-on clothes make everyone else. Looks are kept on this device.</p>`;
+}
+// Each person gets a different phone voice by default, and "he" a deeper pitch;
+// both are one tap to change, and the pitch also shapes their recordings.
+function voiceOf(name, i = state.story?.cast.findIndex(c => c.name === name) ?? 0) {
+  const all = deviceVoices();
+  if (!all.length) return null;
+  // A shared film names its voices; phones list them late, so the name is matched whenever they arrive.
+  const named = state.linkVoices?.[name] && all.find(o => o.voice.name === state.linkVoices[name]);
+  return all.find(o => o.id === state.voices[name]) || named || all[Math.max(0, i) % all.length];
+}
+function pitchOf(name) {
+  if (state.pitch[name]) return state.pitch[name];
+  return state.pronouns[name] === "he" ? "deeper" : "natural";
+}
+// A look matching the pronoun once it's chosen; otherwise in order.
+function defaultLook(c, i) { return cleanLook(LOOKS[c.pronoun === "he" ? (i < 2 ? 1 : 3) : c.pronoun === "she" ? (i < 2 ? 0 : 2) : i % 4]); }
+const sameLook = (a, b) => JSON.stringify(cleanLook(a)) === JSON.stringify(cleanLook(b));
+const fullHex = h => /^#[0-9a-f]{3}$/i.test(h) ? "#" + [...h.slice(1)].map(x => x + x).join("") : h;
+$("cast").addEventListener("change", e => {
+  const t = e.target;
+  if (t.dataset.pronoun) { state.pronouns[t.dataset.pronoun] = t.value || undefined; if (!t.value) delete state.pronouns[t.dataset.pronoun]; const c = state.story.cast.findIndex(x => x.name === t.dataset.pronoun); state.looks[t.dataset.pronoun] = defaultLook({ pronoun: t.value }, c); }
+  if (t.dataset.look && t.value !== "") state.looks[t.dataset.look] = cleanLook(LOOKS[+t.value]);
+  // Build your own: each change is kept, and the look becomes "Your own look".
+  if (t.dataset.lk) {
+    const who = t.dataset.who, l = cleanLook(state.looks[who]), k = t.dataset.lk;
+    if (k === "beard") l.beard = t.checked;
+    else if (["top", "bottom", "shoes"].includes(k)) l.outfit[k] = t.value;
+    else l[k] = t.value;
+    state.looks[who] = cleanLook(l);
+    state.openLook = who;
+  }
+  saveLooks();
+  if (t.dataset.voice) { state.voices[t.dataset.voice] = t.value; sayOnce(t.dataset.voice); }
+  if (t.dataset.pitch) { state.pitch[t.dataset.pitch] = t.value; sayOnce(t.dataset.pitch); }
+  update();
+});
+
+const MOVE_WORDS = { enter: "comes in", exit: "leaves", sit: "sits", stand: "stands", walk: "walks", nod: "nods", no: "shakes head", arms: "folds arms",
+  drink: "drinks", phone: "on the phone", punch: "punches", fall: "falls", die: "dies", shoot: "shoots", gun: "draws a gun", pick: "picks up", dance: "dances", push: "pushes", getup: "gets up", hold: "holds a glass",
+  give: "hands over", follow: "follows", run: "runs", turn: "turns", lean: "leans", jump: "jumps", kneel: "kneels", lie: "lies down",
+  climb: "climbs", throw: "throws", eat: "eats", flinch: "flinches", bow: "bows", carry: "carries", handle: "handles something" };
+function renderCheck(story) {
+  $("notes").innerHTML = story.notes.map(n => `<li>${esc(n)}</li>`).join("");
+  const names = story.cast.map(c => c.name);
+  const rows = story.scenes.map((s, si) => `<tr><td colspan="2"><strong>Scene ${si + 1}</strong> <span class="muted">${esc(s.place)}${s.set !== s.place ? ` (on the ${esc(s.set)} set)` : ""} · ${esc(s.light)}${s.time ? " · " + esc(s.time) : ""}</span></td></tr>` +
+    s.beats.map(b => b.kind === "line"
+      ? `<tr class="beat-line ${b.how === "guessed" ? "guessed" : ""}"><td><select data-line="${esc(b.key)}" aria-label="Who says this"><option value="">nobody</option>${names.map(n => `<option ${b.speaker === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></td>
+         <td>“${esc(b.text)}” <span class="badge">${{ tag: "said so", paragraph: "same paragraph", continued: "continues", guessed: "guessed", unknown: "not given", chosen: "you chose" }[b.how]}</span>${b.manner !== "plain" ? ` <span class="badge">${b.manner}</span>` : ""}
+         ${b.speaker ? `<div class="take">${state.recording === b.key
+           ? `<button class="rec on" data-rec="${esc(b.key)}">■ Stop</button>`
+           : `<button class="rec" data-rec="${esc(b.key)}">🎙 ${state.takes[b.key] ? "Again" : "Record"}</button>`}${state.takes[b.key]
+           ? `<button data-listen="${esc(b.key)}">▶ ${state.takes[b.key].buffer.duration.toFixed(1)} s</button><button data-drop="${esc(b.key)}" aria-label="Remove the recording">✕</button>` : ""}</div>` : ""}</td></tr>`
+      : `<tr><td>${esc(b.who)}</td><td class="muted">${MOVE_WORDS[b.move] || b.move}${b.target ? ` → ${esc(b.target)}` : ""}${b.item ? ` (${esc(b.item)})` : ""} <span class="badge">“${esc(b.text)}”</span></td></tr>`).join("")).join("");
+  $("check").innerHTML = rows ? `<table>${rows}</table>` : `<p class="muted">Nothing yet.</p>`;
+}
+$("check").addEventListener("change", e => { if (e.target.dataset.line) { state.speakers[e.target.dataset.line] = e.target.value; update(); } });
+
+// ---------------------------------------------------------------- your voice
+let recorder = null;
+$("check").addEventListener("click", async e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.listen) { const take = state.takes[b.dataset.listen]; const line = findLine(b.dataset.listen); if (take) playTake(take, line?.speaker); return; }
+  if (b.dataset.drop) { delete state.takes[b.dataset.drop]; update(); return; }
+  if (!b.dataset.rec) return;
+  if (recorder) { recorder.stop(); return; }
+  const key = b.dataset.rec;
+  try {
+    audio().resume?.();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    const rec = recorder = new MediaRecorder(stream), chunks = [];
+    rec.ondataavailable = ev => ev.data.size && chunks.push(ev.data);
+    rec.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      recorder = null; state.recording = null;
+      try {
+        const raw = await audio().decodeAudioData(await new Blob(chunks, { type: rec.mimeType }).arrayBuffer());
+        const cut = trimBounds(raw.getChannelData(0), raw.sampleRate);
+        if (!cut) { $("status").textContent = "That recording was silent: check the microphone."; update(); return; }
+        const buffer = new AudioBuffer({ length: cut[1] - cut[0], numberOfChannels: 1, sampleRate: raw.sampleRate });
+        buffer.copyToChannel(raw.getChannelData(0).subarray(cut[0], cut[1]), 0);
+        state.takes[key] = { buffer };
+      } catch (err) { $("status").textContent = "Could not use that recording: " + err.message; }
+      update();
+    };
+    rec.start();
+    state.recording = key; update();
+  } catch (err) {
+    recorder = null; state.recording = null;
+    $("status").textContent = "No microphone: " + err.message; update();
+  }
+});
+function findLine(key) { for (const s of state.story.scenes) for (const b of s.beats) if (b.key === key) return b; return null; }
+// Playing a take (listening, or during Watch): the character's pitch applies.
+function playTake(take, speaker) {
+  const src = audio().createBufferSource();
+  src.buffer = take.buffer;
+  src.playbackRate.value = PITCH[pitchOf(speaker)].rate;
+  src.connect(audio().destination);
+  src.start();
+  return src;
+}
+// A line in the phone's voice. Returns the utterance, or null if there's no voice.
+function sayLine(text, name) {
+  if (!synth || state.ttsBlocked) return null;
+  const u = new SpeechSynthesisUtterance(text);
+  const v = voiceOf(name);
+  if (v) { u.voice = v.voice; u.lang = v.voice.lang; }
+  u.pitch = PITCH[pitchOf(name)].tts;
+  u.rate = 1;
+  synth.speak(u);
+  return u;
+}
+function sayOnce(name) { synth?.cancel(); sayLine(`This is ${name}.`, name); }
+
+// ---------------------------------------------------------------- the stage
+let stageMod = null, soundMod = null;
+// A recorded line moves its speaker's head with the recording's own loudness.
+function speechEnvelopes(film) {
+  const out = {};
+  film.lines.forEach((l, i) => { const take = l[2] && state.takes[l[5]]; if (take) out[i] = rmsEnvelope(take.buffer.getChannelData(0), take.buffer.sampleRate, { fps: 24, rate: PITCH[pitchOf(l[2])].rate }); });
+  return out;
+}
+async function ensureStage() {
+  const story = state.story;
+  const castKey = lookKey(story);
+  if (state.stage && state.stageCast === castKey) { const { recast } = stageMod; recast(state.stage, state.film); return state.stage; }
+  stageMod ||= await import("./film/stage.mjs?v=6");
+  const { setup } = stageMod;
+  const looks = Object.fromEntries(story.cast.map((c, i) => [c.name, cleanLook(state.looks[c.name] || defaultLook(c, i))]));
+  if (state.stage) { state.stage.renderer.dispose(); const gl = $("gl"), fresh = gl.cloneNode(); gl.replaceWith(fresh); }
+  $("status").textContent = "Loading people, movements and the room…";
+  state.stage = await setup($("gl"), $("out"), state.film, { looks, shotAt: t => shotAt(state.stage ? state.stage.film : state.film, t), width: WIDTH, height: HEIGHT });
+  state.stageCast = castKey;
+  $("status").textContent = `Loaded ${(state.stage.bytes / 1e6).toFixed(1)} MB in ${(state.stage.loadMs / 1000).toFixed(1)} s.`;
+  return state.stage;
+}
+
+// Typing is read a moment after it stops; a tap before then reads it now, so it plays what's on screen.
+const flush = () => { if (timer) { clearTimeout(timer); timer = 0; update(); } };
+$("play").onclick = async () => {
+  flush();
+  if (!state.story.cast.length || !state.film.lines.length) { $("status").textContent = "Write at least one line someone says first."; return; }
+  // Inside the tap, before anything waits: iOS speaks and plays sound only
+  // when a tap asked for it, so both are unlocked here, once.
+  audio().resume?.();
+  if (synth) { synth.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; synth.speak(u); }
+  $("play").disabled = true;
+  try {
+    const stage = await ensureStage();
+    soundMod ||= await import("./film/sound.mjs?v=1");
+    const { frameFn } = stageMod;
+    const film = state.film;
+    stage.speech = speechEnvelopes(film);
+    const draw = frameFn(stage);
+    // The same sounds as the video, played as the scene reaches them.
+    const cues = $("fx").checked ? soundCues(film) : [], places = $("amb").checked ? ambience(film).filter(a => a.kind !== "room") : [];
+    let nextCue = 0, placeNode = null, placeAt = -1;
+    state.playing = true; $("stop").hidden = false; $("play").textContent = "Play again"; update();
+    // The clock runs in real time, but a line never starts over the one
+    // before it: if someone is still speaking, the scene holds until they stop.
+    let t = 0, last = null, next = 0, busy = null;
+    const heard = window.__film.heard = [];
+    await new Promise(done => {
+      const tick = now => {
+        const step = last === null ? 0 : Math.min(0.1, (now - last) / 1000);
+        last = now;
+        if (!state.playing || t > film.length) return done();
+        const line = film.lines[next];
+        const speaking = busy && busy();
+        if (line && t + step >= line[0]) {
+          t = line[0];
+          if (!speaking) { busy = voice(line); next++; }
+        } else if (!(speaking && line && t >= line[0] - 0.05)) t += step;
+        while (nextCue < cues.length && cues[nextCue].t <= t) {
+          const c = cues[nextCue++];
+          if (c.t > t - 0.25) { soundMod.cue(audio(), audio().destination, audio().currentTime, c.kind); heard.push({ how: "cue", kind: c.kind }); }
+        }
+        const pi = places.findIndex(a => t >= a.start && t < a.end);
+        if (pi !== placeAt) {
+          placeNode?.disconnect(); placeNode = null; placeAt = pi;
+          if (pi >= 0) { const a = places[pi]; placeNode = soundMod.place(audio(), audio().destination, a.kind, a.light, audio().currentTime, audio().currentTime + (a.end - a.start) + 20); heard.push({ how: "place", kind: a.kind }); }
+        }
+        draw(t);
+        $("status").textContent = `${clock(t)} / ${clock(film.length)}${state.ttsBlocked ? " · subtitles only: this browser didn't speak" : ""}`;
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    placeNode?.disconnect();
+    // Speak one line: the person's own recording if there is one, else the phone's voice.
+    function voice(line) {
+      const [, , name, text, , key] = line;
+      if (!name) return null;
+      const take = state.takes[key];
+      if (take) {
+        let ended = false;
+        const src = playTake(take, name); src.onended = () => { ended = true; };
+        heard.push({ key, how: "recording" });
+        return () => !ended;
+      }
+      const u = sayLine(text, name);
+      if (!u) return null;
+      let started = false, ended = false;
+      u.onstart = () => { started = true; }; u.onend = u.onerror = () => { ended = true; };
+      heard.push({ key, how: "voice", voice: u.voice?.name || null, pitch: u.pitch });
+      const asked = performance.now();
+      // A browser that refuses to speak must not hold the scene for ever.
+      return () => {
+        if (ended) return false;
+        if (!started && performance.now() - asked > 2500) { state.ttsBlocked = true; synth.cancel(); return false; }
+        return true;
+      };
+    }
+  } catch (e) {
+    $("status").textContent = "Could not play: " + e.message;
+  } finally { state.playing = false; synth?.cancel(); $("stop").hidden = true; $("play").disabled = false; update(); }
+};
+$("stop").onclick = () => { state.playing = false; synth?.cancel(); };
+
+let cancelled = false;
+$("make").onclick = async () => {
+  flush();
+  if ($("make").disabled) { $("status").textContent = "The story changed: press Play to load its people first."; return; }
+  $("make").disabled = $("play").disabled = true; $("cancel").hidden = false; $("prog").hidden = false; cancelled = false;
+  let lock = null;
+  try { lock = await navigator.wakeLock?.request("screen"); } catch {}
+  try {
+    const stage = await ensureStage();
+    const voices = state.film.lines.filter(l => l[2] && state.takes[l[5]])
+      .map(l => ({ at: l[0], buffer: state.takes[l[5]].buffer, rate: PITCH[pitchOf(l[2])].rate }));
+    stage.speech = speechEnvelopes(state.film);
+    run = { total: Math.round(state.film.length * FPS), frame: 0, fps: FPS, started: new Date().toISOString(), finished: false, hidden: false };
+    const t0 = performance.now();
+    const r = await stageMod.makeVideo(stage, { seconds: state.film.length, fps: FPS, voices, music: $("music").checked, bitrate: +$("quality").value,
+      cues: $("fx").checked ? soundCues(state.film) : [], places: $("amb").checked ? ambience(state.film).filter(a => a.kind !== "room") : [],
+      onFrame: (f) => {
+        if (cancelled) throw new Error("stopped");
+        // How far it got, written as it goes: if the tab dies, the next visit says so.
+        if (f % 24 === 0) { run.frame = f; run.elapsedMs = Math.round(performance.now() - t0); run.hidden ||= document.hidden; safe(() => localStorage.setItem(RUN, JSON.stringify(run))); }
+      },
+      onProgress: (k, ms) => { $("prog").value = k; $("status").textContent = `Making the video: ${Math.round(k * 100)}% — about ${Math.ceil(ms / k * (1 - k) / 1000)} s left`; } });
+    const url = URL.createObjectURL(r.blob), name = `film.${r.ext}`;
+    $("result").innerHTML = "";
+    const v = document.createElement("video"); v.src = url; v.controls = true; v.playsInline = true; $("result").append(v);
+    const a = document.createElement("a"); a.href = url; a.download = name; a.className = "dl"; a.textContent = `Save the video (${(r.blob.size / 1e6).toFixed(1)} MB)`; $("result").append(a);
+    const file = new File([r.blob], name, { type: r.blob.type });
+    if (navigator.canShare?.({ files: [file] })) { const s = document.createElement("button"); s.textContent = "Share"; s.onclick = () => navigator.share({ files: [file] }).catch(() => {}); $("result").append(" ", s); }
+    const spoken = voices.length, total = state.film.lines.filter(l => l[2]).length;
+    $("status").textContent = `Made ${clock(state.film.length)} of video in ${(r.wallMs / 1000).toFixed(0)} s (${r.ext.toUpperCase()}). ` +
+      (!r.audioCodec ? "Silent: this browser has no audio encoder." : spoken === total ? "Every line is in your voice." : `${spoken} of ${total} lines are heard; record the rest in step 3.`);
+    window.__film.video = { ok: true, ext: r.ext, audio: r.audioCodec, frames: r.frames, bytes: r.blob.size, bitrate: r.bitrate, voices: voices.map(v => v.at) };
+    run.finished = true; safe(() => localStorage.setItem(RUN, JSON.stringify(run)));
+    $("failure").hidden = $("copyfail").hidden = true;
+  } catch (e) {
+    run && (run.finished = true, safe(() => localStorage.setItem(RUN, JSON.stringify(run))));
+    $("status").textContent = e.message === "stopped" ? "Stopped." : "The video failed: " + e.message;
+    window.__film.video = { ok: false, error: String(e) };
+    // A failure on a device nobody here can reach has to be reported, not rumoured.
+    if (e.message !== "stopped") {
+      $("failure").textContent = JSON.stringify({ page: "film", when: new Date().toISOString(), error: String(e && e.stack || e), reachedFrame: run?.frame, of: run?.total,
+        seconds: state.film.length, fps: FPS, size: `${WIDTH}x${HEIGHT}`, bitrate: +$("quality").value, sets: (state.film.sets || []).map(s => s.set),
+        people: state.story.cast.length, ua: navigator.userAgent, webcodecs: typeof VideoEncoder !== "undefined" }, null, 2);
+      $("failure").hidden = $("copyfail").hidden = false;
+    }
+  } finally { lock?.release?.(); $("cancel").hidden = true; $("prog").hidden = true; $("play").disabled = false; update(); }
+};
+$("cancel").onclick = () => { cancelled = true; };
+$("copyfail").onclick = () => navigator.clipboard?.writeText($("failure").textContent);
+
+// ---------------------------------------------------------------- stage 5: a video that died
+const RUN = "sketchgpt.film.run";
+let run = null;
+const lastRun = safe(() => JSON.parse(localStorage.getItem(RUN) || "null"));
+if (lastRun && !lastRun.finished) {
+  $("lastrun").hidden = false;
+  $("lastrun").textContent = `The last video stopped at ${clock(lastRun.frame / lastRun.fps)} of ${clock(lastRun.total / lastRun.fps)}` +
+    `${lastRun.elapsedMs ? ` (${Math.round(lastRun.elapsedMs / 1000)} s in)` : ""}${lastRun.hidden ? ", after the page went to the background" : ""}. ` +
+    `Keep the screen on and this page in front, or try "For sharing", which is smaller.`;
+  safe(() => localStorage.setItem(RUN, JSON.stringify({ ...lastRun, finished: true, reported: true })));
+}
+
+// ---------------------------------------------------------------- stage 6: share and export
+function filmData() {
+  const cast = state.story.cast.map(c => c.name), pick = o => Object.fromEntries(cast.filter(n => o[n] !== undefined).map(n => [n, o[n]]));
+  return { text: $("story").value, pronouns: pick(state.pronouns), looks: pick(state.looks), pitch: pick(state.pitch),
+    voices: Object.fromEntries(cast.map(n => [n, voiceOf(n)?.voice?.name]).filter(([, v]) => v)),
+    speakers: state.speakers, fx: $("fx").checked, amb: $("amb").checked, music: $("music").checked };
+}
+$("sharelink").onclick = async () => {
+  if (!$("story").value.trim()) { $("shared").textContent = "Write something first."; return; }
+  const frag = await encodeFilm(filmData());
+  const url = location.origin + location.pathname + "#" + frag;
+  window.__film.link = url;
+  const note = `The link is ${url.length.toLocaleString()} characters: the whole story is in it. Recordings aren't — whoever opens it hears their own phone's voice.`;
+  try {
+    if (navigator.share) { await navigator.share({ url, title: "A film" }); $("shared").textContent = note; return; }
+  } catch (e) { if (e.name === "AbortError") return; }
+  try { await navigator.clipboard.writeText(url); $("shared").textContent = "Link copied. " + note; }
+  catch { $("shared").innerHTML = ""; const a = document.createElement("a"); a.href = url; a.textContent = "Your link"; $("shared").append(a, " — " + note); }
+};
+$("fountain").onclick = () => {
+  const text = toFountain(isFountain($("story").value) ? fromFountain($("story").value) : $("story").value, state.story, { title: "Untitled" });
+  window.__film.fountain = text;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" })); a.download = "film.fountain"; a.click();
+  $("shared").textContent = "Saved as a screenplay (Fountain). Screenplay apps like Highland, Slugline, WriterSolo and Fade In open it.";
+};
+
+// Opening a shared film: its story replaces the draft on screen (the draft on this device is kept until it's edited).
+async function openLink() {
+  if (!/^#film=/.test(location.hash)) return;
+  try {
+    const f = await decodeFilm(location.hash);
+    Object.assign(state.pronouns, f.pronouns); Object.assign(state.looks, f.looks); Object.assign(state.pitch, f.pitch);
+    Object.assign(state.speakers, f.speakers);
+    state.linkVoices = f.voices;
+    $("fx").checked = f.fx; $("amb").checked = f.amb; $("music").checked = f.music;
+    $("story").value = f.text;
+    $("opened").hidden = false;
+    $("opened").textContent = "Opened from a link: the story, cast and looks are the sender's. Any recordings stayed on their device; the phone's voice reads the lines here.";
+    state.fromLink = true;
+    update();
+  } catch (e) {
+    $("opened").hidden = false; $("opened").className = "warn"; $("opened").textContent = e.message;
+  }
+}
+
+// For the tests: the page's state, and single frames.
+window.__film = { state, still: t => stageMod.frameFn(state.stage)(t) };
+update();
+openLink();
+</script>
+</body>
+</html>

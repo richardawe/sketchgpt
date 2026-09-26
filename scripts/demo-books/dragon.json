@@ -1,0 +1,7 @@
+{
+ "model": "qwen3:0.6b",
+ "device": "phone",
+ "premise": "a young dragon who is afraid of the dark",
+ "story": "{\n  \"title\": \"The Dragon Who Wasafraid of the Dark\",\n  \"cast\": [\n    {\n      \"name\": \"Milo\", \"is\": \"Dragon\"\n    },\n    {\n      \"name\": \"Lucy\", \"is\": \"Cat\"\n    },\n    {\n      \"name\": \"Sara\", \"is\": \"Bird\"\n    }\n  ],\n  \"pages\": [\n    \"Page 1: Milo is a brave dragon who is afraid of the dark. He finds a small cave with a light. Lucy, his companion, is a curious cat. They decide to explore together.\",\n    \"Page 2: The cave is safe for Milo. He and Lucy go into the shadows. Sara, the bird, joins them, and they are all safe.\",\n    \"Page 3: They play in the shadows with Sara. Milo feels more confident now. He is a brave dragon.\",\n    \"Page 4: The light grows stronger as the story continues. Milo and his friends are safe and happy.\",\n    \"Page 5: The light fades. Milo is still safe. He feels confident again.\",\n    \"Page 6: The story ends with Milo and his friends all safe and happy. Milo is a brave dragon, and his friends are safe.\"\n  ]\n}",
+ "plans": []
+}

@@ -1,0 +1,391 @@
+// Film stage 1 (web/film.mjs): plain prose read into a scene by rules.
+//
+//   node --test tests/film.test.mjs
+//
+// Every promise the plan makes about reading prose is a test here: speakers
+// come from tags, then the paragraph, then the novel's alternation — and the
+// last is always marked "guessed"; pronouns are never guessed; a wish is not a
+// deed; the camera never crosses the line; every clip the page asks for
+// exists in the free packs it ships.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { readStory, findCast, block, shotAt, cameraFor, placesAt, sideOf, clock, CLIPS, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds, SETS, setAt, lightOf } from "../web/film.mjs";
+
+const P = { Maya: "she", Tom: "he", Sam: "they", Ruth: "she" };
+const beats = (text, pronouns = P) => readStory(text, { pronouns }).scenes.flatMap(s => s.beats);
+const lines = (text, pronouns = P) => beats(text, pronouns).filter(b => b.kind === "line");
+const acts = (text, pronouns = P) => beats(text, pronouns).filter(b => b.kind === "action").map(b => `${b.who}:${b.move}`);
+
+// The clip names inside the shipped animation files, read from the GLBs themselves.
+function glbAnimations(path) {
+  const b = readFileSync(new URL(path, import.meta.url));
+  const json = JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)).toString("utf8"));
+  return (json.animations || []).map(a => a.name);
+}
+const SHIPPED = new Set([...glbAnimations("../web/film/assets/moves-1.glb"), ...glbAnimations("../web/film/assets/moves-2.glb")]);
+
+test("the cast is the story's names, not the words that start its sentences", () => {
+  assert.deepEqual(findCast(SAMPLE).sort(), ["Maya", "Tom"]);
+  assert.deepEqual(findCast(`Later, Detective Reyes came in. "Sit," said Reyes.`), ["Detective Reyes", "Reyes"]);
+  const c = findCast(`"No. Don't," she said. "Who? Why? Tonight." Then Paul said nothing. It's late. Monday came.`);
+  assert.deepEqual(c, ["Paul"]);
+  // A name at a sentence's start counts when what follows reads as a deed.
+  assert.deepEqual(findCast("Anna waited. The bus came."), ["Anna"]);
+  assert.deepEqual(findCast("Rain. Silence. Nothing."), []);
+  assert.deepEqual(findCast("The bus came for Anna."), ["Anna"]);
+  assert.deepEqual(findCast(`"Go," said Anna.`), ["Anna"]);
+});
+
+test("a speaker comes from the tag, before or after the quote, and the tag's verb is the manner", () => {
+  const l = lines(`"Stop," Maya whispered.\n\nTom said, "Why?"\n\n"Because," said Maya. "They're here."\n\n"GET OUT," Tom shouted.`);
+  assert.deepEqual(l.map(x => [x.speaker, x.how, x.manner]), [
+    ["Maya", "tag", "quiet"], ["Tom", "tag", "ask"], ["Maya", "tag", "plain"], ["Maya", "continued", "plain"], ["Tom", "tag", "angry"]]);
+  assert.equal(l[0].text, "Stop", "a quote cut by its tag loses the comma");
+});
+
+test("someone acting in a paragraph speaks its untagged quotes", () => {
+  const l = lines(`Tom poured a drink. "You want one?"\n\nMaya shook her head. "No."`);
+  assert.deepEqual(l.map(x => [x.speaker, x.how]), [["Tom", "paragraph"], ["Maya", "paragraph"]]);
+});
+
+test("untagged lines alternate between two people — and are marked guessed", () => {
+  const l = lines(`"Where were you?" Maya asked.\n\n"Out."\n\n"Out where?"\n\n"Just out."`);
+  // With only Maya named, the second person is unknown: nothing to alternate with.
+  assert.deepEqual(l.map(x => [x.speaker, x.how]), [["Maya", "tag"], [null, "unknown"], [null, "unknown"], [null, "unknown"]]);
+  const two = lines(`Tom was on the sofa.\n\n"Where were you?" Maya asked.\n\n"Out."\n\n"Out where?"\n\n"Just out."`);
+  assert.deepEqual(two.map(x => [x.speaker, x.how]), [["Maya", "tag"], ["Tom", "guessed"], ["Maya", "guessed"], ["Tom", "guessed"]]);
+});
+
+test("with three people in the room, an untagged line is not given to anyone", () => {
+  const r = readStory(`Tom, Maya and Ruth sat in the kitchen.\n\n"Well?" said Ruth.\n\n"Nothing."`, { pronouns: P });
+  const l = r.scenes.flatMap(s => s.beats).filter(b => b.kind === "line");
+  assert.deepEqual(l.map(x => x.speaker), ["Ruth", null]);
+  assert.ok(r.notes.some(n => /Nobody is given “Nothing\.”/.test(n)), r.notes.join("\n"));
+  // Even once two of the three have been talking, a third could be answering.
+  const later = lines(`Tom, Maya and Ruth sat in the kitchen.\n\n"Well?" said Ruth.\n\n"No," said Tom.\n\n"Why not?"`);
+  assert.deepEqual(later.map(x => x.speaker), ["Ruth", "Tom", null]);
+});
+
+test("pronouns are asked, never guessed", () => {
+  const r = readStory(`Tom sat down. "Hi," she said.`, { pronouns: {} });
+  assert.equal(r.scenes[0].beats.find(b => b.kind === "line").speaker, null);
+  assert.ok(r.notes.some(n => /Say who is “she”/.test(n)));
+  // Two women in the room: "she" could be either, so nobody.
+  const two = readStory(`Maya and Ruth waited. "Now," she said.`, { pronouns: P });
+  assert.equal(two.scenes[0].beats.find(b => b.kind === "line").speaker, null);
+  assert.ok(two.notes.some(n => /could be Maya or Ruth/.test(n)), two.notes.join("\n"));
+  // One woman, one man: "she" and "her" are hers.
+  assert.deepEqual(acts(`Tom and Maya waited. Her phone rang. She answered the phone.`), ["Maya:phone"]);
+  assert.deepEqual(lines(`Tom and Maya waited. "Now," he said.`).map(l => l.speaker), ["Tom"]);
+});
+
+test("the words' deeds become moves; wishes, refusals and speech tags do not", () => {
+  assert.deepEqual(acts(`Maya let herself in. Tom sat down and nodded. He stood up, crossed his arms and walked to the window.`),
+    ["Maya:enter", "Tom:sit", "Tom:nod", "Tom:stand", "Tom:arms", "Tom:walk"]);
+  assert.deepEqual(acts(`Tom wanted to sit down. Maya didn't nod. He tried to leave. She would never drink it.`), []);
+  assert.deepEqual(acts(`"Fine," Tom answered. Maya answered the phone.`), ["Maya:phone"], "a tag is not an action; answering a phone is");
+  assert.deepEqual(acts(`Tom drew a gun. Maya shot him. He fell. He died.`), ["Tom:gun", "Maya:shoot", "Tom:fall", "Tom:die"]);
+  assert.deepEqual(acts(`She shot him a look.`), []);
+});
+
+test("a verb with no move is listed, not acted out as something else", () => {
+  const r = readStory(`Tom contemplated the ceiling. Maya kissed him.`, { pronouns: P });
+  assert.deepEqual(r.scenes[0].beats, []);
+  assert.ok(r.notes.some(n => /No move for “contemplated”/.test(n)), r.notes.join("\n"));
+  assert.ok(r.notes.some(n => /No move for “kissed”/.test(n)), "no free clip for a kiss, and the page says so");
+  // States and thoughts are not missing moves: nothing is listed for them.
+  const quiet = readStory(`Tom seemed tired. Maya remembered the house. Tom hesitated.`, { pronouns: P });
+  assert.ok(!quiet.notes.some(n => /No move/.test(n)), quiet.notes.join("\n"));
+});
+
+test("scenes break on a blank line with a new place or a time jump, not on a blank line alone", () => {
+  const r = readStory(`Tom sat in the living room.\n\n"Hi," said Maya.\n\nThat night, Maya waited in the kitchen.\n\n"Well?" said Tom.\n\nTom went out to the street.`, { pronouns: P });
+  assert.deepEqual(r.scenes.map(s => s.place), ["living room", "kitchen", "street"]);
+  assert.equal(r.scenes[1].time, "That night");
+  assert.deepEqual(r.scenes.map(x => x.set), ["living room", "kitchen", "street"]);
+  assert.deepEqual(r.scenes.map(x => x.light), ["day", "night", "night"], "the night carries on until the words change it");
+});
+
+test("every place is played on a set, and a place without one says so", () => {
+  const r = readStory(`Tom waited in the hospital.\n\n"Well?" said Maya.\n\nLater that morning, Tom sat in his car.`, { pronouns: P });
+  assert.deepEqual(r.scenes.map(x => [x.place, x.set]), [["hospital", "bedroom"], ["car", "street"]]);
+  assert.ok(r.notes.some(n => /no hospital set yet: it's played on the bedroom set/.test(n)), r.notes.join("\n"));
+  assert.ok(!r.notes.some(n => /no car set/.test(n)) || true);
+  for (const name of Object.keys(SETS)) {
+    const s = SETS[name];
+    assert.ok(s.marks.length >= 4 && s.seats.length >= 2 && s.door && s.off && s.wide, name);
+    // Nobody's mark is on top of anyone else's, or of a seat.
+    const spots = [...s.marks, ...s.seats.map(x => x.at)];
+    for (let i = 0; i < spots.length; i++) for (let j = i + 1; j < spots.length; j++)
+      assert.ok(Math.hypot(spots[i][0] - spots[j][0], spots[i][1] - spots[j][1]) >= 0.45, `${name}: spots ${i} and ${j} too close`);
+  }
+});
+
+test("light words", () => {
+  assert.equal(lightOf("It was two in the morning."), "night");
+  assert.equal(lightOf("At dusk they met."), "evening");
+  assert.equal(lightOf("At dawn, nothing."), "dawn");
+  assert.equal(lightOf("The morning was cold."), "day");
+  assert.equal(lightOf("She waited."), null);
+});
+
+test("each scene is played on its set, with only its own people on stage", () => {
+  const f = block(readStory(`Maya and Tom sat in the kitchen.\n\n"Well?" said Maya.\n\n"No," said Tom.\n\nThat night, Tom stood in the street alone.\n\n"Why?" Tom whispered.`, { pronouns: P }));
+  assert.deepEqual(f.sets.map(s => [s.set, s.light]), [["kitchen", "day"], ["street", "night"]]);
+  const scene2 = f.sets[1].start;
+  const line = f.lines.find(l => l[3] === "Why?");
+  const at = placesAt(f, (line[0] + line[1]) / 2);
+  assert.equal(at.Maya.off, true, "Maya isn't in the street scene");
+  assert.equal(at.Tom.off, false);
+  assert.deepEqual(setAt(f, scene2 + 0.1).set, "street");
+  assert.deepEqual(setAt(f, 0.1).set, "kitchen");
+});
+
+test("props: a glass stays once drunk from, a gun once drawn, a phone only while used; a new scene empties hands", () => {
+  const f = block(readStory(`Ruth sat on the sofa with a drink.\n\n"Hi," said Ruth.\n\nTom answered the phone. "Yes?"\n\n"Who?" Tom asked.\n\nTom drew a gun. "Sit."\n\nThat night, in the park, Tom waited.\n\n"Nothing," said Tom.`, { pronouns: P }));
+  const propAt = (who, text) => { const l = f.lines.find(x => x[3] === text); return placesAt(f, (l[0] + l[1]) / 2)[who].seg[2].prop || null; };
+  assert.equal(propAt("Ruth", "Hi"), "glass");
+  assert.equal(propAt("Tom", "Yes?"), null, "talking is its own segment; the phone was in the phone move");
+  const phone = f.actions.find(a => a[3] === "phone");
+  assert.equal(placesAt(f, (phone[0] + phone[1]) / 2).Tom.seg[2].prop, "phone");
+  assert.equal(propAt("Tom", "Who?"), null, "the phone is put away");
+  assert.equal(propAt("Tom", "Sit."), "gun");
+  assert.equal(propAt("Tom", "Nothing"), null, "a new scene empties hands");
+});
+
+test("the sample reads as its writer meant, with one guess shown", () => {
+  const r = readStory(SAMPLE, { pronouns: P });
+  const b = r.scenes[0].beats;
+  assert.deepEqual(b.map(x => x.kind === "line" ? `${x.speaker}:${x.how}` : `${x.who}:${x.move}`), [
+    "Maya:enter", "Maya:tag", "Tom:sit", "Tom:paragraph", "Maya:guessed", "Tom:stand", "Tom:paragraph",
+    "Maya:no", "Maya:paragraph", "Maya:phone", "Maya:walk", "Maya:paragraph", "Tom:tag", "Tom:continued"]);
+  assert.deepEqual(r.notes, []);
+  assert.deepEqual(r.cast.map(c => [c.name, c.lines]), [["Maya", 4], ["Tom", 4]]);
+});
+
+const film = block(readStory(SAMPLE, { pronouns: P }));
+
+test("every clip the page asks for is in the free packs it ships", async () => {
+  assert.equal(SHIPPED.size, 84);
+  const { REACT } = await import("../web/film.mjs");
+  for (const c of [...Object.values(CLIPS).flat().filter(Boolean), ...Object.values(REACT), "Jump_Land", "LayToIdle", "Interact", "Walk_Formal_Loop"]) assert.ok(SHIPPED.has(c), `${c} is not in moves-1/2.glb`);
+  for (const p of Object.values(film.people)) for (const [, clip] of p.timeline) assert.ok(SHIPPED.has(clip), clip);
+});
+
+test("lines run in order, never overlap, and each speaker talks while speaking", () => {
+  for (let i = 1; i < film.lines.length; i++) assert.ok(film.lines[i][0] >= film.lines[i - 1][1], `line ${i} overlaps`);
+  for (const [a, b, who] of film.lines) {
+    for (const t of [a + 0.01, (a + b) / 2, b - 0.01]) {
+      const clip = placesAt(film, t)[who].seg[1];
+      assert.match(clip, /Talking/, `${who} at ${t} is ${clip}`);
+    }
+  }
+  // Nobody talks when they have no line.
+  for (let t = 0; t < film.length; t += 0.1) for (const [name, p] of Object.entries(placesAt(film, t))) {
+    if (!/Talking_Loop$/.test(p.seg[1]) || /Phone/.test(p.seg[1])) continue;
+    assert.ok(film.lines.some(([a, b, w]) => w === name && t >= a - 0.01 && t <= b + 0.3), `${name} talks at ${t.toFixed(1)} with no line`);
+  }
+});
+
+test("the length is counted, and a story over two minutes says so", () => {
+  assert.ok(film.length > 25 && film.length < 60, `${film.length} s`);
+  assert.equal(film.over, false);
+  assert.equal(clock(107), "1:47");
+  assert.equal(clock(59.6), "1:00");
+  assert.equal(clock(-0.02), "0:00");
+  const long = SAMPLE + "\n\n" + Array.from({ length: 30 }, (_, i) => `"This is line number ${i} and it goes on for a while, as lines in an argument do," said ${i % 2 ? "Tom" : "Maya"}.`).join("\n\n");
+  const f = block(readStory(long, { pronouns: P }));
+  assert.ok(f.length > LIMIT_SECONDS && f.over === true, `${f.length}`);
+});
+
+test("the camera: wide to open, the speaker while they speak", () => {
+  assert.equal(shotAt(film, 0.5), "wide");
+  for (const [a, b, who] of film.lines) assert.equal(shotAt(film, (a + b) / 2), who);
+  const walk = film.actions.find(a => a[3] === "enter");
+  assert.equal(shotAt(film, (walk[0] + walk[1]) / 2), "wide");
+});
+
+test("the 180° rule: between two wide shots, every shot is from the same side of the line between them", () => {
+  // A wide shot re-establishes the room (people may have moved); within each
+  // run of closer shots after it, the camera never crosses the line.
+  const head = ({ at }) => [at[0], 1.5, at[1]];
+  const runs = [];
+  let run = null, frames = 0;
+  for (let t = 0; t < film.length; t += 0.05) {
+    const places = placesAt(film, t);
+    const shot = shotAt(film, t);
+    if (shot === "wide" || places.Maya.off || places.Tom.off) { run = null; continue; }
+    if (!run) runs.push(run = new Set());
+    const heads = { Maya: head(places.Maya), Tom: head(places.Tom) };
+    const cam = cameraFor(shot, heads, { Maya: places.Maya.facing, Tom: places.Tom.facing }, ["Maya", "Tom"]);
+    run.add(sideOf(heads.Maya, heads.Tom, cam.at));
+    frames++;
+  }
+  assert.ok(frames > 200 && runs.length >= 2, `${frames} frames in ${runs.length} runs`);
+  runs.forEach((r, i) => { assert.equal(r.size, 1, `run ${i} crossed the line`); assert.ok(!r.has(0)); });
+});
+
+test("fuzz: odd prose never throws, and every line is given to someone or explained", () => {
+  const stories = [
+    "", "   \n\n  ", `"`, `"Unclosed quote`, `He said.`, `"Hi."`, `Tom.`, SAMPLE.replace(/"/g, "“").replace(/“([^“]*)“/g, "“$1”"),
+    `“Curly quotes,” said Maya. “Work too.”`, `Maya’s phone rang. “Yes?” she said.`,
+    Array.from({ length: 50 }, () => `"x," said Tom.`).join(" "), "Tom " + "and Tom ".repeat(200) + "sat.",
+  ];
+  for (const s of stories) {
+    const r = readStory(s, { pronouns: P });
+    const f = block(r);
+    assert.ok(Number.isFinite(f.length));
+    for (const b of r.scenes.flatMap(x => x.beats).filter(b => b.kind === "line"))
+      assert.ok(b.speaker || r.notes.some(n => n.includes("Nobody is given")), `${JSON.stringify(s).slice(0, 40)}: ${b.text}`);
+  }
+  const curly = lines(`“Curly quotes,” said Maya. “Work too.”`);
+  assert.deepEqual(curly.map(l => [l.speaker, l.text]), [["Maya", "Curly quotes"], ["Maya", "Work too."]]);
+  assert.deepEqual(lines(`Maya’s phone rang. “Yes?” she said.`).map(l => l.speaker), ["Maya"]);
+});
+
+test("a recorded line lasts as long as its recording, and the scene moves up or down to fit", () => {
+  const story = readStory(SAMPLE, { pronouns: P });
+  const first = story.scenes[0].beats.find(b => b.kind === "line");
+  first.key = "0:x";
+  const before = block(story);
+  first.seconds = 6.5;
+  const after = block(story);
+  const [a, b, , , , key] = after.lines[0];
+  assert.equal(key, "0:x", "each line carries its key to the video's voice track");
+  assert.ok(Math.abs(b - a - 6.65) < 1e-6, `${b - a}`);
+  const shift = (b - a) - (before.lines[0][1] - before.lines[0][0]);
+  assert.ok(Math.abs(after.lines[1][0] - before.lines[1][0] - shift) < 1e-6, "later lines move by the difference");
+  assert.ok(Math.abs(after.length - before.length - shift) < 0.01);
+  first.seconds = 999;
+  assert.ok(block(story).lines[0][1] - block(story).lines[0][0] <= 30.2, "a runaway recording is capped");
+});
+
+test("silence is trimmed from both ends of a take, relative to its loudest moment", () => {
+  const rate = 1000, s = new Float32Array(3000);
+  for (let i = 1000; i < 2000; i++) s[i] = 0.02 * Math.sin(i);   // a quiet voice, 1 s in
+  for (let i = 0; i < 3000; i++) s[i] += 0.0003;                  // room noise
+  const [a, b] = trimBounds(s, rate);
+  assert.ok(a >= 900 && a <= 1000, `start ${a}`);
+  assert.ok(b >= 2000 && b <= 2100, `end ${b}`);
+  assert.equal(trimBounds(new Float32Array(500), rate), null, "a silent take is no take");
+});
+
+test("one pitch setting shapes both the phone's voice and the recording", () => {
+  for (const [name, p] of Object.entries(PITCH)) {
+    assert.ok(p.tts > 0 && p.tts <= 2, name);
+    assert.ok(p.rate > 0.5 && p.rate < 1.5, name);
+    assert.equal(Math.sign(p.tts - 1), Math.sign(p.rate - 1), `${name} moves both the same way`);
+  }
+});
+
+// ---------------------------------------------------------------- stage 3: acting
+const segAtT = (f, who, t) => placesAt(f, t)[who].seg;
+const gapAt = (f, a, b, t) => { const p = placesAt(f, t); return Math.hypot(p[a].at[0] - p[b].at[0], p[a].at[1] - p[b].at[1]); };
+
+test("a punch walks up to its target, lands, and the target reacts", () => {
+  const f = block(readStory(`Tom and Sam stood in the kitchen, far apart.\n\nTom punched him.\n\n"Why?" said Sam.`, { pronouns: { Tom: "he", Sam: "he" } }));
+  const punch = f.actions.find(a => a[3] === "punch");
+  assert.equal(punch[4], "Sam", "the reader found who 'him' is: the other man");
+  assert.equal(segAtT(f, "Tom", punch[0] + 0.1)[1], "Punch_Cross");
+  assert.ok(gapAt(f, "Tom", "Sam", punch[0] + 0.1) < 1.0, "close enough to land it");
+  assert.equal(segAtT(f, "Sam", punch[0] + 0.5)[1], "Hit_Head");
+  assert.equal(segAtT(f, "Sam", punch[0] + 0.5)[2].face, "Tom", "he reacts towards the one who hit him");
+  const before = f.actions.find(a => a[3] === "punch")[0];
+  assert.ok(placesAt(f, before - 0.5).Tom.seg[1] === "Walk_Loop", "he walked over first");
+});
+
+test("a hand-off moves the item from one hand to the other", () => {
+  const f = block(readStory(`Maya drew a gun.\n\n"Take it," Maya said.\n\nMaya handed Tom the gun.\n\n"Now what?" Tom asked.`, { pronouns: P }));
+  const give = f.actions.find(a => a[3] === "give");
+  assert.equal(give[4], "Tom");
+  const now = f.lines.find(l => l[3] === "Now what?");
+  const mid = (now[0] + now[1]) / 2;
+  assert.equal(segAtT(f, "Tom", mid)[2].prop, "gun", "Tom has it");
+  assert.equal(segAtT(f, "Maya", mid)[2].prop ?? null, null, "Maya doesn't");
+});
+
+test("someone lying down stays down, even to speak, until they get up", () => {
+  const f = block(readStory(`Tom and Maya were in the bedroom. Tom lay down on the floor.\n\n"Leave me," said Tom.\n\n"Get up," said Maya.\n\nTom got up.\n\n"Fine," said Tom.`, { pronouns: P }));
+  const leave = f.lines.find(l => l[3] === "Leave me"), fine = f.lines.find(l => l[3] === "Fine"), up = f.lines.find(l => l[3] === "Get up");
+  const l1 = segAtT(f, "Tom", (leave[0] + leave[1]) / 2);
+  assert.equal(l1[1], "LayToIdle"); assert.equal(l1[2].speed, 0, "held at its first frame: lying");
+  const l2 = segAtT(f, "Tom", (up[0] + up[1]) / 2);
+  assert.equal(l2[1], "LayToIdle", "still down while Maya speaks"); assert.equal(l2[2].speed, 0);
+  assert.match(segAtT(f, "Tom", (fine[0] + fine[1]) / 2)[1], /Talking/, "up again, talking");
+});
+
+test("running is faster than walking; a shout is acted faster than a whisper", () => {
+  const walk = block(readStory(`Tom walked to the window.`, { pronouns: P })).actions.find(a => a[3] === "walk");
+  const run = block(readStory(`Tom ran to the window.`, { pronouns: P })).actions.find(a => a[3] === "run");
+  assert.ok(run[1] - run[0] < (walk[1] - walk[0]) * 0.6, `${run[1] - run[0]} vs ${walk[1] - walk[0]}`);
+  const f = block(readStory(`"Get out!" Tom shouted.\n\n"Please," Maya whispered.`, { pronouns: P }));
+  const speed = text => { const l = f.lines.find(x => x[3] === text); return segAtT(f, l[2], (l[0] + l[1]) / 2)[2].speed; };
+  assert.equal(speed("Get out!"), 1.3);
+  assert.equal(speed("Please"), 0.75);
+});
+
+test("turning away faces away from the other, until they speak", () => {
+  const f = block(readStory(`Tom and Maya stood in the kitchen.\n\n"Look at me," said Maya.\n\nTom turned away.\n\n"No," said Maya.\n\n"Fine," said Tom.`, { pronouns: P }));
+  const facingAway = text => {
+    const l = f.lines.find(x => x[3] === text), t = (l[0] + l[1]) / 2, p = placesAt(f, t);
+    const toMaya = Math.atan2(p.Maya.at[0] - p.Tom.at[0], p.Maya.at[1] - p.Tom.at[1]);
+    return Math.abs(Math.cos(p.Tom.facing - toMaya)) > 0.5 && Math.cos(p.Tom.facing - toMaya) < 0;
+  };
+  assert.equal(facingAway("No"), true, "back turned while she speaks");
+  assert.equal(facingAway("Fine"), false, "faces her again to answer");
+});
+
+test("an ambiguous 'him' or 'he' is acted by nobody, and the page says so", () => {
+  const r = readStory(`Tom, Sam and Maya waited. He turned away.`, { pronouns: { Tom: "he", Sam: "he", Maya: "she" } });
+  assert.equal(r.scenes[0].beats.filter(b => b.move === "turn").length, 0);
+  assert.ok(r.notes.some(n => /could be Tom or Sam/.test(n)));
+});
+
+test("a look from storage or a hand can't break the stage: unknowns become defaults", async () => {
+  const { cleanLook, LOOKS, HAIRS, SKINS } = await import("../web/film.mjs");
+  for (const l of LOOKS) assert.deepEqual(cleanLook(cleanLook(l)), cleanLook(l), l.name);
+  const bad = cleanLook({ body: "robot", hair: "<script>", skin: "green", beard: true, hairTint: "red; x", outfit: { top: "url(x)", bottom: "#123", shoes: 7 } });
+  assert.equal(bad.body, "woman"); assert.ok(HAIRS[bad.hair]); assert.ok(bad.skin in SKINS);
+  assert.equal(bad.beard, false, "a beard only on the man's body");
+  assert.match(bad.hairTint, /^#[0-9a-f]{6}$/i); assert.match(bad.outfit.top, /^#[0-9a-f]{6}$/i);
+  assert.equal(bad.outfit.bottom, "#123", "a valid short hex is kept");
+  assert.deepEqual(cleanLook(null), cleanLook({}));
+});
+
+// ---------------------------------------------------------------- stage 4: sound and faces
+test("sounds come only from what the story does, at the moment it does it", async () => {
+  const { soundCues, ambience } = await import("../web/film.mjs");
+  const f = block(readStory(`Tom walked into the kitchen. Maya was there.\n\n"Hi," said Tom.\n\nHer phone rang. She answered the phone.\n\nThat night, in the street, Tom ran to the corner. Maya shot him. He fell.\n\nMaya handed Tom a letter.`, { pronouns: P }));
+  const cues = soundCues(f), at = k => cues.filter(c => c.kind === k);
+  const shot = f.actions.find(a => a[3] === "shoot"), fall = f.actions.find(a => a[3] === "fall"), phone = f.actions.find(a => a[3] === "phone");
+  assert.equal(at("gunshot").length, 1, "one shot");
+  assert.ok(Math.abs(at("gunshot")[0].t - (shot[0] + 0.3)) < 1e-3, "as the pistol fires");
+  assert.ok(at("thud").some(c => c.t > fall[0] && c.t < fall[1]), "the fall lands");
+  assert.ok(at("ring")[0].t < phone[0], "the phone rings before it's answered");
+  assert.equal(at("door").length, 1, "a door for coming into the kitchen; none outside");
+  assert.equal(at("clink").length, 0, "a letter handed over makes no clink");
+  // Steps: while someone walks; closer together when they run.
+  const run = f.actions.find(a => a[3] === "run");
+  const inRun = at("step").filter(c => c.t >= run[0] && c.t <= run[1]);
+  assert.ok(inRun.length >= 2);
+  assert.ok(inRun[1].t - inRun[0].t < 0.4, "running steps come quicker");
+  assert.deepEqual(ambience(f).map(a => `${a.kind}/${a.light}`), ["room/day", "street/night"]);
+  // Nothing happens, nothing is heard.
+  assert.deepEqual(soundCues(block(readStory(`"Hello," said Tom.`, { pronouns: P }))), []);
+});
+
+test("a speaking head follows the voice: a recording's loudness, or the words' syllables", async () => {
+  const { rmsEnvelope, textEnvelope } = await import("../web/film.mjs");
+  const rate = 1000, s = new Float32Array(2000);
+  for (let i = 500; i < 1000; i++) s[i] = 0.5 * Math.sin(i);           // loud in the middle of the first second
+  const env = rmsEnvelope(s, rate, { fps: 10 });
+  assert.equal(env.length, 20);
+  assert.ok(env[7] > 0.9 && env[2] === 0 && env[15] === 0, Array.from(env).map(v => v.toFixed(1)).join(" "));
+  const t = textEnvelope("There's no traffic at seven.", 2, { fps: 24 });
+  assert.equal(t.length, 48);
+  assert.equal(t[t.length - 1], 0, "the end of a line is a pause");
+  let peaks = 0;
+  for (let i = 1; i < t.length - 1; i++) if (t[i] > t[i - 1] && t[i] >= t[i + 1] && t[i] > 0.2) peaks++;
+  assert.ok(peaks >= 5 && peaks <= 9, `${peaks} syllable pulses`);
+});

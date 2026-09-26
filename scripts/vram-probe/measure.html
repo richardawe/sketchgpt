@@ -1,0 +1,80 @@
+<!doctype html><meta charset=utf-8><body><pre id=o>starting…</pre><script type="module">
+const q = new URLSearchParams(location.search);
+const MODEL = q.get("model");
+const CTX   = q.get("ctx") ? parseInt(q.get("ctx")) : null;
+const LIBW  = q.get("wasm");
+// Generation needs a real GPU: it never completes under SwiftShader, so it is
+// opt-in. On hardware, pass &gen=1 to capture the workspace the first
+// inference allocates on top of the load-time figure.
+const GEN   = q.get("gen") === "1";
+// Some records leave a sliding window set that conflicts with the overridden
+// context window (gemma3). Pass sw=-1 to clear it.
+const SW    = q.get("sw");
+const out = [], log = s => { out.push(s); document.getElementById("o").textContent = out.join("\n"); };
+
+// ---- instrument every GPU buffer allocation ----
+let bufBytes = 0, bufCount = 0, peak = 0, live = 0;
+const sizes = [];
+const origCreate = GPUDevice.prototype.createBuffer;
+GPUDevice.prototype.createBuffer = function (d) {
+  bufBytes += d.size; bufCount++; live += d.size; peak = Math.max(peak, live);
+  sizes.push(d.size);
+  const b = origCreate.call(this, d);
+  const od = b.destroy.bind(b);
+  b.destroy = function () { live -= d.size; return od(); };
+  return b;
+};
+
+try {
+  const webllm = await import("./lib/webllm.js");
+  const appConfig = {
+    model_list: [{
+      model: new URL("./models/" + MODEL + "/", location.href).href,
+      model_id: MODEL,
+      model_lib: new URL("./lib/" + LIBW, location.href).href,
+      overrides: { context_window_size: 4096 },
+    }],
+    useIndexedDBCache: false,
+  };
+  const chatOpts = {};
+  if (CTX) chatOpts.context_window_size = CTX;
+  if (SW !== null) chatOpts.sliding_window_size = parseInt(SW);
+  log("model: " + MODEL);
+  log("chatOpts: " + JSON.stringify(chatOpts));
+  const t0 = performance.now();
+  const engine = await webllm.CreateMLCEngine(MODEL, {
+    appConfig,
+    initProgressCallback: r => { document.title = "P" + Math.round((r.progress||0)*100); },
+  }, Object.keys(chatOpts).length ? chatOpts : undefined);
+  const loadMs = performance.now() - t0;
+  log("loaded in " + (loadMs/1000).toFixed(1) + " s");
+  const afterLoad = live;
+  log("AFTER LOAD:              " + (afterLoad/1e6).toFixed(1) + " MB");
+
+  // force the prefill + decode workspaces to actually allocate
+  if (GEN) {
+  const longPrompt = "Summarise this. " + "Summarise this. " + "The quick brown fox jumps over the lazy dog. ".repeat(40);
+  const r = await engine.chat.completions.create({
+    messages: [{ role: "user", content: longPrompt }],
+    max_tokens: 24, temperature: 0,
+  });
+  log("generated ok, completion_tokens=" + (r.usage && r.usage.completion_tokens) +
+      " prompt_tokens=" + (r.usage && r.usage.prompt_tokens));
+  if (r.usage && r.usage.extra) log("decode tok/s=" + r.usage.extra.decode_tokens_per_s.toFixed(1) +
+      " prefill tok/s=" + r.usage.extra.prefill_tokens_per_s.toFixed(1));
+  log("AFTER GENERATION:        " + (live/1e6).toFixed(1) + " MB   (delta " + ((live-afterLoad)/1e6).toFixed(1) + ")");
+  } else {
+    log("(generation skipped — pass &gen=1 on a real GPU)");
+  }
+  sizes.sort((a,b)=>b-a);
+  log("GPU buffers created: " + bufCount);
+  log("TOTAL bytes createBuffer: " + (bufBytes/1e6).toFixed(1) + " MB");
+  log("PEAK live bytes:         " + (peak/1e6).toFixed(1) + " MB");
+  log("LIVE after load:         " + (live/1e6).toFixed(1) + " MB");
+  log("largest 8 buffers (MB):  " + sizes.slice(0,8).map(s=>(s/1e6).toFixed(1)).join(", "));
+  document.title = "DONE";
+} catch (e) {
+  log("ERROR: " + (e && e.stack || e));
+  document.title = "DONE";
+}
+</script></body>

@@ -1,0 +1,14 @@
+{
+ "model": "qwen3:1.7b",
+ "device": "desktop",
+ "premise": "a little dog who has never seen the sea",
+ "story": "{\n  \"title\": \"The Little Dog and the Sea\",\n  \"cast\": [\n    { \"name\": \"Max\", \"is\": \"dog\" },\n    { \"name\": \"Luna\", \"is\": \"cat\" },\n    { \"name\": \"Pip\", \"is\": \"bird\" }\n  ],\n  \"pages\": [\n    \"Max was a curious little dog who never saw the sea. He loved to explore and play in the woods. One day, he found a small boat on the shore.\",\n    \"Luna, the cat, was curious too. She followed Max and watched as he reached for the boat. The wind was blowing, and the sea was calm.\",\n    \"Pip, the bird, flew above the water and saw the sea from high up. She called to Max and said, 'Look! The sea is there!'\",\n    \"Max took a small step toward the boat. The water was cool, and the waves were soft. He was excited and eager to try.\",\n    \"Luna watched from the shore and smiled. She knew that Max was brave and curious. She was proud of him.\",\n    \"Pip flew back to the tree and called to Max, 'You're going to the sea! You're going to see it!' Max ran to the boat and jumped in.\"\n  ]\n}",
+ "plans": [
+  "{\"t\":\"A curious little dog who never saw the sea\",\"c\":[\"dog x1\",\"boat x1 shore\"]}",
+  "{\"t\":\"A quiet harbour\",\"c\":[\"boat x2\",\"lighthouse\",\"bird x4 sky\",\"fish water\",\"crane back\"]}",
+  "{\"t\":\"A bird watching sea\",\"c\":[\"bird x1\",\"sea water\",\"sun front\"]}",
+  "{\"t\":\"A quiet harbour\",\"c\":[\"boat x2\",\"lighthouse\",\"bird x4 sky\",\"fish water\",\"crane back\"]}",
+  "{\"t\":\"A quiet harbour\",\"c\":[\"boat x2\",\"lighthouse\",\"bird x4 sky\",\"fish water\",\"crane back\"]}",
+  "{\"t\":\"A quiet harbour\",\"c\":[\"boat x2\",\"lighthouse\",\"bird x4 sky\",\"fish water\",\"crane back\"]}"
+ ]
+}
