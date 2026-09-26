@@ -53,8 +53,10 @@ try {
   await page.tap("#enter");
   await page.fill("#story", STORY);
   await page.waitForFunction(() => window.__film.state.story?.cast.some(c => c.name === "Maya"));
-  await page.selectOption('select[data-pronoun="Maya"]', "she");
-  await page.selectOption('select[data-pronoun="Tom"]', "he");
+  await page.evaluate(() => window.__film.show("cast"));
+  await page.tap('button[data-pronoun="Maya"][data-value="she"]');
+  await page.tap('button[data-pronoun="Tom"][data-value="he"]');
+  await page.evaluate(() => window.__film.show("watch"));
   assert.equal(await page.isChecked("#fx"), true, "sound effects are on by default");
   assert.equal(await page.isChecked("#amb"), false, "background sound is off by default");
 

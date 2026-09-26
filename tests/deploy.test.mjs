@@ -111,8 +111,9 @@ test("film.html is deployed with its reader and stage, at one version each", asy
   const { existsSync } = await import("node:fs");
   assert.match(workflow, /cp web\/film\.html\s/);
   assert.match(workflow, /cp web\/film\.mjs\s/);
-  const html = web("film.html"), stage = web("film/stage.mjs"), link = web("film/link.mjs");
-  const versions = new Set([...html.matchAll(/"\.\/film\.mjs\?v=(\d+)"/g), ...[stage, link].flatMap(m => [...m.matchAll(/"\.\.\/film\.mjs\?v=(\d+)"/g)])].map(m => m[1]));
+  const html = web("film.html"), stage = web("film/stage.mjs"), link = web("film/link.mjs"), costume = web("film/costume.mjs");
+  assert.match(stage, /"\.\/costume\.mjs\?v=\d+"/);
+  const versions = new Set([...html.matchAll(/"\.\/film\.mjs\?v=(\d+)"/g), ...[stage, link, costume].flatMap(m => [...m.matchAll(/"\.\.\/film\.mjs\?v=(\d+)"/g)])].map(m => m[1]));
   assert.equal(versions.size, 1, `film.mjs imported as v=${[...versions]}`);
   assert.match(html, /"\.\/film\/stage\.mjs\?v=\d+"/);
   assert.match(html, /"\.\/film\/link\.mjs\?v=\d+"/);

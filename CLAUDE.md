@@ -84,9 +84,11 @@ docs/fix-plan-work-ui.md  the review that retired Work mode
 docs/roadmap.md           the six-month plan
 docs/film-plan.md         "Film": user prose → 2-min 3D video, phone first, no model; stages 0–6 built;
                           mature tier only (explicit content is banned on GitHub — read before building)
-web/film.html             Film stage 1: adult notice → write prose → cast (pronouns asked) → check (guesses shown) → watch → video
+web/film.html             Film: adult notice, then four tabs — Write, Cast (pronouns, look, costume, voice), Script (guesses), Watch (video, share)
 web/film.mjs              Film's rules, pure: prose → cast/lines/moves (readStory), timelines (block), shots + 180° rule
-web/film/stage.mjs        the shared three.js stage: sets, people, painted-on clothes, camera, head-with-voice, soundtrack, video
+web/film/stage.mjs        the shared three.js stage: sets, people, camera, head-with-voice, soundtrack, video
+web/film/costume.mjs      costumes made from the body itself: cut by a field, smoothed, closed, lifted; skin under
+                          them hidden; skirts/coat tails hang from the hips and clear the legs, every frame (CPU)
 web/film/link.mjs         a film as a link (#film=, deflate-raw): story, cast, looks, voices by name — never recordings;
                           every decoded field capped and type-checked (cleanFilm)
 web/film/sound.mjs        every Film sound synthesised on the page (cues: gunshot, punch, thud, clink, ring, door, step;
@@ -655,9 +657,9 @@ practical fine-tuning.
 - **Film stages 0–1 are built and have never run on a phone** (`docs/film-plan.md`).
   Stage 1 (`film.html`) reads plain prose by rules — speakers from tags, the
   paragraph, then a marked "guessed" alternation; pronouns asked; the 180°
-  rule a test — and plays it in one living room. **Voices:** record each line
-  (🎙, trimmed, tab only) and it is heard in the video; while watching, the
-  phone's voice speaks the rest, per-person voice + pitch; music off by
+  rule a test — and plays it in one living room. **Voices:** the phone's
+  voice speaks every line while watching, per-person voice + pitch (a per-line
+  recorder was built, then removed at the owner's call); music off by
   default. Unverified on iOS: on-cue `speak()` after an in-tap unlock (the
   page falls back to "subtitles only" and says so).
   **Stage 2:** seven sets (living room, kitchen, bedroom, office, bar, street,
@@ -690,6 +692,16 @@ practical fine-tuning.
   as one. A tap within 250 ms of typing used to play the previous story; the
   page now reads the text first. `tests/film-share.test.mjs`,
   `tests/film-share-browser.mjs` (a 2:00 fixture renders; `FILM_SHORT=1` skips it).
+- **Film after the owner's review: real costumes, a four-tab page, no recorder**
+  (`docs/film-plan.md`, "Costumes, and the page redesigned"). Owner: "Works but
+  the UI is such a mess… put costume on the character, deleted the voice
+  recorder." Seven costumes made on the page from the CC0 body (no free
+  clothing pack fits the rig); skirts and coats drape per frame (~1.7 ms per
+  skirted person here, phone unmeasured). Found by looking at renders, not
+  numbers: radial push-out splits a skirt round a stepping knee and tucks it
+  under a seated lap — push along the column's own direction instead. The
+  saved video has subtitles and sound; the phone's voices are heard only
+  while watching (a page can't record them). Never run on a phone.
 - **Next idea: product specification manuals with diagrams.** Researched,
   nothing built. The design that follows from the findings above: the model
   fills a JSON plan (blocks, links, labels) and the page lays it out — elkjs

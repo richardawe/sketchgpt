@@ -44,8 +44,10 @@ try {
   await page.tap("#enter");
   await page.fill("#story", STORY);
   await page.waitForFunction(() => window.__film.state.story?.scenes.length === 6);
-  await page.selectOption('select[data-pronoun="Maya"]', "she");
-  await page.selectOption('select[data-pronoun="Tom"]', "he");
+  await page.evaluate(() => window.__film.show("cast"));
+  await page.tap('button[data-pronoun="Maya"][data-value="she"]');
+  await page.tap('button[data-pronoun="Tom"][data-value="he"]');
+  await page.evaluate(() => window.__film.show("watch"));
   const film = await page.evaluate(() => window.__film.state.film);
   assert.deepEqual(film.sets.map(s => `${s.set}/${s.light}`),
     ["kitchen/day", "bedroom/night", "office/day", "bar/evening", "street/evening", "park/dawn"]);

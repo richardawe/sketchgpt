@@ -31,6 +31,7 @@ const open = async (context, url) => {
   if (await page.isVisible("#gate")) await page.tap("#enter");
   return page;
 };
+const show = (page, tab) => page.evaluate(t => window.__film.show(t), tab);
 const lines = page => page.evaluate(() => window.__film.state.story.scenes.flatMap(s => s.beats).filter(b => b.kind === "line").map(b => [b.speaker, b.how]));
 
 const STORY = `Ruth and Sam sat in the kitchen.
@@ -50,12 +51,16 @@ try {
   const pa = await open(a, srv.url + "film.html?width=180&fps=4");
   await pa.fill("#story", STORY);
   await pa.waitForFunction(() => window.__film.state.story?.cast.some(c => c.name === "Sam"));
-  await pa.selectOption('select[data-pronoun="Ruth"]', "she");
-  await pa.selectOption('select[data-pronoun="Sam"]', "they");
+  await show(pa, "cast");
+  await pa.tap('button[data-pronoun="Ruth"][data-value="she"]');
+  await pa.tap('button[data-pronoun="Sam"][data-value="they"]');
   await pa.selectOption('select[data-look="Sam"]', "3");
-  await pa.selectOption('select[data-pitch="Sam"]', "deeper");
+  await pa.selectOption('select[data-lk="costume"][data-who="Sam"]', "shorts");
+  await pa.tap('button[data-pitch="Sam"][data-value="deeper"]');
   await pa.selectOption('select[data-voice="Sam"]', { label: await pa.textContent('select[data-voice="Sam"] option:first-child') });
-  await pa.selectOption('tr.beat-line:has-text("You had to?") select', "Sam");
+  await show(pa, "script");
+  await pa.selectOption('.line:has-text("You had to?") select', "Sam");
+  await show(pa, "watch");
   await pa.setChecked("#fx", false); await pa.setChecked("#amb", true);
   const before = await pa.evaluate(() => ({ lines: null, look: window.__film.state.looks.Sam, pitch: window.__film.state.pitch.Sam, voice: document.querySelector('select[data-voice="Sam"]')?.selectedOptions[0]?.textContent }));
   before.lines = await lines(pa);
@@ -63,7 +68,7 @@ try {
   await pa.waitForFunction(() => window.__film.link);
   const link = await pa.evaluate(() => window.__film.link);
   assert.match(link, /film\.html#film=z/);
-  assert.match(await pa.textContent("#shared"), /Recordings aren't/);
+  assert.match(await pa.textContent("#shared"), /hears their own phone's voices/);
   assert.equal(await pa.evaluate(() => navigator.clipboard.readText()), link, "the link is on the clipboard");
 
   // A second phone, its own draft saved, opens the link.
@@ -74,11 +79,15 @@ try {
   await pb.waitForFunction(() => window.__film.state.fromLink);
   assert.equal(await pb.inputValue("#story"), STORY);
   assert.match(await pb.textContent("#opened"), /Opened from a link/);
-  assert.equal(await pb.inputValue('select[data-pronoun="Sam"]'), "they");
+  await show(pb, "cast");
+  assert.equal(await pb.getAttribute('button[data-pronoun="Sam"][data-value="they"]', "aria-pressed"), "true");
+  assert.equal(await pb.inputValue('select[data-lk="costume"][data-who="Sam"]'), "shorts", "the costume travelled");
   assert.deepEqual(await lines(pb), before.lines, "the chosen speaker travelled");
   const after = await pb.evaluate(() => ({ look: window.__film.state.looks.Sam, pitch: window.__film.state.pitch.Sam, voice: document.querySelector('select[data-voice="Sam"]')?.selectedOptions[0]?.textContent }));
   assert.deepEqual(after, { look: before.look, pitch: before.pitch, voice: before.voice });
+  await show(pb, "watch");
   assert.deepEqual([await pb.isChecked("#fx"), await pb.isChecked("#amb")], [false, true]);
+  await show(pb, "write");
   assert.equal(await pb.evaluate(() => localStorage.getItem("sketchgpt.film.draft")), "My own story.", "opening a link keeps the recipient's draft");
   await pb.type("#story", " ");
   await pb.waitForFunction(() => localStorage.getItem("sketchgpt.film.draft") !== "My own story.");
@@ -95,6 +104,7 @@ try {
   assert.match(fountain, /^INT\. KITCHEN - DAY$/m);
   assert.match(fountain, /^EXT\. STREET - NIGHT$/m);
   assert.match(fountain, /^SAM\nYou had to\?$/m, "the chosen speaker is in the screenplay");
+  await show(pa, "write");
   await pa.fill("#story", fountain);
   await pa.waitForFunction(() => /Read as a screenplay/.test(document.getElementById("notes").textContent));
   assert.deepEqual((await lines(pa)).map(([w]) => w), before.lines.map(([w]) => w), "the screenplay reads back as the same speakers");
@@ -103,9 +113,10 @@ try {
   // ---------------------------------------------------------------- 5: a video that died
   await pa.evaluate(() => localStorage.setItem("sketchgpt.film.run", JSON.stringify({ total: 2880, frame: 480, fps: 24, elapsedMs: 9000, hidden: true, finished: false })));
   await pa.reload(); if (await pa.isVisible("#gate")) await pa.tap("#enter");
+  await show(pa, "watch");
   assert.equal(await pa.isVisible("#lastrun"), true);
   assert.match(await pa.textContent("#lastrun"), /stopped at 0:20 of 2:00 \(9 s in\), after the page went to the background/);
-  await pa.reload();
+  await pa.reload(); await show(pa, "watch");
   assert.equal(await pa.isVisible("#lastrun"), false, "said once");
 
   // ---------------------------------------------------------------- 5: a whole two minutes, "For sharing"
@@ -115,11 +126,13 @@ try {
   const LONG = Array.from({ length: 15 }, (_, i) => i % 2
     ? `"I waited for you at the station all evening, and then I walked home in the rain," Sam said. Ruth sat down.`
     : `"We should have left the city years ago, before any of this started," Ruth said. Sam stood up and walked to the window.`).join("\n\n");
+  await show(pa, "write");
   await pa.fill("#story", "Ruth and Sam sat in the kitchen.\n\n" + LONG);
   await pa.waitForFunction(() => window.__film.state.film?.length > 100);
   length = await pa.evaluate(() => window.__film.state.film.length);
   assert.ok(length >= 110 && length <= 120, `the fixture is ${length} s`);
   await pa.bringToFront();
+  await show(pa, "watch");
   await pa.tap("#play");
   await pa.waitForFunction(() => window.__film.state.playing, null, { timeout: 240000 });
   await pa.tap("#stop");
@@ -149,6 +162,7 @@ try {
   const pd = await open(d, srv.url + "film.html?width=180&fps=4");
   await pd.bringToFront();
   await pd.fill("#story", STORY);
+  await pd.evaluate(() => { window.__film.show("watch"); });
   await pd.tap("#play");             // at once: the page reads the typing before it plays
   await pd.waitForFunction(() => window.__film.state.playing, null, { timeout: 240000 });
   await pd.tap("#stop");

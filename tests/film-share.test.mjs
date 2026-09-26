@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { readStory, isFountain, fromFountain, toFountain, SAMPLE, LOOKS } from "../web/film.mjs";
+import { readStory, isFountain, fromFountain, toFountain, SAMPLE, LOOKS, COSTUMES, cleanLook } from "../web/film.mjs";
 import { encodeFilm, decodeFilm, cleanFilm, LIMITS } from "../web/film/link.mjs";
 
 const P = { Nadia: "she", Leo: "he", Victor: "he" };
@@ -119,4 +119,20 @@ It's gone.`;
   assert.deepEqual(story.scenes.map(s => s.set), ["bar", "park"]);
   assert.equal(story.scenes[0].light, "night");
   assert.notEqual(story.scenes[1].light, "night", "DAY resets the light");
+});
+
+test("a costume travels in a link, and an unknown one becomes the body's default", async () => {
+  const back = await decodeFilm(await encodeFilm({ text: "Hi.", looks: { A: { ...LOOKS[0], costume: "suit" }, B: { body: "man", costume: "<script>" }, C: { costume: "constructor" } } }));
+  assert.equal(back.looks.A.costume, "suit");
+  assert.equal(back.looks.B.costume, LOOKS[1].costume, "a man's default");
+  assert.equal(back.looks.C.costume, LOOKS[0].costume, "no inherited property names");
+  for (const l of LOOKS) assert.ok(COSTUMES[cleanLook(l).costume], l.name);
+  // Every costume names pieces the stage can make.
+  const { PIECES } = await import("../web/film/costume.mjs");
+  for (const [k, c] of Object.entries(COSTUMES)) {
+    assert.ok(c.name, k);
+    assert.equal(PIECES[c.top]?.kind, "top", `${k}: ${c.top}`);
+    assert.equal(PIECES[c.bottom]?.kind, "bottom", `${k}: ${c.bottom}`);
+    if (c.under) assert.equal(PIECES[c.under]?.kind, "top", `${k}: ${c.under}`);
+  }
 });

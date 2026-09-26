@@ -213,7 +213,7 @@ export function readStory(text, { pronouns = {} } = {}) {
     if (!/^(he|she|they)$/.test(p)) return null;
     const fits = (present.length ? present : cast).filter(c => c.pronoun === p);
     if (fits.length === 1) return fits[0];
-    if (!cast.some(c => c.pronoun)) note("pronouns", "Say who is “she”, “he” or “they” at step 2, and the page can follow pronouns.");
+    if (!cast.some(c => c.pronoun)) note("pronouns", "Say who is “she”, “he” or “they” in Cast, and the page can follow pronouns.");
     else note(`pr-${p}-${where}`, `“${word}” ${fits.length ? "could be " + fits.map(c => c.name).join(" or ") : "matches nobody's pronoun"} (${where}); that part isn't given to anyone.`);
     return null;
   };
@@ -533,7 +533,7 @@ export function block(story, { gap = 0.25 } = {}) {
     t += 2.0; // the wide shot that opens every scene
     for (const beat of scene.beats) {
       if (beat.kind === "line") {
-        // A recorded line lasts as long as the recording; otherwise it's read at WPM.
+        // A line lasts as long as it takes to say at WPM (beat.seconds overrides, for a probe's own clip).
         const d = beat.seconds > 0 ? Math.min(30, beat.seconds) + 0.15 : lineSeconds(beat.text);
         if (beat.speaker && people[beat.speaker] && !state[beat.speaker].dead) {
           const st = state[beat.speaker];
@@ -886,23 +886,7 @@ export function ambience(film) {
     kind: s.set === "bar" ? "bar" : s.set === "street" ? "street" : s.set === "park" ? "park" : "room", light: s.light }));
 }
 
-/**
- * How loud someone is speaking, frame by frame, for a head that moves with the
- * voice: from a recording's own loudness, 0..1.
- */
-export function rmsEnvelope(samples, sampleRate, { fps = 24, rate = 1 } = {}) {
-  const hop = sampleRate / fps * rate, n = Math.ceil(samples.length / hop), out = new Float32Array(n);
-  let peak = 1e-6;
-  for (let f = 0; f < n; f++) {
-    let s = 0, c = 0;
-    for (let i = Math.floor(f * hop); i < Math.min(samples.length, Math.floor((f + 1) * hop)); i++) { s += samples[i] * samples[i]; c++; }
-    out[f] = Math.sqrt(s / Math.max(1, c)); peak = Math.max(peak, out[f]);
-  }
-  for (let f = 0; f < n; f++) out[f] = Math.min(1, out[f] / peak);
-  return out;
-}
-
-/** …or, with no recording, from the words' syllables spread over the line: a pulse each. */
+/** How loud someone is speaking, frame by frame, for a head that moves with the voice: the words' syllables spread over the line, a pulse each. */
 export function textEnvelope(text, seconds, { fps = 24 } = {}) {
   const syll = Math.max(1, (String(text).toLowerCase().match(/[aeiouy]+/g) || []).length);
   const n = Math.max(1, Math.round(seconds * fps)), out = new Float32Array(n);
@@ -927,11 +911,22 @@ export const HAIRS = { long: "Long", parted: "Short, parted", buns: "Buns", buzz
 // keeps its detail: lips stay redder than cheeks. null = the texture as it is.
 export const SKIN_BASE = "#a37351";
 export const SKINS = { light: "#e6c0a0", tan: "#c69570", brown: null, deep: "#6b4531" };
+// Costumes: garments made on the page from the body itself (web/film/costume.mjs).
+// top/bottom/under name its PIECES; `same` = the skirt is the top's colour (a dress).
+export const COSTUMES = {
+  casual: { name: "T-shirt and trousers", top: "tee", bottom: "trousers" },
+  shirt: { name: "Shirt and trousers", top: "shirt", bottom: "trousers" },
+  suit: { name: "Suit", under: "shirt", top: "jacket", bottom: "trousers" },
+  coat: { name: "Long coat", under: "shirt", top: "coat", bottom: "trousers" },
+  dress: { name: "Dress", top: "vest", bottom: "skirt", same: true },
+  blouse: { name: "Blouse and skirt", top: "shirt", bottom: "skirt" },
+  shorts: { name: "T-shirt and shorts", top: "tee", bottom: "shorts" },
+};
 export const LOOKS = [
-  { name: "Woman, long dark hair, red top", body: "woman", hair: "long", skin: "brown", hairTint: "#3a2418", outfit: { top: "#7b1e2b", bottom: "#1d2330", shoes: "#141414" } },
-  { name: "Man, beard, pale shirt", body: "man", hair: "parted", beard: true, skin: "brown", hairTint: "#2a2320", outfit: { top: "#c9c3b8", bottom: "#3b3f46", shoes: "#3a2a1e" } },
-  { name: "Woman, fair hair in buns, green top", body: "woman", hair: "buns", skin: "light", hairTint: "#b08a5a", outfit: { top: "#2f5d50", bottom: "#c8bfae", shoes: "#5a3b22" } },
-  { name: "Man, brown hair, navy top", body: "man", hair: "parted", skin: "tan", hairTint: "#6b4a2b", outfit: { top: "#1f2f4a", bottom: "#1c1c1c", shoes: "#111" } },
+  { name: "Woman, long dark hair, red dress", body: "woman", hair: "long", skin: "brown", hairTint: "#3a2418", costume: "dress", outfit: { top: "#7b1e2b", bottom: "#1d2330", shoes: "#141414" } },
+  { name: "Man, beard, grey suit", body: "man", hair: "parted", beard: true, skin: "brown", hairTint: "#2a2320", costume: "suit", outfit: { top: "#4a4d52", bottom: "#3b3f46", shoes: "#1a1411" } },
+  { name: "Woman, fair hair in buns, green blouse", body: "woman", hair: "buns", skin: "light", hairTint: "#b08a5a", costume: "blouse", outfit: { top: "#2f5d50", bottom: "#c8bfae", shoes: "#5a3b22" } },
+  { name: "Man, brown hair, long navy coat", body: "man", hair: "parted", skin: "tan", hairTint: "#6b4a2b", costume: "coat", outfit: { top: "#1f2f4a", bottom: "#1c1c1c", shoes: "#111" } },
 ];
 /** A look with anything missing or unknown filled in, so a stored or hand-made look can't break the stage. */
 export function cleanLook(l) {
@@ -940,34 +935,18 @@ export function cleanLook(l) {
   const hex = (v, d) => /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(v || "") ? v : d;
   return { body: l.body === "man" ? "man" : "woman", hair: HAIRS[l.hair] ? l.hair : base.hair, beard: !!l.beard && l.body === "man",
     skin: SKINS[l.skin] ? l.skin : "brown", hairTint: hex(l.hairTint, base.hairTint),
+    costume: Object.hasOwn(COSTUMES, l.costume || "") ? l.costume : base.costume,
     outfit: { top: hex(l.outfit?.top, base.outfit.top), bottom: hex(l.outfit?.bottom, base.outfit.bottom), shoes: hex(l.outfit?.shoes, base.outfit.shoes) } };
 }
 
 // ---------------------------------------------------------------- voices
-/** A character's voice: the same setting pitches the device voice (preview) and their recordings (video). */
+/** A character's voice: how the phone's voice is pitched for them. */
 export const PITCH = {
-  natural: { tts: 1, rate: 1 },
-  deeper: { tts: 0.75, rate: 0.88 },
-  higher: { tts: 1.3, rate: 1.12 },
+  natural: { tts: 1 },
+  deeper: { tts: 0.75 },
+  higher: { tts: 1.3 },
 };
 
-/**
- * Where the speech is in a recording: [start, end] sample indices with the
- * silence at either end cut, a little padding kept so no word is clipped.
- * The level is relative to the loudest moment, so a quiet phone mic works.
- */
-export function trimBounds(samples, rate, { floor = 0.06, pad = 0.08, window = 0.02 } = {}) {
-  const n = samples.length, w = Math.max(1, Math.round(window * rate));
-  let peak = 0;
-  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(samples[i]));
-  if (peak < 1e-4) return null;                       // silence: nothing was said
-  const loud = i => { let m = 0; for (let j = i; j < Math.min(n, i + w); j++) m = Math.max(m, Math.abs(samples[j])); return m >= peak * floor; };
-  let a = 0, b = n;
-  while (a < n && !loud(a)) a += w;
-  while (b > a && !loud(Math.max(0, b - w))) b -= w;
-  const p = Math.round(pad * rate);
-  return [Math.max(0, a - p), Math.min(n, b + p)];
-}
 
 /** m:ss */
 export const clock = s => { const r = Math.max(0, Math.round(s)); return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")}`; };

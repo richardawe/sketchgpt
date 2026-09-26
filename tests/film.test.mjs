@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { readStory, findCast, block, shotAt, cameraFor, placesAt, sideOf, clock, CLIPS, SAMPLE, LIMIT_SECONDS, PITCH, trimBounds, SETS, setAt, lightOf } from "../web/film.mjs";
+import { readStory, findCast, block, shotAt, cameraFor, placesAt, sideOf, clock, CLIPS, SAMPLE, LIMIT_SECONDS, PITCH, SETS, setAt, lightOf } from "../web/film.mjs";
 
 const P = { Maya: "she", Tom: "he", Sam: "they", Ruth: "she" };
 const beats = (text, pronouns = P) => readStory(text, { pronouns }).scenes.flatMap(s => s.beats);
@@ -261,22 +261,9 @@ test("a recorded line lasts as long as its recording, and the scene moves up or 
   assert.ok(block(story).lines[0][1] - block(story).lines[0][0] <= 30.2, "a runaway recording is capped");
 });
 
-test("silence is trimmed from both ends of a take, relative to its loudest moment", () => {
-  const rate = 1000, s = new Float32Array(3000);
-  for (let i = 1000; i < 2000; i++) s[i] = 0.02 * Math.sin(i);   // a quiet voice, 1 s in
-  for (let i = 0; i < 3000; i++) s[i] += 0.0003;                  // room noise
-  const [a, b] = trimBounds(s, rate);
-  assert.ok(a >= 900 && a <= 1000, `start ${a}`);
-  assert.ok(b >= 2000 && b <= 2100, `end ${b}`);
-  assert.equal(trimBounds(new Float32Array(500), rate), null, "a silent take is no take");
-});
-
-test("one pitch setting shapes both the phone's voice and the recording", () => {
-  for (const [name, p] of Object.entries(PITCH)) {
-    assert.ok(p.tts > 0 && p.tts <= 2, name);
-    assert.ok(p.rate > 0.5 && p.rate < 1.5, name);
-    assert.equal(Math.sign(p.tts - 1), Math.sign(p.rate - 1), `${name} moves both the same way`);
-  }
+test("pitch moves the phone's voice down or up", () => {
+  assert.ok(PITCH.deeper.tts < PITCH.natural.tts && PITCH.natural.tts < PITCH.higher.tts);
+  for (const [name, p] of Object.entries(PITCH)) assert.ok(p.tts > 0 && p.tts <= 2, name);
 });
 
 // ---------------------------------------------------------------- stage 3: acting
@@ -375,13 +362,8 @@ test("sounds come only from what the story does, at the moment it does it", asyn
   assert.deepEqual(soundCues(block(readStory(`"Hello," said Tom.`, { pronouns: P }))), []);
 });
 
-test("a speaking head follows the voice: a recording's loudness, or the words' syllables", async () => {
-  const { rmsEnvelope, textEnvelope } = await import("../web/film.mjs");
-  const rate = 1000, s = new Float32Array(2000);
-  for (let i = 500; i < 1000; i++) s[i] = 0.5 * Math.sin(i);           // loud in the middle of the first second
-  const env = rmsEnvelope(s, rate, { fps: 10 });
-  assert.equal(env.length, 20);
-  assert.ok(env[7] > 0.9 && env[2] === 0 && env[15] === 0, Array.from(env).map(v => v.toFixed(1)).join(" "));
+test("a speaking head follows the words' syllables", async () => {
+  const { textEnvelope } = await import("../web/film.mjs");
   const t = textEnvelope("There's no traffic at seven.", 2, { fps: 24 });
   assert.equal(t.length, 48);
   assert.equal(t[t.length - 1], 0, "the end of a line is a pause");

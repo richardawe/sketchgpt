@@ -5,8 +5,9 @@
 // No model, no network after the assets. three.js (MIT), Quaternius (CC0),
 // Kenney (CC0), Poly Haven (CC0), Mediabunny (MPL-2.0). docs/film-plan.md.
 import * as T from "../vendor/three.mjs?v=1";
-import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope } from "../film.mjs?v=6";
+import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope } from "../film.mjs?v=7";
 import { cue, place } from "./sound.mjs?v=1";
+import { dressBody } from "./costume.mjs?v=1";
 
 const ASSETS = new URL("./assets/", import.meta.url).href;
 
@@ -51,52 +52,12 @@ function wear(body, hairScene, tint) {
   }
 }
 
-// The free tier's bodies come in underwear, and Quaternius's only outfit kit is
-// fantasy. So clothes are painted on: each vertex is shirt, trousers or shoes
-// by which bones move it (skin weights), and the shader lays the colour over
-// the skin texture. No download; it reads as a fitted outfit, not as cloth.
-const TOP = /^(spine_0[123]|clavicle_|upperarm_|lowerarm_)/, BOTTOM = /^(pelvis|thigh_|calf_)/, SHOES = /^(foot_|ball_)/;
+// The free tier's bodies come in underwear: costumes are made from the body itself (costume.mjs).
 // A skin tone as a colour gain (linear, may exceed 1) on the texture's own average.
 function skinGain(target) {
   if (!target) return new T.Color(1, 1, 1);
   const t = new T.Color(target), b = new T.Color(SKIN_BASE);
   return new T.Color(t.r / b.r, t.g / b.g, t.b / b.b);
-}
-function dress(body, { top, bottom, shoes }, gain = new T.Color(1, 1, 1)) {
-  body.traverse(m => {
-    if (!m.isSkinnedMesh || m.geometry.attributes.position.count < 3000) return;
-    if (!m.geometry.attributes.garment) {
-      const names = m.skeleton.bones.map(b => b.name);
-      const si = m.geometry.attributes.skinIndex, sw = m.geometry.attributes.skinWeight;
-      const g = new Float32Array(si.count * 3);
-      for (let v = 0; v < si.count; v++) for (let k = 0; k < 4; k++) {
-        const name = names[si.getComponent(v, k)] || "", w = sw.getComponent(v, k);
-        if (TOP.test(name)) g[v * 3] += w;
-        else if (BOTTOM.test(name)) g[v * 3 + 1] += w;
-        else if (SHOES.test(name)) g[v * 3 + 2] += w;
-      }
-      m.geometry.setAttribute("garment", new T.BufferAttribute(g, 3));
-    }
-    const mat = m.material = m.material.clone();
-    mat.color = gain;
-    const u = { topC: { value: new T.Color(top) }, botC: { value: new T.Color(bottom) }, shoeC: { value: new T.Color(shoes) }, skinGain: { value: gain.clone() } };
-    mat.onBeforeCompile = sh => {
-      Object.assign(sh.uniforms, u);
-      sh.vertexShader = "attribute vec3 garment;\nvarying vec3 vGarment;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvGarment = garment;");
-      sh.fragmentShader = "uniform vec3 topC, botC, shoeC, skinGain;\nvarying vec3 vGarment;\n" + sh.fragmentShader.replace("#include <map_fragment>",
-        `#include <map_fragment>
-        float cloth = 0.0; vec3 cc = diffuseColor.rgb;
-        if (vGarment.x > 0.5) { cc = topC; cloth = 1.0; }
-        if (vGarment.y > 0.5) { cc = botC; cloth = 1.0; }
-        if (vGarment.z > 0.5) { cc = shoeC; cloth = 1.0; }
-        // Keep a little of the body's shading so the skin texture's folds read as cloth
-        // (from the texture itself: a skin tone's gain must not lighten the clothes).
-        float lum = dot(diffuseColor.rgb / max(skinGain, vec3(0.01)), vec3(0.3, 0.59, 0.11));
-        diffuseColor.rgb = mix(diffuseColor.rgb, cc * (0.75 + 0.5 * lum), cloth);`)
-        .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\n if (max(vGarment.x, max(vGarment.y, vGarment.z)) > 0.5) roughnessFactor = 0.9;");
-    };
-    mat.customProgramCacheKey = () => "dress";
-  });
 }
 
 // Hair and eyebrows share a grey texture made to be tinted.
@@ -343,7 +304,7 @@ async function buildWorld(renderer, film, looks, { shadows }) {
     const l = looks[name];
     const body = T.cloneSkinned((await got(`${l.body}.glb`)).scene);
     body.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
-    dress(body, l.outfit, skinGain(SKINS[l.skin]));
+    const drape = dressBody(body, l, skinGain(SKINS[l.skin]));
     tintHair(body, l.hairTint);
     if (HAIR[l.hair]) wear(body, T.cloneSkinned((await got(HAIR[l.hair])).scene), l.hairTint);
     if (l.beard) wear(body, T.cloneSkinned((await got("beard.glb")).scene), l.hairTint);
@@ -363,7 +324,7 @@ async function buildWorld(renderer, film, looks, { shadows }) {
       hand?.add(o);
       held[k] = o;
     }
-    cast[name] = { holder, body, mixer: new T.AnimationMixer(body), actions: {}, head, held };
+    cast[name] = { holder, body, mixer: new T.AnimationMixer(body), actions: {}, head, held, drape };
   }
   return { scene, cast, clips, clipNames: Object.keys(clips), sets, env, key, practical, current: null };
 }
@@ -425,6 +386,8 @@ function poseAll(world, film, t) {
     p.holder.visible = !pl.off;
     p.holder.position.set(pl.at[0], pl.lift, pl.at[1]);
     p.holder.rotation.y = pl.facing;
+    // Skirts and coat tails follow the legs from the finished pose.
+    if (p.holder.visible) { p.holder.updateMatrixWorld(true); p.drape(); }
     for (const [k, o] of Object.entries(p.held)) o.visible = seg[2].prop === k;
   }
   return places;

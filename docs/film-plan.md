@@ -1,6 +1,9 @@
 # Film — a grown-up version of Book, without a model — a plan
 
-**Status: stages 0–6 are all built. 0–4 are live; 5–6 go live with this change.**
+**Status: stages 0–6 are all built and live. After the owner's review ("Works
+but the UI is such a mess"), the page was redesigned, the people wear real
+costumes, and the voice recorder is gone ("Costumes, and the page redesigned"
+below).**
 
 - Stage 0, `web/film-probe.html`, has run on the owner's iPhone: a 2-minute
   720p MP4 with sound in 43 s ("Stage 0 measured" below).
@@ -533,6 +536,11 @@ that gets measured.
 
 ## Voices (built after the owner heard only a hum)
 
+> **The recorder was later removed at the owner's call** ("delete the voice
+> recorder and just use the phone voices"). What follows is the history; the
+> phone's voices are now the only voices, and the saved video has subtitles
+> and sound.
+
 The owner's first phone video had "no voice, just a humming sound". That was
 as built: the hum was the page's own music bed, and every line was a subtitle.
 Two things were built in answer, at the owner's choice:
@@ -942,6 +950,133 @@ saved draft** until they edit.
 **Not tested:** `navigator.share` on a real phone (headless has none, so the
 test uses the clipboard); whether the named screenplay apps open the file;
 any of this on the owner's phone.
+
+## Costumes, and the page redesigned
+
+The owner, after stages 5–6 on the phone: "Works but the UI is such a mess.
+Make it a lot better, put costume on the character, deleted the voice
+recorder and just use the phone voices." The painted-on clothes read as body
+paint on a muscular body, and the page was one long scroll of six numbered
+steps.
+
+**Costumes are real garments** (`web/film/costume.mjs`). No clothing pack is
+free on this rig, so each garment is made on the page from the body itself,
+in about half a second per person:
+
+1. **Cut** the part the garment covers out of the body mesh, along a field
+   (neckline height rising away from the neck and falling at the front for a V
+   or a scoop; sleeve length from shoulder to wrist; hem height; leg length
+   from hip to ankle). Each triangle is clipped on the field's zero line, so
+   hems and cuffs are straight, not the body's triangle edges.
+2. **Smooth** it (Taubin, no shrinking, the hem held still) until the
+   muscles are gone, then **close** it with a ball of the cloth's bending
+   radius: each point moves out until the surface near it is no more concave
+   than cloth can be. This bridges hollows, such as under the bust. Plain
+   one-ring smoothing moved points only ~2 cm and left the crease; the
+   closing fills it.
+3. **Lift** it off the skin by the cloth's thickness. A top is lifted past the
+   thickest bottom, so it's always worn over the waistband (they flickered
+   when both were similar).
+4. The skin under a garment **isn't drawn** (a per-vertex `cover` field, and
+   a discard in the skin's shader), so no joint pokes through when it bends.
+   A little skin is kept under each hem, so a cuff shows arm, not an empty
+   sleeve.
+
+**Skirts and coat tails hang.** They are new geometry: a tube the width of
+the hips, posed on the CPU each frame (about 700 points):
+- the waistband is skinned to the hips;
+- each column hangs from it a segment at a time;
+- a segment that meets a leg is pushed out of it along its own column's
+  direction (outward and a little up) and keeps its length, so the cloth
+  slides over the thigh.
+
+Every frame is a function of the pose alone, with no simulation state, so the
+preview and the video agree. Each fix was found by looking at renders of all
+costumes in walking and sitting poses:
+- Skinning the tube between the thighs tore it when legs stepped.
+- Pushing radially from each leg's axis split the columns around the knee (a
+  hole) and pushed a seated skirt *under* the lap.
+- Pushing along the column's own direction keeps the columns in order: the
+  cloth tents over a stepping leg and lies over a seated lap, then falls at
+  the knee.
+- A single thigh radius was too fat at the knee (a seated skirt ballooned)
+  and too thin at the hip (holes), so each leg segment is a tapered capsule,
+  with a hip capsule for the seat.
+- Cost measured here: **~1.7 ms per frame per person in a skirt or coat**,
+  so two of them add ~10 s to a two-minute video. Not measured on a phone.
+
+**Seven costumes:**
+- T-shirt and trousers;
+- shirt and trousers;
+- suit (a shirt under a V-necked jacket, the shirt showing at the V and at
+  the cuffs);
+- long coat (over a shirt);
+- dress (sleeveless, scoop neck);
+- blouse and skirt;
+- T-shirt and shorts.
+
+Colours are the look's colours, the material has a cloth sheen, and the
+inside of a sleeve is in shadow. Links carry the costume, and an unknown one
+becomes the body's default. The default looks now wear a red dress, a grey
+suit, a green blouse and skirt, and a long navy coat.
+
+**The page is four tabs**: Write, Cast, Script, Watch.
+- **Phone:** a bottom tab bar, with badges for pronouns still to choose and
+  lines the page is unsure of.
+- **Desktop:** tabs across the top, with Watch pinned beside them.
+- **Cast:** a card per person:
+  - an avatar in their colours;
+  - she / he / they and the pitch as tap buttons;
+  - Looks, Wears (the costume), Voice with ▶ to hear it;
+  - hair, skin and colours folded away.
+- **Script:** the scenes as the page understood them, each line with who says
+  it (tap to change); guesses are highlighted, and actions are stage
+  directions ("Tom sits").
+- **Watch:** the picture with a Play button on it, sound switches, the video,
+  and sharing.
+- The ••• menu holds the sample, Clear, Share, the screenplay and the phone
+  probe.
+- Dark by default, light in light mode.
+- Nothing is wider than a 390 px phone (tested).
+
+**The recorder is gone.** No 🎙 anywhere, no microphone permission, no
+`MediaRecorder`; `trimBounds` and `rmsEnvelope` were deleted. The phone's
+voices read every line while watching. The saved video has subtitles and
+sound: phones don't let a page record their own voices into a file, and the
+page says so beside the video button.
+
+**Tested:**
+- `tests/film-browser.mjs` (touch screen, rewritten):
+  - one tab at a time;
+  - no recorder, in the page or its code;
+  - the pronoun buttons clear the Cast badge;
+  - a guess is changed in Script;
+  - a costume is chosen;
+  - every line is spoken in the phone's voice;
+  - Ruth's dress: three garments and a skirt. Sam's suit: four garments;
+  - the suit covers more skin than the dress;
+  - the skirt moves between poses;
+  - subtitles are drawn into the frames;
+  - the video is the film's length;
+  - looks and costume survive a reload.
+- Mutation-checked:
+  - the drape not run;
+  - the skin not hidden;
+  - pronoun taps ignored;
+  - a costume choice ignored;
+  - no subtitles;
+  - no garments.
+- The other Film browser tests were updated to the tabs.
+- A unit test checks that every costume names pieces the stage can make, and
+  that links carry costumes.
+
+**Not tested:**
+- any of it on a phone;
+- how the costumes look to someone who isn't the page's author;
+- skirts in poses other than walking and sitting (lying down, kneeling,
+  jumping);
+- the drape's cost on an iPhone;
+- whether the tab layout suits a long story on a small phone.
 
 ## What is not known, and how each gets known
 
