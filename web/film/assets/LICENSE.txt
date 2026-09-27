@@ -1,4 +1,4 @@
-Film stage 0 assets. All CC0 1.0 (public domain dedication), rebuilt from the
+Film stage 0 assets. All CC0 1.0 except rocketbox/ (MIT: see rocketbox/LICENSE.txt) (public domain dedication), rebuilt from the
 free downloads by scripts/film/build-assets.mjs (textures cut to 1024 px and
 WebP, geometry and animation meshopt-compressed; nothing else changed).
 

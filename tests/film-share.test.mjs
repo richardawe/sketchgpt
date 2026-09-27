@@ -49,7 +49,7 @@ test("a film survives the link, and the link is short", async () => {
 
 test("recordings never travel, and nothing unknown does", async () => {
   const back = await decodeFilm(await encodeFilm({ text: "Hi.", takes: { "0:Hi": { buffer: [1, 2, 3] } }, photo: "data:image/png;base64,AAAA" }));
-  assert.deepEqual(Object.keys(back).sort(), ["amb", "fx", "looks", "music", "pitch", "pronouns", "speakers", "text", "voices"]);
+  assert.deepEqual(Object.keys(back).sort(), ["amb", "fx", "looks", "music", "people", "pitch", "pronouns", "speakers", "style", "text", "voices"]);
 });
 
 test("a link's fields are capped and type-checked", () => {

@@ -5,9 +5,10 @@
 // No model, no network after the assets. three.js (MIT), Quaternius (CC0),
 // Kenney (CC0), Poly Haven (CC0), Mediabunny (MPL-2.0). docs/film-plan.md.
 import * as T from "../vendor/three.mjs?v=1";
-import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope } from "../film.mjs?v=8";
+import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope, PEOPLE } from "../film.mjs?v=9";
 import { cue, place } from "./sound.mjs?v=1";
-import { dressBody } from "./costume.mjs?v=2";
+import { dressBody } from "./costume.mjs?v=3";
+import { follow, handOf } from "./realistic.mjs?v=1";
 
 const ASSETS = new URL("./assets/", import.meta.url).href;
 
@@ -242,7 +243,8 @@ const GRIP = {
   gun: [[0, 0.09, 0.02], [-Math.PI / 2, 0, Math.PI]],
 };
 
-async function buildWorld(renderer, film, looks, { shadows }) {
+async function buildWorld(renderer, film, looks, { shadows, style = "stylised", people = {} }) {
+  const real = style === "realistic";
   const scene = new T.Scene();
   scene.background = new T.Color("#1b1714");
   const names = Object.keys(film.people);
@@ -251,7 +253,10 @@ async function buildWorld(renderer, film, looks, { shadows }) {
   const kitsNeeded = new Set(usedSets.flatMap(s => NEEDS[s] || ["room"]));
   const need = new Set(["moves-1.glb", "moves-2.glb", ...[...kitsNeeded].map(k => KIT[k][0])]);
   for (const n of names) looks[n] = cleanLook(looks[n]);
-  for (const n of names) { const l = looks[n]; need.add(`${l.body}.glb`); if (HAIR[l.hair]) need.add(HAIR[l.hair]); if (l.beard) need.add("beard.glb"); }
+  for (const n of names) {
+    if (real) { const id = PEOPLE[people[n]] ? people[n] : Object.keys(PEOPLE)[0]; people[n] = id; need.add(`${PEOPLE[id].body}.glb`); need.add(`rocketbox/${id}.glb`); continue; }
+    const l = looks[n]; need.add(`${l.body}.glb`); if (HAIR[l.hair]) need.add(HAIR[l.hair]); if (l.beard) need.add("beard.glb");
+  }
 
   const [hdrBuf, skyBuf] = await Promise.all([fetchBytes("lebombo_1k.hdr"), outside ? fetchBytes("sky_1k.hdr") : null, ...[...need].map(loadGltf)]);
   const got = async n => loadGltf(n);
@@ -301,16 +306,26 @@ async function buildWorld(renderer, film, looks, { shadows }) {
   const props = makeProps(kits);
   const cast = {};
   for (const name of names) {
-    const l = looks[name];
+    const l = real ? { body: PEOPLE[people[name]].body } : looks[name];
     const body = T.cloneSkinned((await got(`${l.body}.glb`)).scene);
     body.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
-    const drape = dressBody(body, l, skinGain(SKINS[l.skin]));
-    tintHair(body, l.hairTint);
-    if (HAIR[l.hair]) wear(body, T.cloneSkinned((await got(HAIR[l.hair])).scene), l.hairTint);
-    if (l.beard) wear(body, T.cloneSkinned((await got("beard.glb")).scene), l.hairTint);
     const holder = new T.Group();
     holder.add(body);
     scene.add(holder);
+    let drape = () => {}, after = null, person = null;
+    if (real) {
+      // The Quaternius body stays, unseen, as the one the moves are played on; the Rocketbox person copies it.
+      body.traverse(o => { if (o.isMesh) o.visible = false; });
+      person = T.cloneSkinned((await got(`rocketbox/${people[name]}.glb`)).scene);
+      person.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
+      holder.add(person);
+      after = follow(body, person, holder, { name });
+    } else {
+      drape = dressBody(body, l, skinGain(SKINS[l.skin]));
+      tintHair(body, l.hairTint);
+      if (HAIR[l.hair]) wear(body, T.cloneSkinned((await got(HAIR[l.hair])).scene), l.hairTint);
+      if (l.beard) wear(body, T.cloneSkinned((await got("beard.glb")).scene), l.hairTint);
+    }
     let head = null, hand = null;
     body.traverse(o => { if (o.isBone && o.name === "Head") head = o; if (o.isBone && o.name === "hand_r") hand = o; });
     // One of each prop per person, in the hand, shown when the story puts it there.
@@ -318,13 +333,19 @@ async function buildWorld(renderer, film, looks, { shadows }) {
     for (const [k, proto] of Object.entries(props)) {
       const o = proto.clone(true);
       const [pos, rot] = GRIP[k];
-      o.position.set(...pos); o.rotation.set(...rot);
+      o.position.set(...pos); o.rotation.set(...rot); o.userData.grip = o.position.clone();
       o.visible = false;
       o.traverse(m => { if (m.isMesh) m.castShadow = true; });
       hand?.add(o);
       held[k] = o;
     }
-    cast[name] = { holder, body, mixer: new T.AnimationMixer(body), actions: {}, head, held, drape };
+    // A realistic person's props stay gripped as designed, moved to that person's own hand.
+    const theirHand = person && handOf(person), at = new T.Vector3();
+    const afterAll = after && ((say, t) => {
+      after(say, t);
+      for (const o of Object.values(held)) if (o.visible && theirHand && hand) o.position.copy(o.userData.grip).add(hand.worldToLocal(theirHand.getWorldPosition(at)));
+    });
+    cast[name] = { holder, body, person, mixer: new T.AnimationMixer(body), actions: {}, head, held, drape, after: afterAll, say: 0, lidY: after?.lidY };
   }
   return { scene, cast, clips, clipNames: Object.keys(clips), sets, env, key, practical, current: null };
 }
@@ -441,12 +462,14 @@ function subtitle(ctx, film, t, W, H) {
 // from film.mjs rmsEnvelope); without one, the words' syllables (textEnvelope).
 function speak(stage, film, t) {
   const cache = stage.speechCache ||= {};
+  for (const p of Object.values(stage.world.cast)) p.say = 0;
   film.lines.forEach((line, i) => {
     const [a, b, who] = line;
     const p = who && stage.world.cast[who];
     if (!p || t < a || t >= b || !p.head) return;
     const env = stage.speech?.[i] || (cache[i + ":" + line[3]] ||= textEnvelope(line[3], b - a));
     const e = env[Math.min(env.length - 1, Math.floor((t - a) * 24))] || 0;
+    p.say = e;
     p.head.rotateX(-0.09 * e);
     p.head.rotateZ(0.035 * Math.sin((t - a) * 2.1) * (0.4 + e));
   });
@@ -460,6 +483,8 @@ export function frameFn(stage) {
     applySet(world, setAt(film, lt));
     const places = poseAll(world, film, lt);
     speak(stage, film, lt);
+    // Realistic people copy their unseen driver now it's fully posed (the nod included).
+    for (const p of Object.values(world.cast)) if (p.after && p.holder.visible) p.after(p.say, lt);
     const shot = aim(camera, world, film, lt, shotAt, places);
     renderer.render(world.scene, camera);
     const W = ctx.canvas.width, H = ctx.canvas.height;
@@ -581,7 +606,7 @@ export async function makeVideo(stage, { seconds, fps, voices = [], music = true
  * A stage for a film: { renderer, world, camera, ctx, film, shotAt, loop, loadMs, bytes, T }.
  * looks: { name: LOOKS[i] } — who looks like whom.
  */
-export async function setup(glCanvas, outCanvas, film, { looks, shotAt, loop = 0, width = 720, height = 1280, shadows = true } = {}) {
+export async function setup(glCanvas, outCanvas, film, { looks, style, people, shotAt, loop = 0, width = 720, height = 1280, shadows = true } = {}) {
   const t0 = performance.now();
   bytesLoaded.total = 0;
   const renderer = new T.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: "high-performance" });
@@ -594,7 +619,7 @@ export async function setup(glCanvas, outCanvas, film, { looks, shotAt, loop = 0
   renderer.shadowMap.type = T.PCFShadowMap;
   outCanvas.width = width; outCanvas.height = height;
   const ctx = outCanvas.getContext("2d");
-  const world = await buildWorld(renderer, film, looks, { shadows });
+  const world = await buildWorld(renderer, film, looks, { shadows, style, people });
   const camera = new T.PerspectiveCamera(50, width / height, 0.05, 40);
   const stage = { renderer, world, camera, ctx, film, shotAt, loop, T };
   // Compile every shader and upload every texture before anything is timed.

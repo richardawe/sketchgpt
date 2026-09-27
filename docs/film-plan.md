@@ -1110,6 +1110,95 @@ down, mid-line.
   line (the 180° rule).
 - A unit test covers it, mutation-checked.
 
+## Styles: Realistic (Microsoft Rocketbox)
+
+The owner looked at the free character libraries rendered side by side and asked
+whether each film could choose one. Each film now has a **Style** in Cast:
+- **Stylised:** the two Quaternius bodies with the page's costumes.
+- **Realistic:** people from Microsoft's
+  [Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) avatar library
+  (MIT), in their own clothes.
+
+Reading the prose, blocking, shots, sounds, subtitles and the video don't know
+which style is drawn; only the people change. The whole film uses one style,
+because mixed styles look like two films. The choice is kept on the device
+(`sketchgpt.film.style`, `.people`) and travels in links.
+
+**The people:** 8 adults, 4 women and 4 men. Children are never used on this
+page, though Rocketbox has them.
+- Business_Female_01, Female_Adult_01/05/10;
+- Business_Male_04, Male_Adult_01/08, Police_Male_01.
+
+`film.mjs` `PEOPLE` names them for the page ("Woman in a black suit", "Police
+officer"…). "Played by" offers women for "she", men for "he", everyone for
+"they", and `castPeople` never casts one person twice where it can avoid it.
+
+**Built by `scripts/film/build-rocketbox.mjs`:**
+- It downloads each FBX and its colour/opacity textures from the repo's raw
+  files. Its 2048² TGAs are 12.6 MB each.
+- A headless browser converts each one with three.js:
+  - 3ds Max Phong materials become standard ones. The FBX colour is black, so
+    they rendered as silhouettes until then.
+  - The hair's separate opacity map is baked into its texture's alpha.
+  - Centimetres become metres.
+  - Textures are cut to 1024 px.
+- gltf-transform compresses it (meshopt, WebP).
+- **0.3–0.8 MB per person, 4.4 MB for all eight**, and a film downloads only
+  its own people.
+
+**How they act Film's moves** (`web/film/realistic.mjs`):
+- Each person is two things in one place:
+  - the Quaternius body, **invisible**, posed exactly as before (clips, props,
+    the speaking nod);
+  - the Rocketbox person, copying it every frame.
+- Rocketbox's 3ds Max Biped skeleton rests in an A-pose; the moves were made
+  for a T-pose. So at load:
+  - the person is bent bone by bone into the driver's T-pose (each bone aimed
+    at its child);
+  - then scaled to the driver's height, so seats, sets and the camera fit
+    unchanged.
+- After that, each bone copies its driver bone's turn from rest (world-space
+  deltas), so different rest poses and bone axes don't matter.
+- The hips copy the driver's position, so a person sits on the same seat.
+- Held props keep their grip and move to the person's own hand.
+
+**Faces:** Rocketbox heads have bones, which the free Quaternius bodies don't.
+- **The jaw opens with the voice.**
+- **The eyelids half-close in a blink** every 4.1 s, offset per person. It's a function of t,
+  like everything else.
+- Which axis drops the chin, and which closes each upper lid, was found by
+  probing each person at load. The probe measures the skin the bone moves, not
+  the bone: a bone turning about itself doesn't move. glTF splits a person into
+  a mesh per material, so the face can be in any of them.
+
+**Measured here** (`tests/film-realistic-browser.mjs`, touch screen):
+- The person's hand and foot stay within 8.4 cm of the driver's at every
+  moment tested (sitting, walking in, talking). The gap is the difference in
+  proportions.
+- The glass is in the person's own hand.
+- The jaw opens 1.4 cm at full voice.
+- The upper eyelids half-close: their skin moves about 2 mm. The rig's eyelid weights (at most 0.68) stop them closing fully, so a blink is visible at close-up and subtle otherwise.
+- A held moment doesn't move the head.
+- The video renders.
+- The choice survives a reload and a link. Switching back to Stylised brings
+  the costumes back.
+- Mutation-checked:
+  - no blink;
+  - no jaw;
+  - hips not copied;
+  - bones not copied;
+  - props not moved to the person's hand;
+  - style dropped from links;
+  - "Played by" ignored.
+
+**Not known:**
+- how Realistic looks and runs on the owner's phone. It adds about 60 bone
+  copies per person per frame, and the textures are larger than Stylised;
+- whether hands pass through a body in some of the 84 moves. Proportions
+  differ, and a hand through a chest was seen in one talking pose;
+- how the 3 people with shoulder-length or long hair look in motion (hair is a
+  cut-out, not simulated).
+
 ## What is not known, and how each gets known
 
 - **What the free tiers actually contain.** Stage 0's inventory. The kits

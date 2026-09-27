@@ -4,7 +4,7 @@
 // look, voice (by name) and pitch, the speakers the writer chose, and the sound
 // switches. What never travels: recordings (they are the writer's own voice)
 // and anything from a photo. Opening a link rebuilds the same film from rules.
-import { cleanLook, PITCH } from "../film.mjs?v=8";
+import { cleanLook, PITCH, STYLES, PEOPLE } from "../film.mjs?v=9";
 
 export const LIMITS = { text: 6000, name: 40, cast: 8, voice: 80, speakers: 300, key: 400 };
 
@@ -41,6 +41,8 @@ export function cleanFilm(o = {}) {
     speakers: Object.fromEntries(Object.entries(o.speakers && typeof o.speakers === "object" ? o.speakers : {}).slice(0, LIMITS.speakers)
       .map(([k, v]) => [str(k, LIMITS.key), str(v, LIMITS.name)]).filter(([k]) => k)),
     fx: o.fx !== false, amb: o.amb === true, music: o.music === true,
+    style: Object.hasOwn(STYLES, o.style || "") ? o.style : "stylised",
+    people: Object.fromEntries(names(o.people).filter(([, v]) => typeof v === "string" && Object.hasOwn(PEOPLE, v))),
   };
 }
 

@@ -939,6 +939,36 @@ export function cleanLook(l) {
     outfit: { top: hex(l.outfit?.top, base.outfit.top), bottom: hex(l.outfit?.bottom, base.outfit.bottom), shoes: hex(l.outfit?.shoes, base.outfit.shoes) } };
 }
 
+// ---------------------------------------------------------------- styles
+// A film is made in one style: every person in it is drawn by the same library.
+export const STYLES = { stylised: "Stylised", realistic: "Realistic" };
+// "Realistic" is Microsoft Rocketbox (MIT): real people in their own clothes, with
+// jaws and eyelids. Adults only. body = which movement skeleton drives them.
+export const PEOPLE = {
+  Business_Female_01: { name: "Woman in a black suit", body: "woman" },
+  Female_Adult_01: { name: "Woman, fair ponytail, pink shirt", body: "woman" },
+  Female_Adult_05: { name: "Woman in a pink blazer and jeans", body: "woman" },
+  Female_Adult_10: { name: "Woman in a black abaya", body: "woman" },
+  Business_Male_04: { name: "Bald man in a waistcoat", body: "man" },
+  Male_Adult_01: { name: "Young man, striped polo, shorts", body: "man" },
+  Male_Adult_08: { name: "Man in a light blue shirt", body: "man" },
+  Police_Male_01: { name: "Police officer", body: "man" },
+};
+/** Who plays each person in a realistic film: the chosen one if valid, else by pronoun, nobody twice where possible. */
+export function castPeople(cast, chosen = {}) {
+  const out = {}, used = new Set();
+  const ids = Object.keys(PEOPLE);
+  for (const c of cast) if (Object.hasOwn(PEOPLE, chosen[c.name] || "")) { out[c.name] = chosen[c.name]; used.add(chosen[c.name]); }
+  for (const c of cast) {
+    if (out[c.name]) continue;
+    const want = c.pronoun === "he" ? "man" : c.pronoun === "she" ? "woman" : null;
+    const fit = ids.filter(id => !want || PEOPLE[id].body === want);
+    out[c.name] = fit.find(id => !used.has(id)) || fit[0];
+    used.add(out[c.name]);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- voices
 /** A character's voice: how the phone's voice is pitched for them. */
 export const PITCH = {

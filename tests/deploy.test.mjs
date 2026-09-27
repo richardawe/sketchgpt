@@ -113,6 +113,11 @@ test("film.html is deployed with its reader and stage, at one version each", asy
   assert.match(workflow, /cp web\/film\.mjs\s/);
   const html = web("film.html"), stage = web("film/stage.mjs"), link = web("film/link.mjs"), costume = web("film/costume.mjs");
   assert.match(stage, /"\.\/costume\.mjs\?v=\d+"/);
+  assert.match(stage, /"\.\/realistic\.mjs\?v=\d+"/);
+  // Every realistic person the page offers has its file, and the MIT notice travels with them.
+  const { PEOPLE } = await import("../web/film.mjs");
+  for (const id of Object.keys(PEOPLE)) assert.ok(existsSync(new URL(`../web/film/assets/rocketbox/${id}.glb`, import.meta.url)), `rocketbox/${id}.glb`);
+  assert.match(readFileSync(new URL("../web/film/assets/rocketbox/LICENSE.txt", import.meta.url), "utf8"), /MIT License[\s\S]*Copyright \(c\) 2020 Microsoft/);
   const versions = new Set([...html.matchAll(/"\.\/film\.mjs\?v=(\d+)"/g), ...[stage, link, costume].flatMap(m => [...m.matchAll(/"\.\.\/film\.mjs\?v=(\d+)"/g)])].map(m => m[1]));
   assert.equal(versions.size, 1, `film.mjs imported as v=${[...versions]}`);
   assert.match(html, /"\.\/film\/stage\.mjs\?v=\d+"/);
