@@ -111,6 +111,7 @@ fine-tuning at this size will usually disappoint — move to a larger base
 |---|---|
 | A persona, tone, or task framing | 1 — system prompt |
 | A reliable output format | 2 — few-shot, then 4 if it still drifts |
+| Positions, sizes or counts to be right | None — compute them in code |
 | It to know your documents or data | 3 — RAG |
 | A style or idiom prompting can't reach | 4 — LoRA |
 | It to be smarter in general | None — use a bigger base model |
@@ -149,6 +150,47 @@ because it ignores the output format and answers "good", "downward" or
 "anxious" when asked for one of two words. When the whole job is emitting one
 of two tokens, obedience beats capability. Use the 1B for extraction and
 routing, where it is clearly ahead.
+
+### A second task family: structured output
+
+The table above is all classification. Sketch mode added a different shape of
+task — the model writes drawing commands and the page renders them — and it
+fails differently. Measured with `scripts/sketch-bench.mjs`, six requests, the
+page's real prompt, judged by the page's real parser:
+
+| | Qwen3-0.6B | Qwen3-1.7B |
+|---|---|---|
+| Output parsed | 6/6 | 6/6 |
+| Commands produced | 14 | **62** |
+| Distinct objects named | 13 | **19** |
+| Requested things actually drawn | 8/10 | **9/10** |
+| Drawings where objects landed on top of each other | 2/6 | 2/6 |
+
+**Format compliance is free; composition is not.** Both sizes emitted valid
+output every time, because a JSON schema constrains the shape. What separates
+them is whether anything was *composed*: asked to "draw a birthday party" the
+0.6B returned `cat, sun, bird, bird, sailboat` — the prompt's two worked
+examples regurgitated verbatim — while the 1.7B invented a scene. At 0.6B the
+examples in your prompt are not guidance, they are the answer.
+
+**Naming is the easy half; placing is the hard half.** Neither model improved
+at arithmetic. Both piled objects on the same coordinates in two of six
+drawings, and the 1.7B did it just as often as the 0.6B. If your task needs a
+small model to compute positions, sizes or counts, do that part in code — the
+page separates collapsed shapes itself rather than asking the model to try
+harder.
+
+**A worked example teaches its shape, not its rule.** One example containing
+two objects produced two houses for "a house". Two examples of different
+lengths still produced two cats for "a cat", because every shape the model had
+seen — including the empty template on the prompt's first line — held at least
+two slots. It took a one-command example *and* an explicit rule before a
+single-object request produced a single object. Count the slots in your
+template, not just your examples.
+
+**Give an escape hatch and it will be taken.** A `label` command, listed
+plainly beside the drawing tools, got used to print the word "cat" instead of
+drawing one. Describe a fallback narrowly or the weak model will prefer it.
 
 ### On a desktop, go bigger
 

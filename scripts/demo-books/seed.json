@@ -1,0 +1,14 @@
+{
+ "model": "qwen3:1.7b",
+ "device": "desktop",
+ "premise": "a girl who plants a magic seed",
+ "story": "{\n  \"title\": \"Lily and the Magic Seed\",\n  \"cast\": [\n    {\n      \"name\": \"Lily\",\n      \"is\": \"girl\"\n    },\n    {\n      \"name\": \"The Seed\",\n      \"is\": \"seed\"\n    },\n    {\n      \"name\": \"The Sun\",\n      \"is\": \"sun\"\n    }\n  ],\n  \"pages\": [\n    \"Lily lives in a small house near the garden. She loves to plant seeds. One day, she finds a strange seed in the dirt.\",\n    \"The seed is round and glowing. She puts it in a pot and water it carefully.\",\n    \"The seed begins to grow, and soon it sprouts a tiny green plant. It looks like a tiny tree.\",\n    \"As the days pass, the plant grows taller. It has leaves and a small flower that shines brightly.\",\n    \"One morning, Lily wakes up to find the plant has grown into a beautiful tree with big leaves.\",\n    \"The tree gives her a special gift: it grows flowers that make the sun shine brighter. Lily smiles and feels happy.\"\n  ]\n}",
+ "plans": [
+  "{\"t\":\"Lily's House\",\"c\":[\"house\",\"seed x1\",\"lily\",\"sun\"]}",
+  "{\"t\":\"A girl with a seed\",\"c\":[\"seed\",\"pot x2\",\"water\"]}",
+  "{\"t\":\"A seed growing into a plant\",\"c\":[\"seed x1\",\"tree x1\",\"sun\"]}",
+  "{\"t\":\"A plant growing\",\"c\":[\"plant x2\",\"leaves\",\"flower x1 bright\"]}",
+  "{\"t\":\"A beautiful tree\",\"c\":[\"tree x1\",\"green\"]}",
+  "{\"t\":\"A tree gives a gift\",\"c\":[\"tree x1\",\"flower x3\",\"sun\"]}"
+ ]
+}

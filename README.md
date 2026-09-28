@@ -1,8 +1,10 @@
 # sketchgpt
 
-A chat page that runs a language model **in the browser** — no server, no API
-key, no install for whoever opens it. Weights download once from a CDN into
-browser storage; every visit after that loads from cache and works offline.
+A picture-book maker that runs a language model **in the browser** — no
+server, no API key, no install for whoever opens it. Type an idea; the model
+writes a six-page story on your device, and the page illustrates every page. Weights download once from a CDN into
+browser storage; every visit after that loads from cache, and a service worker
+keeps the page itself available with no connection at all.
 
 Also includes a local [Ollama](https://ollama.com) setup for development.
 
@@ -15,7 +17,7 @@ Also includes a local [Ollama](https://ollama.com) setup for development.
 ## Use this as a template
 
 ```bash
-gh repo create my-chat --public --template <you>/sketchgpt --clone
+gh repo create my-chat --public --template richardawe/sketchgpt --clone
 cd my-chat
 ./scripts/setup-pages.sh
 ```
@@ -27,21 +29,24 @@ create a Pages site — it fails with *"Resource not accessible by integration"*
 Already have a repo? Run `./scripts/setup-pages.sh` inside it, or
 `./scripts/setup-pages.sh my-chat` to create one first.
 
-Then open the URL. The first visit asks before downloading the weights;
-after that the page loads them from cache and drops you straight into chat.
+Then open the URL. It opens in Book mode, which needs no model: nothing
+downloads. The model for the device downloads the first time someone opens
+Sketch, and loads from cache after that.
 
 ### What visitors get
 
 | Device | Model chosen | Download |
 |---|---|---|
-| Desktop | Qwen3-0.6B | ~500 MB |
-| Phone / tablet | SmolLM2-360M | ~376 MB |
+| Desktop | Qwen3-1.7B where it fits at ≥2048 context, else Qwen3-0.6B | ~990 MB / ~360 MB |
+| Phone / tablet | Qwen3-0.6B at a 1024 context, else Qwen2.5-0.5B | ~350 MB / ~300 MB |
 
-The page reads the GPU adapter and available memory, filters out models the
-device cannot run, and picks one with headroom to spare. Anything larger is
-labelled and needs a confirmation, because exceeding the limit kills the tab
-rather than raising an error. Bigger models are one dropdown away — Qwen3-1.7B
-is the sweet spot on a desktop.
+When Sketch is opened, the page reads the GPU adapter and available memory,
+filters out models the device cannot run, picks the best one that fits with
+headroom, and **starts the download by itself** — unless the browser has asked
+to save data. Book never downloads a model. "Choose a
+different model" is on the card while it downloads. The choices come from
+benching Book's real prompt (`docs/storybook.md`): Qwen2.5-0.5B, the previous
+phone default, could not write a story at all — casts like "Dog (has)".
 
 ## Quickstart
 
@@ -128,6 +133,287 @@ also starts Ollama if it is not already running.
 | Works for other people | Only if they install Ollama | Anyone with a WebGPU browser |
 | Model storage | `models/ollama/` on disk | Browser cache, persisted |
 | Speed | Faster | Slower, but no setup |
+
+### Two modes
+
+The browser page has a mode switch in the header:
+
+| | |
+|---|---|
+| **Book** | pick a hero (or use a photo of yourself), a place and a wish; a six-page illustrated story out — moving, read aloud, shareable, printable. No model. The default. |
+| **Sketch** | describe a scene, get an SVG drawn locally |
+
+Desk (brain dump, say it better) and Chat were removed for Book. Desk's
+measurements stay in `docs/desk.md`, its module in `scripts/lib/desk.mjs` for
+the bench.
+
+### Book — a picture book, written and drawn on the device, with no model
+
+The model's stories were "faulty and never good" on real devices, so Book no
+longer uses one. `web/story.mjs` writes the six pages from word lists: a hero
+(17 kinds, or the reader's own drawing from a photo), a place (7), and a wish
+(6). A helper is chosen because it can do what the problem needs. Every
+drawable word in the rules is marked, so `tests/story.test.mjs` can hold 7,800
+books to it:
+the picture draws exactly those words, the help makes sense, and the animation
+acts out what happens, never what is only wished for. `docs/story-rules.md`
+has the design and the measurements.
+
+You can also **write or paste your own story**: the page splits it into
+pages, finds the hero, and shows what each page will draw before drawing it.
+It never changes a word. The hero can be **your own picture**: a pet, a
+child's drawing (the paper is taken away) or a photo (the person cut out).
+It stays in the tab and never goes in a link. Backgrounds follow the words
+(hills, forest, snow, a town, a room with a window) and carry from page to
+page, painted with gradient skies, distance and each place's own small
+things. Any moving page can be **saved as a GIF**, and the whole book **as a
+video** (MP4, or WebM where the browser cannot make H.264), silent, made in
+the tab.
+
+The page still owns **continuity**: the hero is on every page as the same
+picture, a name is not a thing (a dog called Ducky is not a duck), and each
+picture is built from its page's own words. Books move, are read aloud in the
+device's voice, and share as a link that redraws the whole book on the
+recipient's device. **Print or save as PDF** prints the book and nothing else;
+**Download book** saves it as one self-contained HTML file.
+
+Opening the app fetches no model and not even the model library, and a phone
+with no WebGPU makes books like any other. The model downloads only when
+something needs it: Sketch, or "Rewrite with the model" in the book editor once
+Sketch has loaded it.
+
+### Scenes on desktop
+
+On a desktop model (1.5B and up), Sketch mode asks the model only **what** is
+in the picture — `cabin`, `pine x5`, `moon`, `fire front` — and the page decides
+**where**: sky along the top, mountains on the horizon, water behind the shore,
+people and animals in front. It then draws the lot by hand: hatched night skies
+and seas, grass tufts, coloured-pencil fills, a slight tilt on everything. The
+coordinate format fell apart on real scenes even at 1.7B — loops, the prompt's
+own example copied back, objects at y=245 on a 100-unit grid — and the list
+format measured clean on 7 of 7 at a fifteenth of the time.
+
+Everything is drawn from [Twemoji](https://github.com/jdecked/twemoji)
+illustrations (CC-BY 4.0), redrawn by rough.js in an ink-and-wash style: the
+picture's own colours, a slight hand wobble, a thin ink line. 222 pictures,
+from cows and tractors to ferris wheels, loaded only when you sketch; any noun
+without one falls back to a line icon, then to a handwritten word. This part
+applies on phones too. Phones keep the
+coordinate format, because the phone-sized models loop or copy the list prompt.
+`docs/sketch-scenes.md` has the numbers; `?scene=0` / `?scene=1` override.
+
+### Simple sketches
+
+In the browser page, choose **Sketch** in the header, load a model, and describe
+what to draw, for example “a house beside a tree”. The same text model produces
+drawing commands; the page validates them and renders an SVG locally.
+**Download SVG** saves an editable file. No image model, no extra download.
+
+The model writes lines of text inside a JSON envelope:
+
+```json
+{"t":"A house beside a tree","c":["house 25 55 40","tree 78 50 34","sun 15 15 14","line 2 88 98 88"]}
+```
+
+`house 25 55 40` is a **stamp** — a noun, a position and a size on a 0–100
+grid. The page owns the shape; the model only has to name the thing and say
+where it goes. There are 133 stamps with 84 aliases, and any noun outside that
+vocabulary falls back to a text label rather than disappearing. `line`, `box`,
+`circle`, `curve` and `label` are there for everything a noun cannot cover.
+
+#### Why it is shaped that way
+
+Qwen's tokenizer gives every digit its own token, and the space before it
+another, so `" 160"` costs four tokens. **Coordinates are what a drawing
+costs — not syntax.** Measured on one scene with Qwen3-0.6B's own tokenizer
+(`node scripts/token-budget.mjs`):
+
+| Encoding | Tokens | Commands | Per command |
+|---|---|---|---|
+| JSON objects on a 0–400 grid | 235 | 10 | 23.5 |
+| Command lines on a 0–100 grid | 134 | 10 | 13.4 |
+| The same scene as stamps | **66** | 5 | 13.2 |
+
+A stamped drawing costs **3.6× less** than the JSON it replaced, and looks
+better: a real tree instead of two line segments. Shortening `rectangle` to
+`r` was measured too, and saved nothing — the tool name is a rounding error
+next to the numbers.
+
+The prompt is **planned, not accumulated**. Only the previous drawing and the
+instruction that produced it are carried, so the prompt is the same size on
+turn ten as on turn two — measured flat at 391 tokens at every context rung.
+`max_tokens` is set from the room actually left, never past it, because
+generation that reaches the context edge stops silently mid-drawing. The
+command budget is derived from that room.
+
+Two rendering touches cost no model tokens at all, because they are applied to
+geometry the model already sent: [rough.js](https://roughjs.com) draws every
+shape with a hand-drawn line, and the stamps are [Lucide](https://lucide.dev)
+icons. Rough.js is vendored in `web/rough.mjs` rather than fetched from a CDN,
+because this page claims to work offline once the weights are cached and a CDN
+import would quietly cost every offline sketch its line. The page renders clean
+SVG if the module fails to load; `?rough=0` turns it off.
+
+#### Colour, on models that can afford it
+
+A colour is one word at the end of a command:
+
+```
+house 25 55 40 red
+```
+
+One token, where `#c0392b` is seven — and the page owns the actual values, so
+the model never has to know a hex code and cannot invent an unreadable one.
+The palette is `red orange yellow green blue purple pink brown grey black`.
+
+Colour costs about 30 prompt tokens to teach, which a 1024-token phone cannot
+spare, so it is offered only at a context of 2048 or more — desktop models get
+it, phones stay monochrome and pay nothing for it. The parser accepts colour
+from any model regardless; only the teaching is rationed.
+
+The page also **places** what the model could only name. A small model will
+happily return three correct nouns at the same coordinates; when stamps have
+collapsed into each other the page separates them, keeping the order they were
+listed in. A deliberate overlap — a sun behind a cloud — is left alone, and
+primitives are never moved, because a line is geometry the model may mean
+exactly.
+
+**Show commands** under any drawing reveals the exact lines the model sent —
+not the page's tidied version — and says how many stamps it had to move apart.
+A sketch that fails shows the raw model output the same way. On a phone that is
+the difference between a bug report and a guess.
+
+Those commands are **editable**. Change `house 30 60 30` to `house 30 60 60`,
+press **Redraw**, and the house doubles; add `red` on the end and it changes
+colour. It is the cheapest way to fix something the model got slightly wrong,
+and the clearest way to show a child that a picture is a handful of shapes at
+a handful of positions. An edit is parsed with the auto-spacing switched off,
+because that exists to correct a model that cannot place things — a person who
+types two coordinates means them. An edit also replaces the stored drawing, so
+a following "make it bigger" builds on what you drew.
+
+Output cut off mid-JSON still renders the commands that arrived, captioned as
+unfinished. A few unreadable commands are dropped and counted; mostly-bad
+output says so instead of rendering a confident fragment.
+
+The mode is saved across reloads; drawings, stories and history are not. This is in `web/browser.html`, `web/sketch.mjs`
+and `web/stamps.mjs`; the Ollama page is unchanged.
+
+#### Not yet measured
+
+There is no GPU in the environment this was built in, and SwiftShader loads
+models but cannot generate, so every number above is a token count or a render
+from a mock.
+
+Three real runs so far, all Qwen3-0.6B on a phone, each one correcting the
+prompt rather than the code:
+
+1. **A single circle** for "a house beside a tree" — nothing dropped or
+   misparsed, the model simply emitted almost nothing. Fixed by giving the
+   prompt a worked example.
+2. **Two houses** for "a house". It had copied the example's shape — two
+   objects and a ground line — rather than its rule. Fixed, supposedly, by
+   adding a second example of a different length.
+3. **Two cats** for "a cat", so that did not take. Every shape the model had
+   been shown held at least two commands, the empty template on the prompt's
+   first line included. It now sees a one-command example and an explicit
+   rule. The same request also once printed the *word* "cat" twice instead of
+   drawing it, by reaching for `label`; that tool is now described as being
+   for words written on the picture, never for naming something drawable.
+4. **Three correct nouns, all in the same spot.** `house 50 50 30 /
+   tree-deciduous 50 52 30 / car 50 54 30` — it named the objects perfectly
+   and stacked them into a blob, having anchored on an example's coordinates
+   and added 2 each time. That one is fixed in the page, not the prompt:
+   `spreadStamps()` separates stamps that have collapsed, keeps the order they
+   were listed in, and leaves a deliberate overlap alone. It was verified
+   against that exact output in a test, with no round trip needed.
+
+Duplication took three prompt iterations and a trip to a real phone each;
+layout took one code change tested in seconds. The rule that keeps paying:
+**if the page can compute it, the prompt should not ask for it.** Prompt
+tokens are not free either — 197 to 391 across those rounds took a
+1024-context phone from 437 output tokens to 299.
+
+#### Does a bigger model draw better?
+
+Yes for composition, no for placement. Same prompt, same parser, six requests,
+run on CPU through Ollama (`node scripts/sketch-bench.mjs qwen3:0.6b qwen3:1.7b`):
+
+| Model | Parsed | Commands | Distinct nouns | Requested things drawn | Drawings piled up |
+|---|---|---|---|---|---|
+| Qwen3-0.6B | 6/6 | 14 | 13 | 8/10 | 2 of 6 |
+| Qwen3-1.7B | 6/6 | **62** | **19** | **9/10** | 2 of 6 |
+
+The 0.6B is mostly *retrieving*. Asked to "draw a birthday party" it returned
+`cat, sun, bird, bird, sailboat` — both of the prompt's worked examples
+regurgitated verbatim. Asked for "a boat on the sea with two birds" it drew one
+boat. The 1.7B invents a scene for the same requests and actually uses the
+40-command desktop budget.
+
+**Neither places any better.** Both piled stamps on top of each other in exactly
+two of six drawings, which is why `spreadStamps()` runs at every size. Scale
+buys vocabulary and coverage; it does not buy arithmetic.
+
+Colour follows the same split: the 1.7B handles "a yellow sun over a blue sea"
+correctly, while the 0.6B wrote `label 40 50 blue` — printing the word instead
+of colouring anything. Neither model ever emitted an invalid colour, and
+neither added colour that was not asked for.
+
+The caveat on all of the above: Ollama serves GGUF Q4_K_M and the browser
+serves MLC q4f16, so these are composition numbers, not the exact bytes a
+visitor's device produces.
+
+Nothing above 1.7B has been tried, and no model outside the Qwen3 family. A
+desktop now gets Qwen3-1.7B wherever it fits at a 2048 context or more.
+
+#### Checks
+
+```bash
+node --test tests/sketch.test.mjs     # format, stamps, clamping, budget
+node --test tests/book.test.mjs       # the story parser and the page's picture rules
+node --test tests/story.test.mjs      # stories by rules: the picture, the help and the animation, every combination
+node --test tests/picture.test.mjs    # your own picture: paper removal, cut-out, trimming
+node tests/picture-browser.mjs        # a drawing and a photo as the hero, on a touch screen
+node --test tests/desk.test.mjs       # the retired Desk's planner, for its bench
+node --test tests/retrieval.test.mjs  # the retired Work-mode retrieval, for the bench
+node tests/sketch-browser.mjs         # needs Playwright + Chromium
+node tests/book-browser.mjs           # Book on a touch screen and a mouse
+node --test tests/scene.test.mjs      # scene composer, on real model output
+node --test tests/art.test.mjs        # the illustrations: well-formed, named, credited
+node tests/scene-browser.mjs          # scene mode in the page, desktop and phone
+node --test tests/deploy.test.mjs     # every imported module is deployed and cached
+node tests/stop.mjs                   # Stop stops, and the page survives it
+node tests/failure.mjs                # what the page says when generation fails
+node tests/offline.mjs                # loads the page with the network cut
+node scripts/retrieval-bench.mjs      # BM25 vs an embedder; Ollama optional
+node scripts/token-budget.mjs         # real tokenizer; needs @lenml/tokenizers
+node scripts/sketch-bench.mjs qwen3:1.7b   # real models; needs Ollama
+node scripts/storybook.mjs            # a book from a real model; needs Ollama
+node scripts/book-bench.mjs qwen3:0.6b # Book's prompt, every page drawn by the page's code
+node scripts/desk-bench.mjs qwen3:0.6b     # the retired Desk's prompts
+node scripts/build-stamps.mjs         # regenerates web/stamps.mjs from Lucide
+node scripts/build-art.mjs            # regenerates web/art.mjs from Twemoji and Fluent Emoji
+```
+
+Set `PLAYWRIGHT_MODULE` to Playwright's `index.mjs` if it is not installed
+locally, and `SKETCH_CHROME` to a Chromium binary if the one Playwright wants
+is not the one on disk. The browser checks drive a mock model and cover stamp rendering, SVG
+export, mobile width, the flat prompt over seven turns, truncated output,
+invalid output, cancellation and the saved mode. `SKETCH_ROUGH=0` runs them
+against the clean-SVG fallback instead.
+
+### Nothing leaves the device
+
+The header proves it: a shield counts every network request the page makes
+after the model has loaded, and lists them in the menu. Writing a book and
+drawing make none, so it reads **0**. Nothing you type is written to storage
+either — only the chosen mode is.
+
+Book replaced **Desk** (brain dump and say-it-better, `docs/desk.md`), which
+replaced **Work mode** — document reading with BM25 retrieval. Work mode's
+measurements, including why a small model must never summarise a document
+nobody can check, are in `docs/work-mode.md`; the review that retired it is
+`docs/fix-plan-work-ui.md`.
 
 ### Why the Ollama page can't go on GitHub Pages
 
@@ -219,10 +505,42 @@ models/modelfiles/        custom models built on the base (committed)
 models/ollama/            Ollama model store — weights live here (ignored)
 scripts/setup-ollama.sh   install, serve, pull, verify, smoke-test
 scripts/serve-web.sh      serve the chat UI on localhost
+scripts/build-stamps.mjs  regenerates web/stamps.mjs from Lucide
+scripts/token-budget.mjs  measures sketch cost against Qwen3's tokenizer
+scripts/sketch-bench.mjs  runs the real prompt through real models on CPU
+scripts/storybook.mjs     writes a book with a real model on CPU (Ollama)
+scripts/desk-bench.mjs    runs the retired Desk's prompts through real models on CPU
+scripts/lib/retrieval.mjs BM25 from the retired Work mode, for retrieval-bench
+scripts/record-demo.mjs   records mp4/gif clips of sketch mode for posting
 web/index.html            streaming chat UI, talks to local Ollama
 web/browser.html          runs the model in-browser via WebGPU (Pages-ready)
+web/sketch.mjs            sketch format, context budget, SVG rendering
+web/book.mjs              Book: the story prompt and parser, the page's picture rules
+web/scene.mjs             scene mode: the model lists things, the page places them
+web/stamps.mjs            generated icon geometry (do not edit by hand)
+web/rough.mjs             vendored rough.js 4.6.6 (MIT), the hand-drawn line
+web/sw.js                 service worker — keeps the page itself usable offline
 docs/customising.md       how to change what the model does
 ```
+
+## Built on
+
+- **[WebLLM](https://github.com/mlc-ai/web-llm)** (Apache 2.0) — the in-browser
+  inference this page is a front end for.
+- **[Twemoji](https://github.com/jdecked/twemoji)** (graphics CC-BY 4.0,
+  © Twitter, Inc and other contributors) — the illustrations sketches are drawn
+  from, vendored as path data in `web/art.mjs` and credited inside every SVG.
+- **[Mediabunny](https://github.com/Vanilagy/mediabunny)** (MPL-2.0) — writes
+  the MP4/WebM when a book is saved as a video; only its writer is vendored,
+  unmodified, in `web/vendor/mediabunny.mjs`.
+- **[Fluent Emoji](https://github.com/microsoft/fluentui-emoji)** (MIT, © Microsoft)
+  — its "Flat" style fills what Twemoji's list lacks: animals like the llama and
+  otter, and the set dressing backgrounds are made of. Vendored beside Twemoji
+  in `web/art.mjs`, credited the same way.
+- **[Lucide](https://lucide.dev)** (ISC) — the icon geometry behind sketch
+  stamps a noun has no illustration for, vendored as path data in `web/stamps.mjs`.
+- **[rough.js](https://roughjs.com)** (MIT) — the hand-drawn line, vendored
+  verbatim in `web/rough.mjs` so sketches keep it offline.
 
 ## Notes
 

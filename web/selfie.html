@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<!-- The promise on this page is "your photo never leaves this device", and the
+     browser enforces the network half of it: this page may fetch only from its
+     own site. Nothing on it logs anywhere (MediaPipe's own runtime was dropped
+     for posting usage statistics); this is the lock on the door regardless. -->
+<meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data:; img-src 'self' blob: data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Draw me — sketchgpt</title>
+<meta name="description" content="Pick a photo; this page draws you as a moving, hand-drawn caricature. Your photo never leaves your device.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231c1c1a'/%3E%3Cpath d='M9 22.5 20.5 11a2.1 2.1 0 0 1 3 3L12 25.5H9z' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f6f3; --panel: #fff; --ink: #1c1c1a; --muted: #6e6e68; --line: #e6e5df;
+    --accent: #1d7048; --accent-bg: #e7f3ec; --primary: #1c1c1a; --on-primary: #fff;
+    --warn-ink: #7a4f00; --warn-bg: #fdf3dc; --err: #b3261e; --err-bg: #fcebea;
+    --paper: #fbf8f2;
+    --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111112; --panel: #19191b; --ink: #ecece8; --muted: #9b9b95; --line: #2a2a2d;
+      --accent: #6fd3a0; --accent-bg: #16271e; --primary: #ecece8; --on-primary: #111112;
+      --warn-ink: #f2c96b; --warn-bg: #2a2212; --err: #ff8a80; --err-bg: #2d1716; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font); }
+  main { max-width: 560px; margin: 0 auto; padding: 16px 16px 48px; }
+  header h1 { font-size: 22px; margin: 8px 0 2px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); }
+  .privacy { margin: 12px 0 16px; padding: 10px 12px; border-radius: 10px; background: var(--accent-bg);
+    color: var(--accent); font-size: 14px; }
+  .pick { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button, .btn { font: inherit; font-size: 15px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--ink); padding: 9px 14px; cursor: pointer; }
+  button.primary, .btn.primary { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+  button:disabled { opacity: .5; cursor: default; }
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  #status { margin: 12px 0; color: var(--muted); min-height: 1.5em; }
+  #stage { background: var(--paper); border-radius: 14px; box-shadow: 0 1px 2px rgb(20 20 18 / .06), 0 8px 24px rgb(20 20 18 / .08);
+    overflow: hidden; display: none; }
+  #stage svg { display: block; width: 100%; height: auto; }
+  #photo { display: none; max-width: 100%; border-radius: 12px; margin: 8px 0; }
+  .controls { display: none; margin-top: 14px; gap: 12px; flex-direction: column; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  label.slider { display: flex; gap: 10px; align-items: center; width: 100%; }
+  label.slider input { flex: 1; }
+  .notes { margin: 10px 0 0; padding: 0; list-style: none; }
+  .notes li { background: var(--warn-bg); color: var(--warn-ink); border-radius: 8px; padding: 6px 10px; margin: 6px 0; font-size: 14px; }
+  .errbox { display: none; margin-top: 12px; background: var(--err-bg); color: var(--err); border-radius: 10px; padding: 10px 12px; }
+  .errbox pre { white-space: pre-wrap; font: 12px/1.4 var(--mono); color: var(--ink); background: var(--panel);
+    padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; }
+  .small { font-size: 13px; color: var(--muted); }
+  .star input { flex: 1; min-width: 0; font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--ink); }
+  @media (pointer: coarse) { button, .btn, input { font-size: 16px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Draw me</h1>
+    <p>Pick a photo of a face. This page draws it as a moving, hand-drawn caricature.</p>
+  </header>
+  <div class="privacy" id="privacy">Your photo stays on this device. The page measures the face, draws it, then forgets the photo. It is not allowed to connect anywhere except this site.</div>
+
+  <div class="pick">
+    <label class="btn primary" for="file" id="pickLabel">Pick a photo</label>
+    <input type="file" id="file" accept="image/*">
+    <button id="forget" style="display:none">Forget</button>
+  </div>
+  <div id="status" role="status" aria-live="polite"></div>
+  <img id="photo" alt="The photo you picked">
+  <div id="stage" aria-label="Your caricature"></div>
+  <ul class="notes" id="notes"></ul>
+
+  <div class="controls" id="controls">
+    <label class="slider">How much caricature
+      <input type="range" id="amount" min="0" max="2" step="0.1" value="1" aria-label="How much caricature">
+    </label>
+    <div class="row">
+      <button id="redraw">Redraw</button>
+      <button id="hello">Say hello</button>
+    </div>
+    <div class="row">
+      <button class="primary" id="gif">Save GIF</button>
+      <button id="sticker">Sticker (PNG)</button>
+      <button id="svg">SVG</button>
+    </div>
+    <label class="small"><input type="checkbox" id="credit" checked> Show "drawn on-device · sketchgpt" in the corner</label>
+    <div class="row star">
+      <input type="text" id="name" maxlength="40" placeholder="Your name in the story (optional)" autocomplete="off" aria-label="Your name in the story">
+      <button class="primary" id="star">Star in a book</button>
+    </div>
+    <p class="small">Opens the book page with this drawing as the hero. Only the drawing goes — never the photo — and it stays in this tab.</p>
+  </div>
+
+  <div class="errbox" id="errbox"><div id="errmsg"></div><pre id="report"></pre><button id="copy">Copy report</button></div>
+  <p class="small" style="margin-top:28px">Glasses, beards and hats are not drawn yet. Face, hair and person models by MediaPipe, run by LiteRT.js (both Apache-2.0), in this tab. <a href="./">Back to sketchgpt</a></p>
+</main>
+
+<script type="module">
+import { encodeMe, alignFace, measure, medianColour, dominantColour, skinTone, LIPS, hex, rgbToLab, outlines, simplify, hairStrokes, shadeCells,
+  renderPortrait, setPose, idleLoop, poseAt, LOOP_MS, OVAL, EYE, BROW, insidePolygon } from "./face.mjs?v=2";
+
+const $ = id => document.getElementById(id);
+const MAX_SIDE = 640;
+let data = null, seed = 1, stopLoop = null, speaking = false, report = {};
+
+function status(text) { $("status").textContent = text; }
+function note(text) { const li = document.createElement("li"); li.textContent = text; $("notes").append(li); }
+function fail(stage, message, err) {
+  report = { stage, message, error: err ? String(err && err.stack || err) : undefined, userAgent: navigator.userAgent, ...report };
+  $("errmsg").textContent = message;
+  $("report").textContent = JSON.stringify(report, null, 2);
+  $("errbox").style.display = "block";
+  status("");
+}
+
+// ---- the face finder, loaded only when someone picks a photo -----------
+// face-find.mjs runs MediaPipe's models on LiteRT.js. It is imported only
+// here, on demand, so nobody who does not pick a photo downloads anything.
+let finderModule = null;
+async function finder() {
+  finderModule ||= await import("./face-find.mjs?v=1");
+  return { mod: finderModule, f: await finderModule.loadFinder() };
+}
+
+// ---- photo -> data (everything the page keeps; never the photo) -----------
+async function portraitData(canvas) {
+  const w = canvas.width, h = canvas.height;
+  const px = canvas.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  const t0 = performance.now();
+  report.stage = "loading the face finder";
+  const { mod, f } = await finder();
+  report.loadMs = Math.round(performance.now() - t0);
+
+  report.stage = "finding the face";
+  const found = await mod.findFaces(f, canvas, w, h);
+  report.faces = found.length;
+  if (!found.length) return { error: "No face found. Try a photo facing the camera, in good light." };
+  const notes = [];
+  if (found.length > 1) notes.push(`${found.length} faces found. This is the largest one.`);
+  const pts = found[0].pts;
+
+  report.stage = "finding the hair";
+  const hairMask = await mod.findHair(f, canvas, w, h);
+  const personConf = await mod.findPerson(f, canvas, w, h);
+  report.findMs = Math.round(performance.now() - t0);
+
+  report.stage = "measuring";
+  const A = alignFace(pts), P = A.pts, iod = A.eyeDistancePx;
+  const rgbAt = (x, y) => { x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= w || y >= h) return null;
+    const i = (y * w + x) * 4; return [px[i], px[i + 1], px[i + 2]]; };
+  const around = (p, r) => { const out = []; for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const c = rgbAt(p[0] + dx, p[1] + dy); if (c) out.push(c); } return out; };
+  const gray = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) gray[i] = (0.2126 * px[i * 4] + 0.7152 * px[i * 4 + 1] + 0.0722 * px[i * 4 + 2]) / 255;
+  const hairAt = p => { const x = Math.round(p[0]), y = Math.round(p[1]); return x >= 0 && y >= 0 && x < w && y < h && hairMask[y * w + x] === 1; };
+  const r = Math.max(2, Math.round(iod / 25));
+
+  // colours
+  // Skin: the median of the face's skin pixels — inside the outline, not eyes,
+  // brows, lips or hair. Two ways this went wrong in the fixture review:
+  // sampling only the brightest pixels drew a dark-skinned woman several
+  // shades lighter than she is; the whole-face median drew two people lit
+  // from the side far darker, because half of each face was in deep shadow.
+  // (Even studio portraits differ by 12-25 L* between halves, so "use the lit
+  // half" drew nearly everyone lighter.) So: deep shadow — more than 25 L*
+  // below the lit half's median — is lighting, not skin, and is left out;
+  // the median of everything else is the skin. The bench prints the numbers.
+  const faceSkin = [], halves = [[], []];
+  {
+    const ov = OVAL.map(i => pts[i]), c = ov.reduce((a, p) => [a[0] + p[0] / ov.length, a[1] + p[1] / ov.length], [0, 0]);
+    const inner = ov.map(p => [c[0] + (p[0] - c[0]) * 0.9, c[1] + (p[1] - c[1]) * 0.9]);
+    const grow = (idx, k) => { const q = idx.map(i => pts[i]), m = q.reduce((a, p) => [a[0] + p[0] / q.length, a[1] + p[1] / q.length], [0, 0]); return q.map(p => [m[0] + (p[0] - m[0]) * k, m[1] + (p[1] - m[1]) * k]); };
+    const skip = [
+      ...["right", "left"].map(sd => grow([...EYE[sd].upper, ...EYE[sd].lower.slice().reverse()], 1.8)),
+      ...["right", "left"].map(sd => grow([...BROW[sd].upper, ...BROW[sd].lower.slice().reverse()], 1.5)),
+      grow([...LIPS.outerUpper, ...LIPS.outerLower.slice().reverse()], 1.3),
+      grow([129, 64, 98, 97, 2, 326, 327, 294, 358], 1.3),
+    ];
+    const xs = inner.map(p => p[0]), ys = inner.map(p => p[1]);
+    for (let y = Math.max(0, Math.min(...ys)); y < Math.min(h, Math.max(...ys)); y += 2)
+      for (let x = Math.max(0, Math.min(...xs)); x < Math.min(w, Math.max(...xs)); x += 2) {
+        if (!insidePolygon([x, y], inner) || hairAt([x, y]) || skip.some(q => insidePolygon([x, y], q))) continue;
+        const c2 = rgbAt(x, y); if (c2) { faceSkin.push(c2); halves[A.toFace([x, y])[0] < 0 ? 0 : 1].push(c2); }
+      }
+  }
+  let skinRaw = medianColour(faceSkin.length > 50 ? faceSkin : [50, 280, 101, 330].flatMap(i => around(pts[i], r)));
+  const halfL = halves.map(hv => hv.length > 25 ? rgbToLab(medianColour(hv))[0] : null);
+  report.skinHalvesL = halfL.map(v => v == null ? null : +v.toFixed(1));
+  const litL = Math.max(...halfL.filter(v => v != null));
+  if (Number.isFinite(litL)) {
+    const kept = faceSkin.filter(c2 => rgbToLab(c2)[0] >= litL - 25);
+    if (kept.length > 50) skinRaw = medianColour(kept);
+    report.skinShadowDropped = +(1 - kept.length / faceSkin.length).toFixed(2);
+  }
+  report.skinPhotoL = +rgbToLab(skinRaw)[0].toFixed(1);
+  const skin = skinTone(skinRaw);
+  const lip = hex(medianColour([0, 17, 37, 267, 84, 314, 39, 269, 181, 405].flatMap(i => around(pts[i], 1))));
+  const irisSamples = [];
+  for (const side of ["right", "left"]) {
+    const c = pts[EYE[side].iris[0]]; if (!c) continue;
+    const ir = Math.max(...EYE[side].iris.slice(1).map(i => Math.hypot(pts[i][0] - c[0], pts[i][1] - c[1])));
+    for (let dy = -ir; dy <= ir; dy++) for (let dx = -ir; dx <= ir; dx++) {
+      const d = Math.hypot(dx, dy) / ir; if (d > 0.35 && d < 0.8) { const s = rgbAt(c[0] + dx, c[1] + dy); if (s) irisSamples.push(s); }
+    }
+  }
+  const iris = irisSamples.length ? hex(medianColour(irisSamples)) : "#4a3a2a";
+  const hairSamples = [];
+  for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) if (hairMask[y * w + x]) hairSamples.push(rgbAt(x, y));
+  const hasHair = hairSamples.length > 150;
+  const hairC = hasHair ? hex(medianColour(hairSamples)) : "#3a2c22";
+  const browSamples = [];
+  for (const side of ["right", "left"]) {
+    const poly = [...BROW[side].upper, ...BROW[side].lower.slice().reverse()].map(i => pts[i]);
+    const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]);
+    for (let y = Math.min(...ys); y <= Math.max(...ys); y++) for (let x = Math.min(...xs); x <= Math.max(...xs); x++)
+      if (insidePolygon([x, y], poly)) { const s = rgbAt(x, y); if (s) browSamples.push(s); }
+  }
+  browSamples.sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]));
+  const brow = browSamples.length ? hex(medianColour(browSamples.slice(0, Math.max(1, browSamples.length * 0.4 | 0)))) : null;
+  const skinLab = rgbToLab(skinRaw);
+  const clothSamples = [];
+  const chin = pts[152];
+  for (let y = chin[1] + 1.2 * iod; y < Math.min(h, chin[1] + 4.5 * iod); y += 2)
+    for (let x = chin[0] - 2.4 * iod; x < chin[0] + 2.4 * iod; x += 2) {
+      const xi = Math.round(x), yi = Math.round(y);
+      if (xi < 0 || xi >= w || yi >= h || personConf[yi * w + xi] < 0.5 || hairMask[yi * w + xi]) continue;
+      const s = rgbAt(xi, yi), L = rgbToLab(s);
+      if (Math.hypot(L[0] - skinLab[0], L[1] - skinLab[1], L[2] - skinLab[2]) < 14) continue;
+      clothSamples.push(s);
+    }
+  const cloth = clothSamples.length > 40 ? hex(dominantColour(clothSamples)) : "#6b7f99";
+
+  // which side the light comes from, for the nose's shadow
+  const lumOf = i => { const s = medianColour(around(pts[i], r)); return s ? rgbToLab(s)[0] : 50; };
+  const light = lumOf(425) - lumOf(205) >= 0 ? 1 : -1;
+
+  // hair outlines, in face space
+  const g = Math.max(1, Math.round(w / 160)), w2 = Math.ceil(w / g), h2 = Math.ceil(h / g);
+  const small = new Uint8Array(w2 * h2), smallFringe = new Uint8Array(w2 * h2), smallSkin = new Uint8Array(w2 * h2);
+  // Skin above the eyes and between the face's sides: person, not hair.
+  const eyeLineY = Math.min(pts[159][1], pts[386][1]);
+  const ovalXs = OVAL.map(i => pts[i][0]), sideL = Math.min(...ovalXs), sideR = Math.max(...ovalXs);
+  const ovalImg = OVAL.map(i => pts[i]);
+  const oc = ovalImg.reduce((a, p) => [a[0] + p[0] / ovalImg.length, a[1] + p[1] / ovalImg.length], [0, 0]);
+  const ovalIn = ovalImg.map(p => [oc[0] + (p[0] - oc[0]) * 0.97, oc[1] + (p[1] - oc[1]) * 0.97]);
+  for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) {
+    const X = Math.min(w - 1, x * g + (g >> 1)), Y = Math.min(h - 1, y * g + (g >> 1));
+    if (hairMask[Y * w + X]) { small[y * w2 + x] = 1; if (insidePolygon([X, Y], ovalIn)) smallFringe[y * w2 + x] = 1; }
+    else if (personConf[Y * w + X] > 0.5 && Y < eyeLineY && X > sideL && X < sideR) smallSkin[y * w2 + x] = 1;
+  }
+  const toFaceLoops = (mask, min, keep) => outlines(mask, w2, h2, min).slice(0, keep)
+    .map(l => simplify(l, 0.7).map(([x, y]) => A.toFace([x * g, y * g]).map(v => +v.toFixed(3))));
+  const hairLoops = hasHair ? toFaceLoops(small, w2 * h2 * 0.002, 3) : [];
+  const fringe = hasHair ? toFaceLoops(smallFringe, w2 * h2 * 0.0015, 3) : [];
+  const skinTop = toFaceLoops(smallSkin, w2 * h2 * 0.002, 1);
+  const strokes = hasHair ? hairStrokes(gray, hairMask, w, h).map(l => l.map(p => A.toFace(p).map(v => +v.toFixed(3)))) : [];
+
+  // shading
+  const lum = fp => { const [x, y] = A.toImage(fp); const s = around([x, y], 1); return s.length ? rgbToLab(medianColour(s))[0] / 100 : null; };
+  const shade = shadeCells(P, lum, { isHair: fp => hairAt(A.toImage(fp)) });
+
+  const ears = {};
+  for (const [side, i, sign] of [["right", 234, -1], ["left", 454, 1]]) ears[side] = !hairAt(A.toImage([P[i][0] + sign * 0.14, P[i][1] + 0.2]));
+
+  const M = measure(P);
+  if (Math.abs(M.yaw) > 0.22) notes.push("The head is turned; this works best with a photo facing the camera.");
+  if (!hasHair) notes.push("No hair found, so none is drawn.");
+  report.stage = "done";
+  report.totalMs = Math.round(performance.now() - t0);
+  return {
+    data: { v: 1, pts: P.map(p => p.map(v => +v.toFixed(3))), hair: hairLoops, fringe, skinTop, strokes, shade,
+      colours: { skin, hair: hairC, lip, iris, cloth, brow }, light, ears },
+    notes,
+  };
+}
+
+// ---- showing it -----------------------------------------------------------
+function show() {
+  if (stopLoop) stopLoop();
+  $("stage").innerHTML = renderPortrait(data, { amount: +$("amount").value, seed, credit: $("credit").checked });
+  $("stage").style.display = "block";
+  const svg = $("stage").querySelector("svg");
+  stopLoop = idleLoop(svg, { talking: () => speaking, seed, reduced: matchMedia("(prefers-reduced-motion: reduce)").matches });
+}
+
+async function onFile(file) {
+  forget(false);
+  report = { imageType: file.type, imageBytes: file.size };
+  if (!/^image\//.test(file.type || "image/")) return fail("reading the photo", "That file is not a picture.");
+  status("Reading the photo…");
+  let canvas;
+  try {
+    const bmp = await createImageBitmap(file);
+    const s = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
+    canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * s); canvas.height = Math.round(bmp.height * s);
+    canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    report.size = `${canvas.width}x${canvas.height}`;
+    $("photo").src = canvas.toDataURL("image/jpeg", 0.8);
+    $("photo").style.display = "block";
+  } catch (err) { return fail("reading the photo", "This photo could not be opened.", err); }
+
+  status(finderModule ? "Finding the face…" : "Loading the face finder (about 13 MB, once)…");
+  let got;
+  try { got = await portraitData(canvas); }
+  catch (err) { return fail(report.stage || "finding the face", "Something went wrong while " + (report.stage || "finding the face") + ".", err); }
+  finally { canvas.width = canvas.height = 0; }
+  if (got.error) { status(""); return fail(report.stage, got.error); }
+
+  data = got.data;
+  // The photo stays on screen only if something went wrong.
+  $("photo").removeAttribute("src"); $("photo").style.display = "none";
+  for (const n of got.notes) note(n);
+  status(`Drawn in ${((report.totalMs || 0) / 1000).toFixed(1)} s, on this device.`);
+  show();
+  $("controls").style.display = "flex";
+  $("forget").style.display = "";
+  $("pickLabel").textContent = "Try another photo";
+}
+
+function forget(all = true) {
+  if (stopLoop) stopLoop(); stopLoop = null;
+  data = null;
+  $("stage").innerHTML = ""; $("stage").style.display = "none";
+  $("photo").removeAttribute("src"); $("photo").style.display = "none";
+  $("controls").style.display = "none"; $("errbox").style.display = "none";
+  $("notes").innerHTML = "";
+  if (all) { $("file").value = ""; $("forget").style.display = "none"; $("pickLabel").textContent = "Pick a photo"; status("Forgotten."); }
+}
+
+// ---- export: everything is drawn from `data`, never from the photo --------
+function portraitSvg(pose, { credit }) {
+  const text = renderPortrait(data, { amount: +$("amount").value, seed, credit });
+  const doc = new DOMParser().parseFromString(text, "image/svg+xml");
+  const svg = doc.documentElement;
+  if (pose) setPose(svg, pose);
+  return new XMLSerializer().serializeToString(svg);
+}
+function rasterise(svgText, w, h, background) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml" }));
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      const ctx = c.getContext("2d", { willReadFrequently: true });
+      if (background) { ctx.fillStyle = background; ctx.fillRect(0, 0, w, h); }
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url); resolve(c);
+    };
+    img.onerror = e => { URL.revokeObjectURL(url); reject(new Error("could not draw the portrait to an image")); };
+    img.src = url;
+  });
+}
+async function deliver(blob, name) {
+  const file = new File([blob], name, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] }) && matchMedia("(pointer: coarse)").matches) {
+    try { await navigator.share({ files: [file], title: "Me, drawn" }); return; }
+    catch (err) { if (err.name === "AbortError") return; }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+async function makeGif({ width = 320, frames = 24 } = {}) {
+  const { GIFEncoder, quantize, applyPalette } = await import("./vendor/gifenc.mjs");
+  const height = Math.round(width * 1.2), gif = GIFEncoder(), credit = $("credit").checked;
+  for (let i = 0; i < frames; i++) {
+    const c = await rasterise(portraitSvg(poseAt(i * LOOP_MS / frames), { credit }), width, height, "#fbf8f2");
+    const { data: rgba } = c.getContext("2d").getImageData(0, 0, width, height);
+    const palette = quantize(rgba, 128);
+    gif.writeFrame(applyPalette(rgba, palette), width, height, { palette, delay: Math.round(LOOP_MS / frames) });
+  }
+  gif.finish();
+  return new Blob([gif.bytes()], { type: "image/gif" });
+}
+async function busy(button, label, work) {
+  const was = button.textContent; button.disabled = true; button.textContent = label;
+  try { await work(); } catch (err) { fail("saving", "Could not make the file.", err); }
+  finally { button.disabled = false; button.textContent = was; }
+}
+
+// ---- wiring ---------------------------------------------------------------
+function boot() {
+  $("file").addEventListener("change", e => { const f = e.target.files && e.target.files[0]; if (f) onFile(f); });
+  $("forget").addEventListener("click", () => forget(true));
+  $("amount").addEventListener("change", () => data && show());
+  $("credit").addEventListener("change", () => data && show());
+  $("redraw").addEventListener("click", () => { seed = (seed % 997) + 1 + Math.floor(Math.random() * 50); show(); });
+  $("hello").addEventListener("click", () => {
+    if (!("speechSynthesis" in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance("Hello! This is me, drawn on my own device.");
+    u.onstart = () => { speaking = true; }; u.onend = u.onerror = () => { speaking = false; };
+    speechSynthesis.speak(u);
+  });
+  $("gif").addEventListener("click", e => busy(e.target, "Making GIF…", async () => deliver(await makeGif(), "me-drawn.gif")));
+  $("sticker").addEventListener("click", e => busy(e.target, "Making…", async () => {
+    const c = await rasterise(portraitSvg(null, { credit: false }), 800, 960, null);
+    deliver(await new Promise(r => c.toBlob(r, "image/png")), "me-sticker.png");
+  }));
+  $("svg").addEventListener("click", () => deliver(new Blob([portraitSvg(null, { credit: $("credit").checked })], { type: "image/svg+xml" }), "me-drawn.svg"));
+  $("star").addEventListener("click", async () => {
+    if (!data) return;
+    location.href = "./#" + await encodeMe(data, $("name").value.trim());
+  });
+  $("copy").addEventListener("click", () => navigator.clipboard?.writeText($("report").textContent));
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
+  window.__selfie = { portraitData, makeGif, get data() { return data; }, get report() { return report; } };
+}
+boot();
+</script>
+</body>
+</html>

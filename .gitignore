@@ -19,3 +19,8 @@ node_modules/
 
 # Ollama server log written by scripts/setup-ollama.sh
 models/ollama-serve.log
+
+# Qwen3's tokenizer.json, fetched on demand by scripts/token-budget.mjs.
+# 11 MB — a third of a 360M model's download, and reproducible from Hugging
+# Face, so it is cached rather than committed.
+scripts/.tokenizer-cache/

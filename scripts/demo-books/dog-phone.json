@@ -1,0 +1,7 @@
+{
+ "model": "qwen3:0.6b",
+ "device": "phone",
+ "premise": "a little dog who has never seen the sea",
+ "story": "{\n  \"title\": \"The Dog Who Never Saw the Sea\",\n  \"cast\": [\n    {\n      \"name\": \"Charlie\",\n      \"is\": \"dog\"\n    },\n    {\n      \"name\": \"Misty\",\n      \"is\": \"cat\"\n    },\n    {\n      \"name\": \"Sally\",\n      \"is\": \"girl\"\n    }\n  ],\n  \"pages\": [\n    \"Page 1: Who is the hero and where do they live? They are a little dog named Charlie who lives in a small town.\",\n    \"Page 2: What does the hero want, or the problem? Charlie wants to see the sea but is afraid of it.\",\n    \"Page 3: The hero tries, and it doesn't work. Charlie can't see the sea and feels scared.\",\n    \"Page 4: A friend or an idea helps. Sally helps Charlie see the sea.\",\n    \"Page 5: The hero tries again, and it works. Charlie now knows the sea and is happy.\",\n    \"Page 6: A happy ending that answers the problem. Charlie now sees the sea and is happy.\"\n  ]\n}",
+ "plans": []
+}

@@ -1,0 +1,14 @@
+{
+ "model": "qwen3:1.7b",
+ "device": "desktop",
+ "premise": "a little dog who has never seen the sea",
+ "story": "{\n  \"title\": \"The Little Dog and the Sea\",\n  \"cast\": [\n    {\n      \"name\": \"Lucky\",\n      \"is\": \"dog\"\n    }\n  ],\n  \"pages\": [\n    \"Page 1: Lucky is a curious little dog living in a cozy little house by the woods. He loves to explore and dream about the big, blue sea.\",\n    \"Page 2: Lucky wants to see the sea, but he has never been outside the woods. He dreams of swimming and seeing the ocean from afar.\",\n    \"Page 3: Lucky tries to find the sea by following the sound of waves, but he can't find it. He gets tired and returns to his house.\",\n    \"Page 4: A friendly bird named Fluff helps Lucky by showing him the path to the sea. Fluff tells him to follow the shimmering light of the ocean.\",\n    \"Page 5: Lucky follows the light and finally reaches the sea. He swims in the water and feels the cool, salty breeze. He is amazed and happy.\",\n    \"Page 6: Lucky returns home with a new adventure in his heart. He knows now that the sea is not just a dream, but a wonderful place to explore. He lives a happier, more curious life than ever before.\"\n  ]\n}",
+ "plans": [
+  "{\"t\":\"A cozy little house by the woods\",\"c\":[\"house x2\",\"tree x3\",\"sun\",\"moon\"]}",
+  "{\"t\":\"A dream of the sea\",\"c\":[\"dream x2\",\"sea\",\"ocean\",\"forest x2\",\"lucky dog\"]}",
+  "{\"t\":\"A quiet harbour\",\"c\":[\"boat x2\",\"lighthouse\",\"bird x4 sky\",\"fish water\",\"crane back\"]}",
+  "{\"t\":\"A friendly bird named Fluff\",\"c\":[\"Fluff x1\",\"bird x1\",\"path to sea\",\"shimmering light of the ocean\"]}",
+  "{\"t\":\"A happy boy\",\"c\":[\"Lucky dog\",\"light x2\",\"sea\",\"water\",\"breeze\"]}",
+  "{\"t\":\"A happy adventurer\",\"c\":[\"Lucky dog x1\",\"sea x1\",\"boat x1\",\"sky x1\",\"heart x1\"]}"
+ ]
+}
