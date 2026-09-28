@@ -99,6 +99,8 @@ web/film/peeps.mjs        generated Open Peeps (CC0) path data via react-peeps (
                           (scripts/film/build-peeps.mjs; licences in web/film/peeps-LICENSE.txt)
 web/film/link.mjs         a film as a link (#film=, deflate-raw): story, cast, looks, voices by name — never recordings;
                           every decoded field capped and type-checked (cleanFilm)
+web/film/voices.mjs       "Voices in the video" (off by default): Kokoro-82M (AI, the owner's call) speaks each line in the tab,
+                          ~115 MB once; vendor/kokoro.web.js is kokoro-js 1.2.1 verbatim (licences in vendor/kokoro-LICENSE.txt)
 web/film/sound.mjs        every Film sound synthesised on the page (cues: gunshot, punch, thud, clink, ring, door, step;
                           places: bar, street, park) — no audio files
 web/film-probe.html       Film stage 0: can this phone make a 2-minute 3D video? numbers in a copyable report
@@ -181,6 +183,7 @@ serves **4-bit**, and that gap explains most surprises.
 | **A library can log even when the page never asks it to** | MediaPipe's `tasks-vision` runtime POSTs usage statistics to Google from every task it creates. The owner's rule is **use nothing that logs**, not "block it". MediaPipe's models (weights) are kept; they run on LiteRT.js, whose every URL was checked. `tests/face.test.mjs` fails on any logging endpoint in `web/vendor/`. Read a vendored bundle's URLs before shipping it. |
 | **A phone renders a 2-minute 3D film faster than real time** | Owner's iPhone, Safari 26.6.1, `film-probe.html` at its defaults: two skinned people (72k triangles with shadows, 119 draw calls) in a lit room, 2,880 frames at 720×1280, 24 fps, **MP4 H.264 + AAC in 43.1 s (2.79× real time)**, 27.1 MB, the tab never died. Draw 0.8 ms/frame; **encode wait 13.5 ms/frame is the cost**. The guessed phone budget (≤4 people, baked light, resumable render) was far too cautious. The MP4 path that headless Chromium cannot test works on iOS. `docs/film-plan.md`. |
 | **Real writing: 63% of action verbs acted, half of lines speakerless** | `scripts/film/verb-bench.mjs`: 490 passages of Doyle, Joyce, O. Henry, Mansfield, Chekhov (347k words) through Film's own reader. Action verbs acted 33.6% → **63.1%** after stage 3 (moves 928 → 1,874). The raw "no move" list was mostly noise — states ("seemed", "wanted") and false matches ("Holmes" read as a verb by a case-insensitive flag). Speakers found for ~50% of lines even with pronouns set: multi-character classic prose carries who-speaks in context no rule reads; the page marks those lines instead of guessing. Kiss, hug, wave, shrug have no free clip and stay listed. |
+| **A phone's own voice can't reach a saved video; Kokoro can, at 3× slower than speech** | `speechSynthesis` plays outside the page's audio and no browser lets a page record it, so Film's videos had subtitles and no voices ("the voice is not pulling to the final video"). The owner chose Kokoro-82M over eSpeak, the recorder, or silence. Measured here: load 3.5 s once downloaded, 12 s of speech in 39 s on one core (Book's figure again), ~115 MB (model 92 + ort wasm 21.6). Each line is re-timed to its real voice, the voice's loudness moves the mouths. `docs/film-plan.md`, "Voices in the video". |
 | **Skin colour: both obvious rules were wrong** | On 9 public-domain portraits: sampling lit pixels drew a dark-skinned woman several shades lighter; the whole-face median drew two side-lit people near-black; "the lit half" drew almost everyone lighter, since even studio portraits differ 12–25 L* between halves. Shipped: the median of face skin without *deep* shadow (>25 L* below the lit half), lightness kept exactly. A judgement for people to review, printed by `scripts/face-bench.mjs`. `docs/selfie.md`. |
 
 ### Browser gotchas already fixed
@@ -736,6 +739,17 @@ practical fine-tuning.
   frame here, 0.5 MB of paths. Outfits are dark or light tops only (the drawings
   are two-colour, and only those hold across poses); no skin tones; one chair
   drawing. Never run on a phone (`docs/film-plan.md`, "Styles: Drawn").
+- **Film's saved video can now have voices: "Voices in the video"** (off by
+  default; Kokoro, an AI model, the owner's call). Built and tested in headless
+  Chromium with the real model (`tests/film-voices-browser.mjs`); **never run on
+  a phone** — unknowns: time on an iPhone (3× slower than speech on one core
+  here), the 115 MB download, memory beside the 3D stage. Links don't carry the
+  video voices. **In this sandbox Chromium's own requests to Hugging Face and
+  jsdelivr fail through the proxy (ERR_TOO_MANY_RETRIES)**, though curl's work,
+  and `route.fulfill` with a 92 MB body kills the browser: `tests/kokoro-mirror.mjs`
+  curls the files and 302s the page's real URLs to a local server. Also:
+  Playwright's `proxy` option adds `<-loopback>`, which sends 127.0.0.1 through
+  the proxy (405).
 - **Next idea: product specification manuals with diagrams.** Researched,
   nothing built. The design that follows from the findings above: the model
   fills a JSON plan (blocks, links, labels) and the page lays it out — elkjs

@@ -1,13 +1,15 @@
 // Regenerate Film's vendored bundles (docs/film-plan.md):
 //   web/vendor/three.mjs            three.js 0.186.1 (MIT) + GLTFLoader, HDRLoader, meshopt decoder, SkeletonUtils.clone
 //   web/vendor/mediabunny-film.mjs  Mediabunny 1.60.0 (MPL-2.0): Book's writer plus the audio path (AudioBufferSource)
+//   web/vendor/kokoro.web.js        kokoro-js 1.2.1 (Apache-2.0), copied verbatim from its dist/ (not built here):
+//                                   Film's "Voices in the video"; what it bundles is in web/vendor/kokoro-LICENSE.txt
 //
-//   npm i --no-save --prefix <scratch> three@0.186.1 mediabunny@1.60.0 esbuild
+//   npm i --no-save --prefix <scratch> three@0.186.1 mediabunny@1.60.0 esbuild kokoro-js@1.2.1
 //   NODE_PATH=<scratch>/node_modules node scripts/film/vendor.mjs <scratch>
 //
 // Book keeps its own vendor/mediabunny.mjs untouched, so nothing it caches changes.
 // tests/face.test.mjs scans every vendored file for logging endpoints.
-import { writeFileSync } from "node:fs";
+import { copyFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 
@@ -31,3 +33,5 @@ for (const [name, src] of Object.entries(entries)) {
     outfile: join(out, name), absWorkingDir: scratch, metafile: true });
   console.log(name, Object.values(r.metafile.outputs)[0].bytes, "bytes");
 }
+copyFileSync(join(scratch, "node_modules/kokoro-js/dist/kokoro.web.js"), join(out, "kokoro.web.js"));
+console.log("kokoro.web.js copied");

@@ -404,3 +404,26 @@ test("drawn looks: every choice has its drawing, and a cast gets different peopl
   assert.equal(cast.Tom.beard !== "none" || cast.Tom.hair !== cast.Maya.hair, true);
   assert.deepEqual(castDrawn([{ name: "Maya", pronoun: "she" }], { Maya: { hair: "Hijab" } }).Maya.hair, "Hijab", "a chosen look wins");
 });
+
+test("voices in the video: a different Kokoro voice per person, by pronoun; a real voice's loudness moves the mouth", async () => {
+  const { castAIVoices, AI_VOICES, rmsEnvelope, block, readStory } = await import("../web/film.mjs");
+  const v = castAIVoices([{ name: "Maya", pronoun: "she" }, { name: "Tom", pronoun: "he" }, { name: "Ann", pronoun: "she" }, { name: "Sam", pronoun: "they" }]);
+  assert.equal(AI_VOICES[v.Maya].is, "she"); assert.equal(AI_VOICES[v.Ann].is, "she"); assert.equal(AI_VOICES[v.Tom].is, "he");
+  assert.equal(new Set(Object.values(v)).size, 4, "nobody shares a voice");
+  assert.equal(castAIVoices([{ name: "Tom", pronoun: "he" }], { Tom: "bm_fable" }).Tom, "bm_fable", "a chosen voice wins");
+  assert.equal(castAIVoices([{ name: "Tom", pronoun: "he" }], { Tom: "nobody" }).Tom, "am_michael", "an unknown choice falls back");
+  assert.equal(castAIVoices([{ name: "Maya", pronoun: "she" }, { name: "Ann", pronoun: "she" }], { Ann: "af_heart" }).Maya !== "af_heart", true, "a chosen voice isn't handed out twice");
+  // The envelope follows the recording: loud in the middle, silent either side.
+  const rate = 1000, s = new Float32Array(2000);
+  for (let i = 500; i < 1000; i++) s[i] = 0.5 * Math.sin(i);
+  const env = rmsEnvelope(s, rate, { fps: 10 });
+  assert.equal(env.length, 20);
+  assert.ok(env[7] > 0.9 && env[2] === 0 && env[15] === 0, Array.from(env).map(x => x.toFixed(1)).join(" "));
+  // A spoken line lasts as long as its voice: the page sets beat.seconds and the film is re-timed.
+  const story = readStory(`"You're late," Ruth said.\n\n"Traffic," Sam said.`, { pronouns: { Ruth: "she", Sam: "he" } });
+  const before = block(story).lines[0];
+  story.scenes[0].beats.find(b => b.kind === "line").seconds = 4;
+  const after = block(story).lines;
+  assert.ok(Math.abs(after[0][1] - after[0][0] - 4.15) < 0.01, `${after[0][1] - after[0][0]} s`);
+  assert.ok(after[1][0] >= after[0][1] && after[1][0] > before[1], "the next line waits for the voice");
+});

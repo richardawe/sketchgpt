@@ -11,7 +11,7 @@
 // talking switches faces with the voice's syllables (textEnvelope) and eyes blink.
 // Nothing here is 3D, so it needs no WebGL and loads ~0.5 MB of paths.
 import { PEEPS } from "./peeps.mjs?v=2";
-import { placesAt, setAt, segIndex, cameraFor, textEnvelope, SETS, cleanDrawn } from "../film.mjs?v=10";
+import { placesAt, setAt, segIndex, cameraFor, textEnvelope, SETS, cleanDrawn } from "../film.mjs?v=11";
 
 // A standing peep, hair to sole, is 2,876 units; people are 1.72 m.
 export const UNIT = 1.72 / 2876;
