@@ -56,8 +56,9 @@ scripts/record-demo.mjs   record clips of Book and Sketch mode, one per claim (P
 scripts/capture-book.mjs  capture a real model's story + page plans into scripts/demo-books/ for the clips
 scripts/demo-books/       real Qwen3 book output the clips replay — never hand-written
 media/tweets/             X threads: thread.md (Book, GIFs 1–5), thread-2.md (6–9), thread-3.md (Book without
-                          the model, 10–14)
+                          the model, 10–14), thread-4.md (Draw me, Star in a book, Film, 15–19)
 scripts/record-thread-3.mjs  record GIFs 10–14 from the real page at 390×844 (no model, nothing stubbed)
+scripts/record-thread-4.mjs  record GIFs 15–19: selfie/film screen clips, and Film's own saved videos cut to GIF
 scripts/grounding-bench.mjs  does a small model invent answers about a document? (it does)
 scripts/retrieval-bench.mjs  BM25 (Work mode's) vs an embedder, same document, same queries
 scripts/lib/retrieval.mjs    the retired Work-mode BM25, kept for that bench
@@ -540,6 +541,15 @@ practical fine-tuning.
   sent. It now lists same-origin code files (`.mjs/.js/.wasm/.tflite/.css/.html`,
   bare or `?v=N`) as "this page's own code" and does not count them; anything
   else still counts (`tests/animate-browser.mjs`).
+- **A seventh thread is drafted: `media/tweets/thread-4.md`, 11 tweets, GIFs 15–19**
+  (Draw me, Star in a book, Film writing, a film, the three styles side by side),
+  recorded by `scripts/record-thread-4.mjs`. 15–17 are screen recordings; 18–19
+  are the videos Film itself saved (360 px / 12 fps WebM here, ~3 min per 3D
+  render under SwiftShader), so nothing is stubbed and no speed is claimed.
+  **Before posting, re-record 15–16 with `--face <your photo>`**: the default
+  face is NASA's public-domain portrait of Kathleen Rubins, and NASA's media
+  rules forbid implying an astronaut's endorsement. Film is not linked from the
+  main page, so the thread links `film.html` and `selfie.html` directly.
 - **Three X threads are drafted and none are posted.** The two older ones (a
   measurement-led one, and a user-benefit one covering device detection,
   privacy, formula rendering and storage control) are in session history. The
