@@ -82,6 +82,32 @@ try {
   assert.equal(await page.getAttribute('button[data-outfit="Tom"][data-value="WB"]', "aria-pressed"), "true");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, "fits the phone");
 
+  // Every drawing's head sits on its neck: just under the chin there is body, not background
+  // (react-peeps shifts the whole head by 225 units; missing that put heads beside their necks).
+  const necks = await page.evaluate(async () => {
+    const { PEEPS } = await import("./film/peeps.mjs?v=2"), S = 0.25, W = 500, H = 800, out = {};
+    const draw = pieces => {
+      const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+      g.scale(S, S); g.translate(400, 0);
+      for (const pc of pieces) for (const [k, d] of pc.paths) { g.fill(new Path2D(d), typeof k === "number" && k >= 2 ? "evenodd" : "nonzero"); }
+      const px = g.getImageData(0, 0, W, H).data;
+      return (x, y) => px[(y * W + x) * 4 + 3] > 128;
+    };
+    const head = draw([PEEPS.hair.Short, PEEPS.faces.Calm]);
+    let chin = H - 1; const row = y => { const xs = []; for (let x = 0; x < W; x++) if (head(x, y)) xs.push(x); return xs; };
+    while (chin > 0 && !row(chin).length) chin--;
+    const xs = row(chin - 2), mid = Math.round((Math.min(...xs) + Math.max(...xs)) / 2);
+    for (const [name, body] of Object.entries(PEEPS.poses)) {
+      const on = draw([body]);
+      // A strip 40 units wide, from the chin down 60 units: how much of it is body.
+      let n = 0, hit = 0;
+      for (let y = chin; y < chin + 15; y++) for (let x = mid - 5; x <= mid + 5; x++) { n++; if (on(x, y)) hit++; }
+      out[name] = +(hit / n).toFixed(2);
+    }
+    return out;
+  });
+  for (const [name, cover] of Object.entries(necks)) assert.ok(cover > 0.6, `${name}: only ${cover * 100}% of the space under the chin is body — the head is off its neck`);
+
   await load(page);
   const stage = await page.evaluate(() => ({ drawn: window.__film.state.stage.drawn, webgl: window.__webgl, world: !!window.__film.state.stage.world }));
   assert.deepEqual(stage, { drawn: true, webgl: 0, world: false }, "drawn: a 2D canvas, no WebGL");
@@ -185,7 +211,7 @@ try {
   assert.equal(await page.evaluate(() => !!window.__film.state.stage.world && !window.__film.state.stage.drawn), true);
 
   assert.deepEqual(errors, []);
-  console.log(`film-drawn-browser: ok (${frames.length} frames drawn, blink on ${face.blinks} frames, faces ${maya[2]}/${tom[2]} across the cut, video ${video.frames} frames, no WebGL)`);
+  console.log(`film-drawn-browser: ok (${Object.keys(necks).length} drawings, every head on its neck (${Math.min(...Object.values(necks)) * 100}% body under the chin at least); ${frames.length} frames drawn, blink on ${face.blinks} frames, faces ${maya[2]}/${tom[2]} across the cut, video ${video.frames} frames, no WebGL)`);
 } finally {
   await browser.close();
   srv.close();

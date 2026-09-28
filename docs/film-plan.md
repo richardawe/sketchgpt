@@ -1263,6 +1263,14 @@ pronoun, so two people never look alike.
 - **Subtitles, fades and the video** are the shared ones: stage.mjs's
   `finish()` and `makeVideo`.
 
+**Found by the owner on the first version: the head was not on the neck.**
+react-peeps shifts its whole head by 225 units before placing hair, face,
+beard and glasses. The build script copied each piece's own offset and missed
+that outer one, so every head sat beside its neck. The test had checked what
+was drawn, not whether it joined up. Now every body drawing is checked: just
+under the chin there must be body, not background. That measure is at least
+93% for all 17 drawings, and 41% with the old offsets.
+
 **Measured here** (headless Chromium, `tests/film-drawn-browser.mjs`, touch
 screen):
 - A frame takes about 1 ms to draw at 360×640.
