@@ -5,7 +5,7 @@
 // No model, no network after the assets. three.js (MIT), Quaternius (CC0),
 // Kenney (CC0), Poly Haven (CC0), Mediabunny (MPL-2.0). docs/film-plan.md.
 import * as T from "../vendor/three.mjs?v=1";
-import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope, PEOPLE } from "../film.mjs?v=9";
+import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope, PEOPLE } from "../film.mjs?v=10";
 import { cue, place } from "./sound.mjs?v=1";
 import { dressBody } from "./costume.mjs?v=3";
 import { follow, handOf } from "./realistic.mjs?v=1";
@@ -478,6 +478,13 @@ function speak(stage, film, t) {
 /** draw(t) → the shot's name. With `loop`, t wraps (the probe fills two minutes with 30 s). */
 export function frameFn(stage) {
   const { renderer, world, camera, ctx, film, shotAt, loop } = stage;
+  // Drawn films are painted on the 2D canvas itself (drawn.mjs); the words and fades are the same.
+  if (stage.drawn) return t => {
+    const lt = loop ? t % loop : t;
+    const shot = stage.paint(stage, lt);
+    finish(ctx, stage.film, lt, loop);
+    return shot;
+  };
   return t => {
     const lt = loop ? t % loop : t;
     applySet(world, setAt(film, lt));
@@ -489,15 +496,19 @@ export function frameFn(stage) {
     renderer.render(world.scene, camera);
     const W = ctx.canvas.width, H = ctx.canvas.height;
     ctx.drawImage(renderer.domElement, 0, 0, W, H);
-    subtitle(ctx, film, lt, W, H);
-    // Every scene opens from black; the film closes to it.
-    const opens = [0, ...(film.scenes || [])];
-    const since = Math.min(...opens.map(s => lt - s).filter(d => d >= 0));
-    const toEnd = (loop || film.length) - lt;
-    const dark = Math.max(since < 0.5 ? 1 - since / 0.5 : 0, !loop && toEnd < 0.6 ? 1 - toEnd / 0.6 : 0);
-    if (dark > 0) { ctx.fillStyle = `rgba(0,0,0,${Math.min(1, dark)})`; ctx.fillRect(0, 0, W, H); }
+    finish(ctx, film, lt, loop);
     return shot;
   };
+}
+// Subtitles over the picture; every scene opens from black, and the film closes to it.
+function finish(ctx, film, lt, loop) {
+  const W = ctx.canvas.width, H = ctx.canvas.height;
+  subtitle(ctx, film, lt, W, H);
+  const opens = [0, ...(film.scenes || [])];
+  const since = Math.min(...opens.map(s => lt - s).filter(d => d >= 0));
+  const toEnd = (loop || film.length) - lt;
+  const dark = Math.max(since < 0.5 ? 1 - since / 0.5 : 0, !loop && toEnd < 0.6 ? 1 - toEnd / 0.6 : 0);
+  if (dark > 0) { ctx.fillStyle = `rgba(0,0,0,${Math.min(1, dark)})`; ctx.fillRect(0, 0, W, H); }
 }
 
 // ---------------------------------------------------------------- sound
@@ -606,7 +617,13 @@ export async function makeVideo(stage, { seconds, fps, voices = [], music = true
  * A stage for a film: { renderer, world, camera, ctx, film, shotAt, loop, loadMs, bytes, T }.
  * looks: { name: LOOKS[i] } — who looks like whom.
  */
-export async function setup(glCanvas, outCanvas, film, { looks, style, people, shotAt, loop = 0, width = 720, height = 1280, shadows = true } = {}) {
+export async function setup(glCanvas, outCanvas, film, { looks, style, people, drawn, shotAt, loop = 0, width = 720, height = 1280, shadows = true } = {}) {
+  // Drawn: no WebGL at all. `drawn` is { name: drawn look } (film.mjs castDrawn).
+  // Loaded only for a drawn film: its paths are half a megabyte.
+  if (style === "drawn") {
+    const { setupDrawn } = await import("./drawn.mjs?v=1");
+    return Object.assign(setupDrawn(outCanvas, film, { looks: drawn, shotAt, loop, width, height }), { renderer: { dispose() {} } });
+  }
   const t0 = performance.now();
   bytesLoaded.total = 0;
   const renderer = new T.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: "high-performance" });
@@ -636,8 +653,9 @@ export async function setup(glCanvas, outCanvas, film, { looks, style, people, s
 /** A new film on the same stage (same people, same looks): no reload. */
 export function recast(stage, film) {
   stage.film = film;
-  stage.world.current = null;
   stage.speechCache = {};
+  if (stage.drawn) return stage;
+  stage.world.current = null;
   for (const p of Object.values(stage.world.cast)) { p.mixer.stopAllAction(); p.actions = {}; }
   return stage;
 }

@@ -1,10 +1,10 @@
 // A film as a link: the whole story after the "#" (docs/film-plan.md, stage 6).
 // The fragment never reaches the server, so nothing is uploaded — the link IS
 // the story. What travels: the words, who is "she"/"he"/"they", each person's
-// look, voice (by name) and pitch, the speakers the writer chose, and the sound
+// look (in whichever style), voice (by name) and pitch, the speakers the writer chose, and the sound
 // switches. What never travels: recordings (they are the writer's own voice)
 // and anything from a photo. Opening a link rebuilds the same film from rules.
-import { cleanLook, PITCH, STYLES, PEOPLE } from "../film.mjs?v=9";
+import { cleanLook, cleanDrawn, PITCH, STYLES, PEOPLE } from "../film.mjs?v=10";
 
 export const LIMITS = { text: 6000, name: 40, cast: 8, voice: 80, speakers: 300, key: 400 };
 
@@ -43,6 +43,7 @@ export function cleanFilm(o = {}) {
     fx: o.fx !== false, amb: o.amb === true, music: o.music === true,
     style: Object.hasOwn(STYLES, o.style || "") ? o.style : "stylised",
     people: Object.fromEntries(names(o.people).filter(([, v]) => typeof v === "string" && Object.hasOwn(PEOPLE, v))),
+    drawn: Object.fromEntries(names(o.drawn).map(([k, v]) => [k, cleanDrawn(v)])),
   };
 }
 

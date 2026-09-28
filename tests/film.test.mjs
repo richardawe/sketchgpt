@@ -386,3 +386,21 @@ test("a close-up is never shot through someone else standing in the way", () => 
   // With nobody in the way, the shot is the usual one.
   assert.deepEqual(cameraFor("A", { A: heads.A }, facing, ["A"]).at.map(v => +v.toFixed(3)), [0, 1.58, 2.3]);
 });
+
+test("drawn looks: every choice has its drawing, and a cast gets different people by pronoun", async () => {
+  const { DRAWN, DRAWN_LOOKS, castDrawn, cleanDrawn } = await import("../web/film.mjs");
+  const { PEEPS } = await import("../web/film/peeps.mjs");
+  const { POSE, MOOD, FACES } = await import("../web/film/drawn.mjs");
+  for (const k of Object.keys(DRAWN.hair)) assert.ok(PEEPS.hair[k], `hair ${k}`);
+  for (const k of Object.keys(DRAWN.faces)) assert.ok(PEEPS.faces[k], `face ${k}`);
+  for (const k of Object.keys(DRAWN.beards)) assert.ok(k === "none" || PEEPS.beards[k], `beard ${k}`);
+  for (const k of Object.keys(DRAWN.glasses)) assert.ok(k === "none" || PEEPS.glasses[k], `glasses ${k}`);
+  for (const f of [...Object.values(MOOD).flat(), ...FACES]) assert.ok(PEEPS.faces[f], `face ${f}`);
+  for (const o of Object.keys(DRAWN.outfits)) for (const [move, name] of Object.entries(POSE)) assert.ok(PEEPS.poses[name(o)], `${move} in ${o}: ${name(o)}`);
+  for (const l of DRAWN_LOOKS) assert.deepEqual(cleanDrawn(l), l, "every starting look is a valid one");
+  assert.deepEqual(cleanDrawn({ hair: "__proto__", outfit: "toString", beard: 5 }), DRAWN_LOOKS[0], "unknown or inherited names are refused");
+  const cast = castDrawn([{ name: "Maya", pronoun: "she" }, { name: "Tom", pronoun: "he" }, { name: "Ann", pronoun: "she" }]);
+  assert.equal(new Set(Object.values(cast).map(l => JSON.stringify(l))).size, 3, "nobody looks like anybody else");
+  assert.equal(cast.Tom.beard !== "none" || cast.Tom.hair !== cast.Maya.hair, true);
+  assert.deepEqual(castDrawn([{ name: "Maya", pronoun: "she" }], { Maya: { hair: "Hijab" } }).Maya.hair, "Hijab", "a chosen look wins");
+});

@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { readStory, isFountain, fromFountain, toFountain, SAMPLE, LOOKS, COSTUMES, cleanLook } from "../web/film.mjs";
+import { readStory, isFountain, fromFountain, toFountain, SAMPLE, LOOKS, COSTUMES, cleanLook, DRAWN } from "../web/film.mjs";
 import { encodeFilm, decodeFilm, cleanFilm, LIMITS } from "../web/film/link.mjs";
 
 const P = { Nadia: "she", Leo: "he", Victor: "he" };
@@ -49,7 +49,7 @@ test("a film survives the link, and the link is short", async () => {
 
 test("recordings never travel, and nothing unknown does", async () => {
   const back = await decodeFilm(await encodeFilm({ text: "Hi.", takes: { "0:Hi": { buffer: [1, 2, 3] } }, photo: "data:image/png;base64,AAAA" }));
-  assert.deepEqual(Object.keys(back).sort(), ["amb", "fx", "looks", "music", "people", "pitch", "pronouns", "speakers", "style", "text", "voices"]);
+  assert.deepEqual(Object.keys(back).sort(), ["amb", "drawn", "fx", "looks", "music", "people", "pitch", "pronouns", "speakers", "style", "text", "voices"]);
 });
 
 test("a link's fields are capped and type-checked", () => {
@@ -66,6 +66,16 @@ test("a link's fields are capped and type-checked", () => {
   assert.ok(!JSON.stringify(c.looks).includes("<script>") && !JSON.stringify(c.looks).includes("javascript:"));
   assert.deepEqual([c.fx, c.amb, c.music], [true, false, false], "only real booleans switch sound on or off");
   assert.deepEqual(cleanFilm(null).text, "");
+});
+
+test("a drawn film's looks travel, and only pieces the page has", async () => {
+  const back = await decodeFilm(await encodeFilm({ text: "Hi.", style: "drawn", drawn: { Maya: { hair: "Afro", outfit: "BW", beard: "none", glasses: "GlassRound", face: "Smile" },
+    Tom: { hair: "<img src=x>", outfit: "red", beard: "../../x", glasses: 3, face: "Awe" } } }));
+  assert.equal(back.style, "drawn");
+  assert.deepEqual(back.drawn.Maya, { hair: "Afro", face: "Smile", beard: "none", glasses: "GlassRound", outfit: "BW" });
+  const tom = back.drawn.Tom;
+  assert.ok(DRAWN.hair[tom.hair] && DRAWN.outfits[tom.outfit] && DRAWN.beards[tom.beard] && DRAWN.glasses[tom.glasses] && DRAWN.faces[tom.face], JSON.stringify(tom));
+  assert.notEqual(tom.face, "Awe", "a face the Cast tab doesn't offer is not taken from a link");
 });
 
 test("a damaged, foreign or oversized link says so in words", async () => {

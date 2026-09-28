@@ -92,6 +92,10 @@ web/film/costume.mjs      costumes made from the body itself: cut by a field, sm
 web/film/realistic.mjs    "Realistic" style: Rocketbox (MIT) people copy an invisible Quaternius driver every frame
                           (world-space bone deltas after bending into its T-pose); jaw with the voice, blinking
 web/film/assets/rocketbox/  8 adult Rocketbox people, 0.3–0.8 MB each — rebuilt by scripts/film/build-rocketbox.mjs
+web/film/drawn.mjs        "Drawn" style on a 2D canvas, no WebGL: Open Peeps cut-outs where the 3D bodies would stand,
+                          drawn sets, the same placesAt/cameraFor; a move = a drawing + motion; faces talk and blink
+web/film/peeps.mjs        generated Open Peeps (CC0) path data via react-peeps (MIT) — never edit by hand
+                          (scripts/film/build-peeps.mjs; licences in web/film/peeps-LICENSE.txt)
 web/film/link.mjs         a film as a link (#film=, deflate-raw): story, cast, looks, voices by name — never recordings;
                           every decoded field capped and type-checked (cleanFilm)
 web/film/sound.mjs        every Film sound synthesised on the page (cues: gunshot, punch, thud, clink, ring, door, step;
@@ -100,7 +104,7 @@ web/film-probe.html       Film stage 0: can this phone make a 2-minute 3D video?
 web/film/probe.mjs        the probe's hand-written 30 s scene, drawn on the shared stage
 web/film/assets/          CC0 people, 84 movements, furniture/city/car/nature/food kits, 2 HDRIs — regenerate, never hand-edit
 web/vendor/three.mjs      three.js 0.186.1 bundle; mediabunny-film.mjs = Book's writer + audio (scripts/film/vendor.mjs)
-scripts/film/             inventory.mjs (what a glTF pack contains), build-assets.mjs, build-rocketbox.mjs, vendor.mjs,
+scripts/film/             inventory.mjs (what a glTF pack contains), build-assets.mjs, build-rocketbox.mjs, build-peeps.mjs, vendor.mjs,
                           verb-bench.mjs (Gutenberg fiction through readStory: how much real writing is acted)
 web/selfie.html           Draw me: a photo drawn as a moving caricature, GIF/sticker/SVG export (stage 1)
 web/face.mjs              selfie drawing: alignment, caricature rules, colour, hair, SVG, poses (pure)
@@ -711,14 +715,17 @@ practical fine-tuning.
   under a seated lap — push along the column's own direction instead. The
   saved video has subtitles and sound; the phone's voices are heard only
   while watching (a page can't record them). Never run on a phone.
-- **Film has styles: Stylised (Quaternius + costumes) or Realistic (Microsoft
-  Rocketbox, MIT)**, chosen per film in Cast, carried in links. Chosen after the
+- **Film has three styles: Stylised (Quaternius + costumes), Realistic (Microsoft
+  Rocketbox, MIT) and Drawn (Open Peeps, CC0)**, chosen per film in Cast, carried in links. Chosen after the
   owner saw 9 free libraries rendered side by side (Rocketbox, 100Avatars, KayKit,
   Kenney, Open Peeps, Humaaans, Kenney Toon, LPC; MakeHuman/VRoid/Quaternius
   Modular unreachable from here; Mixamo can't be redistributed, Ready Player Me is
   shut). Realistic people are driven by the unseen stylised skeleton — no
   animation was converted. Their faces have bones: jaws move, eyes blink. Never
-  run on a phone. **Drawn 2D (Open Peeps)** is the next style if the owner wants it.
+  run on a phone. **Drawn** paints Open Peeps on a 2D canvas: no WebGL, ~1 ms a
+  frame here, 0.5 MB of paths. Outfits are dark or light tops only (the drawings
+  are two-colour, and only those hold across poses); no skin tones; one chair
+  drawing. Never run on a phone (`docs/film-plan.md`, "Styles: Drawn").
 - **Next idea: product specification manuals with diagrams.** Researched,
   nothing built. The design that follows from the findings above: the model
   fills a JSON plan (blocks, links, labels) and the page lays it out — elkjs
