@@ -621,7 +621,7 @@ export async function setup(glCanvas, outCanvas, film, { looks, style, people, d
   // Drawn: no WebGL at all. `drawn` is { name: drawn look } (film.mjs castDrawn).
   // Loaded only for a drawn film: its paths are half a megabyte.
   if (style === "drawn") {
-    const { setupDrawn } = await import("./drawn.mjs?v=1");
+    const { setupDrawn } = await import("./drawn.mjs?v=2");
     return Object.assign(setupDrawn(outCanvas, film, { looks: drawn, shotAt, loop, width, height }), { renderer: { dispose() {} } });
   }
   const t0 = performance.now();

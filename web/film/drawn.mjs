@@ -10,13 +10,13 @@
 // drawing plus a little motion: walking bobs, a punch lunges, a fall tips over;
 // talking switches faces with the voice's syllables (textEnvelope) and eyes blink.
 // Nothing here is 3D, so it needs no WebGL and loads ~0.5 MB of paths.
-import { PEEPS } from "./peeps.mjs?v=1";
+import { PEEPS } from "./peeps.mjs?v=2";
 import { placesAt, setAt, segIndex, cameraFor, textEnvelope, SETS, cleanDrawn } from "../film.mjs?v=10";
 
 // A standing peep, hair to sole, is 2,876 units; people are 1.72 m.
 export const UNIT = 1.72 / 2876;
-const NECK = [300, 480];                 // where the head turns, in peep units (every pose puts the head in the same place)
-const HEAD = [300, 300];                 // the head's middle
+const NECK = [525, 480];                 // where the head turns, in peep units (every pose puts the head in the same place)
+const HEAD = [525, 300];                 // the head's middle
 const ANCHOR = 400;                       // x under the body: where a person "is"
 const LIE_MID = 1300;                     // how far up a standing drawing its middle is: what a fall turns about
 const HAND = [1150, 720];                 // the raised hand in the PointingFinger drawings
@@ -317,8 +317,8 @@ function drawPerson(g, p, look) {
   fillPiece(g, PEEPS.faces[p.act.face] || PEEPS.faces.Calm);
   if (look.beard !== "none" && PEEPS.beards[look.beard]) fillPiece(g, PEEPS.beards[look.beard]);
   if (look.glasses !== "none" && PEEPS.glasses[look.glasses]) fillPiece(g, PEEPS.glasses[look.glasses]);
-  if (p.act.prop === "phone" && p.act.propAt === "ear") { g.save(); g.translate(190, 400); g.rotate(-0.3); drawProp(g, "phone"); g.restore(); }
-  if (p.act.prop === "glass" && p.act.propAt === "mouth") { g.save(); g.translate(430, 470); g.rotate(-0.5); drawProp(g, "glass"); g.restore(); }
+  if (p.act.prop === "phone" && p.act.propAt === "ear") { g.save(); g.translate(415, 400); g.rotate(-0.3); drawProp(g, "phone"); g.restore(); }
+  if (p.act.prop === "glass" && p.act.propAt === "mouth") { g.save(); g.translate(655, 470); g.rotate(-0.5); drawProp(g, "glass"); g.restore(); }
   g.restore();
   g.restore();
 }
