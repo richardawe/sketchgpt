@@ -111,14 +111,19 @@ test("film.html is deployed with its reader and stage, at one version each", asy
   const { existsSync } = await import("node:fs");
   assert.match(workflow, /cp web\/film\.html\s/);
   assert.match(workflow, /cp web\/film\.mjs\s/);
-  const html = web("film.html"), stage = web("film/stage.mjs"), link = web("film/link.mjs"), costume = web("film/costume.mjs");
+  const html = web("film.html"), stage = web("film/stage.mjs"), link = web("film/link.mjs"), costume = web("film/costume.mjs"), drawn = web("film/drawn.mjs");
   assert.match(stage, /"\.\/costume\.mjs\?v=\d+"/);
+  // Drawn: loaded only when a drawn film plays, its paths beside it, and where they came from.
+  assert.match(stage, /import\("\.\/drawn\.mjs\?v=\d+"\)/);
+  assert.match(drawn, /"\.\/peeps\.mjs\?v=\d+"/);
+  assert.ok(existsSync(new URL("../web/film/peeps.mjs", import.meta.url)));
+  assert.match(readFileSync(new URL("../web/film/peeps-LICENSE.txt", import.meta.url), "utf8"), /Open Peeps[\s\S]*CC0[\s\S]*MIT[\s\S]*Emre/);
   assert.match(stage, /"\.\/realistic\.mjs\?v=\d+"/);
   // Every realistic person the page offers has its file, and the MIT notice travels with them.
   const { PEOPLE } = await import("../web/film.mjs");
   for (const id of Object.keys(PEOPLE)) assert.ok(existsSync(new URL(`../web/film/assets/rocketbox/${id}.glb`, import.meta.url)), `rocketbox/${id}.glb`);
   assert.match(readFileSync(new URL("../web/film/assets/rocketbox/LICENSE.txt", import.meta.url), "utf8"), /MIT License[\s\S]*Copyright \(c\) 2020 Microsoft/);
-  const versions = new Set([...html.matchAll(/"\.\/film\.mjs\?v=(\d+)"/g), ...[stage, link, costume].flatMap(m => [...m.matchAll(/"\.\.\/film\.mjs\?v=(\d+)"/g)])].map(m => m[1]));
+  const versions = new Set([...html.matchAll(/"\.\/film\.mjs\?v=(\d+)"/g), ...[stage, link, costume, drawn].flatMap(m => [...m.matchAll(/"\.\.\/film\.mjs\?v=(\d+)"/g)])].map(m => m[1]));
   assert.equal(versions.size, 1, `film.mjs imported as v=${[...versions]}`);
   assert.match(html, /"\.\/film\/stage\.mjs\?v=\d+"/);
   assert.match(html, /"\.\/film\/link\.mjs\?v=\d+"/);

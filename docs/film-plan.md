@@ -1199,6 +1199,101 @@ officer"…). "Played by" offers women for "she", men for "he", everyone for
 - how the 3 people with shoulder-length or long hair look in motion (hair is a
   cut-out, not simulated).
 
+## Styles: Drawn (Open Peeps)
+
+The owner's third style: **hand-drawn people in ink on drawn sets**, from
+Open Peeps by Pablo Stanley (CC0), as packaged by react-peeps (MIT, Emre Çakır).
+Chosen per film in Cast, like the others, and carried in links.
+
+**Where the drawings come from** (`scripts/film/build-peeps.mjs`):
+- react-peeps renders each chosen piece to SVG in node (react-dom/server). No
+  browser, and nothing fetched at play.
+- Each path's translations are baked in and its numbers rounded to 0.1.
+- Every fill becomes ink or paper, so the page picks the colours.
+- The output is `web/film/peeps.mjs`: 17 body drawings, 30 hairstyles, 21 faces,
+  7 beards and 4 pairs of glasses, 495 KB. It's loaded only when a drawn film
+  plays. `web/film/peeps-LICENSE.txt` carries both licences.
+
+**What a drawn look is:** a hairstyle, a face, a beard, glasses, and an
+outfit. Open Peeps are two-colour drawings, and only two outfits hold across
+every pose: dark top with light trousers (BW), or light top with dark trousers
+(WB). So a person stays in the same clothes whether they stand, walk, point,
+fold their arms, dance, squat or kneel. Six starting looks, handed out by
+pronoun, so two people never look alike.
+
+- **Sitting has one chair drawing** (CrossedLegs, light top). A dark top sits
+  on the seat's edge with one knee up (OneLegUpBW).
+- **There are no skin tones.** Open Peeps are drawn in ink on white, and the
+  same white is the skin and a light top. Said here, not hidden.
+
+**How it's drawn** (`web/film/drawn.mjs`, a 2D canvas, no WebGL):
+- **The same film.** film.mjs says where everyone is (placesAt), the set and
+  light (setAt), and where the camera stands (cameraFor, so the 180° rule
+  holds). drawn.mjs projects all of it through a pinhole camera.
+- **Sets** are flat-coloured boxes, walls and discs with ink outlines, laid out
+  like the 3D sets. So marks, seats and doors land on the same furniture.
+  - All seven sets are drawn.
+  - Light is a tint over the picture. At night, windows and lamps glow.
+- **A person is a paper cut-out** standing where the 3D body would stand,
+  1.72 m tall. A cut-out faces the camera; the drawing is flipped to look the
+  way they face.
+  - Someone turned to the camera (on a sofa, in their own close shot) looks
+    toward whoever else is there. So at a cut, two people talking face each
+    other. Before this rule, both looked right.
+- **Acting.** A move is a choice of drawing plus a little motion:
+  - walking bobs, and running leans;
+  - a punch or a push lunges;
+  - a blow rocks them back;
+  - a death tips them over about their middle;
+  - a nod and a shake turn the head about the neck.
+  - Held things: a glass in the raised hand or at the lips (seated too), a
+    phone at the ear, a gun with a muzzle flash.
+- **Faces.**
+  - The mouth opens on the voice's loud syllables, using the same envelope as
+    the other styles.
+  - A line's feeling picks the faces: angry, laughing, upset, or plain.
+  - Eyes blink every 4.1 s, offset per person.
+  - A blow, a fall and death have faces of their own.
+- **Shots.** A drawn head is big, so shots are a little wider than the 3D
+  stage's:
+  - a close shot ×1.25;
+  - someone acting rather than speaking ×1.6;
+  - someone lying down ×2.1;
+  - a two-shot ×1.3.
+- **Subtitles, fades and the video** are the shared ones: stage.mjs's
+  `finish()` and `makeVideo`.
+
+**Measured here** (headless Chromium, `tests/film-drawn-browser.mjs`, touch
+screen):
+- A frame takes about 1 ms to draw at 360×640.
+- No WebGL context is ever made.
+- Every frame of a film:
+  - draws the chosen hair and outfit;
+  - makes the seated people sit;
+  - puts the drink in hand.
+- A hijab and short hair produce different pixels in the same close shot.
+- The mouth opens at full voice and shuts at none. Eyes blink.
+- Two people on a sofa face each other at every cut.
+- The video renders.
+- The choice survives a reload and a link. Switching back to Stylised brings
+  the 3D stage back.
+- Mutation-checked:
+  - no mouth;
+  - no blink;
+  - no facing rule;
+  - hair not drawn;
+  - looks ignored;
+  - drawn looks dropped from links;
+  - style ignored at setup.
+
+**Not known:**
+- how it looks and runs on the owner's phone. It should be the lightest style,
+  but that is unmeasured;
+- whether one chair drawing, and a knee-up seat for dark tops, reads well
+  enough;
+- three.js is still downloaded (as code) for a drawn film, because the shared
+  stage module imports it. Only the 3D people and places are skipped.
+
 ## What is not known, and how each gets known
 
 - **What the free tiers actually contain.** Stage 0's inventory. The kits

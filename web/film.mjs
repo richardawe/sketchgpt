@@ -941,7 +941,7 @@ export function cleanLook(l) {
 
 // ---------------------------------------------------------------- styles
 // A film is made in one style: every person in it is drawn by the same library.
-export const STYLES = { stylised: "Stylised", realistic: "Realistic" };
+export const STYLES = { stylised: "Stylised", realistic: "Realistic", drawn: "Drawn" };
 // "Realistic" is Microsoft Rocketbox (MIT): real people in their own clothes, with
 // jaws and eyelids. Adults only. body = which movement skeleton drives them.
 export const PEOPLE = {
@@ -966,6 +966,51 @@ export function castPeople(cast, chosen = {}) {
     out[c.name] = fit.find(id => !used.has(id)) || fit[0];
     used.add(out[c.name]);
   }
+  return out;
+}
+
+// "Drawn" is Open Peeps (Pablo Stanley, CC0): hand-drawn people in ink, drawn on a
+// 2D canvas by web/film/drawn.mjs. A look is a hairstyle, a face, a beard, glasses and
+// an outfit that holds in every pose: a dark top (BW) or a light one (WB).
+export const DRAWN = {
+  hair: { Short: "Short", ShortCurly: "Short curls", ShortWavy: "Short waves", Pomp: "Quiff", FlatTop: "Flat top", ShavedSides: "Shaved sides",
+    BaldTop: "Balding", BaldSides: "Bald, sides", Bald: "Bald", Afro: "Afro", LongAfro: "Big afro", CornRows: "Cornrows", Twists: "Twists",
+    BantuKnots: "Bantu knots", Medium: "Medium", MediumShort: "Bob", MediumStraight: "Straight", MediumBangs: "Fringe", MediumLong: "Shoulder length",
+    Long: "Long", LongCurly: "Long curls", Bun: "Bun", BunCurly: "Curly bun", Buns: "Two buns", Bangs: "Bangs", GrayShort: "Grey, short",
+    GrayMedium: "Grey, medium", GrayBun: "Grey bun", Hijab: "Hijab", Turban: "Turban" },
+  faces: { Calm: "Calm", Smile: "Smiling", Serious: "Serious", Solemn: "Sad", Driven: "Determined", Tired: "Tired", Suspicious: "Suspicious" },
+  beards: { none: "None", MoustacheThin: "Moustache", Chin: "Chin strap", Goatee: "Goatee", FullMedium: "Short beard", Full: "Full beard", GrayFull: "Grey beard", Handlebars: "Handlebar" },
+  glasses: { none: "None", GlassRound: "Round", GlassClubmaster: "Clubmaster", GlassAviator: "Aviator", SunglassWayfarer: "Sunglasses" },
+  outfits: { BW: "Dark top", WB: "Light top" },
+};
+// Starting looks, different enough to tell two people apart at a glance.
+export const DRAWN_LOOKS = [
+  { hair: "Long", face: "Calm", beard: "none", glasses: "none", outfit: "WB" },
+  { hair: "Short", face: "Serious", beard: "FullMedium", glasses: "none", outfit: "BW" },
+  { hair: "BunCurly", face: "Smile", beard: "none", glasses: "GlassRound", outfit: "BW" },
+  { hair: "FlatTop", face: "Calm", beard: "MoustacheThin", glasses: "none", outfit: "WB" },
+  { hair: "Afro", face: "Driven", beard: "none", glasses: "none", outfit: "WB" },
+  { hair: "GrayShort", face: "Tired", beard: "GrayFull", glasses: "GlassClubmaster", outfit: "BW" },
+];
+/** A drawn look with anything missing or unknown filled in (from a link, storage, or nothing). */
+export function cleanDrawn(l, i = 0) {
+  l = l && typeof l === "object" ? l : {};
+  const base = DRAWN_LOOKS[((i | 0) % DRAWN_LOOKS.length + DRAWN_LOOKS.length) % DRAWN_LOOKS.length];
+  const pick = (table, v, d) => typeof v === "string" && Object.hasOwn(table, v) ? v : d;
+  return { hair: pick(DRAWN.hair, l.hair, base.hair), face: pick(DRAWN.faces, l.face, base.face), beard: pick(DRAWN.beards, l.beard, base.beard),
+    glasses: pick(DRAWN.glasses, l.glasses, base.glasses), outfit: pick(DRAWN.outfits, l.outfit, base.outfit) };
+}
+/** Starting drawn looks for a cast, by pronoun: nobody twice where possible. */
+export function castDrawn(cast, chosen = {}) {
+  const out = {}, used = new Set();
+  const fits = { she: [0, 2, 4], he: [1, 3, 5] };
+  cast.forEach((c, i) => {
+    if (chosen[c.name]) { out[c.name] = cleanDrawn(chosen[c.name], i); return; }
+    const want = fits[c.pronoun] || [0, 1, 2, 3, 4, 5];
+    const k = want.find(j => !used.has(j)) ?? want[i % want.length];
+    used.add(k);
+    out[c.name] = cleanDrawn(DRAWN_LOOKS[k], k);
+  });
   return out;
 }
 

@@ -237,7 +237,7 @@
 </div></div>
 
 <script type="module">
-import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, LOOKS, HAIRS, SKINS, COSTUMES, STYLES, PEOPLE, castPeople, cleanLook, soundCues, ambience, isFountain, fromFountain, toFountain } from "./film.mjs?v=9";
+import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, LOOKS, HAIRS, SKINS, COSTUMES, STYLES, PEOPLE, castPeople, cleanLook, DRAWN, castDrawn, cleanDrawn, soundCues, ambience, isFountain, fromFountain, toFountain } from "./film.mjs?v=10";
 import { encodeFilm, decodeFilm } from "./film/link.mjs?v=4";
 import { voiceOptions } from "./voice.mjs?v=10";
 
@@ -246,10 +246,10 @@ const safe = f => { try { return f(); } catch { return null; } };
 const GATE = "sketchgpt.film.adult", DRAFT = "sketchgpt.film.draft";
 const q = new URLSearchParams(location.search);
 const WIDTH = Math.max(180, Math.min(1080, +q.get("width") || 720)), HEIGHT = Math.round(WIDTH * 16 / 9), FPS = Math.max(4, Math.min(60, +q.get("fps") || 24));
-const LOOKS_KEY = "sketchgpt.film.looks", STYLE_KEY = "sketchgpt.film.style", PEOPLE_KEY = "sketchgpt.film.people";
+const LOOKS_KEY = "sketchgpt.film.looks", STYLE_KEY = "sketchgpt.film.style", PEOPLE_KEY = "sketchgpt.film.people", DRAWN_KEY = "sketchgpt.film.drawn";
 
 // Everything the page knows, rebuilt from the text on every edit.
-const state = { style: "stylised", people: {}, pronouns: {}, looks: {}, speakers: {}, voices: {}, pitch: {}, story: null, film: null, stage: null, stageCast: null, playing: false, ttsBlocked: false, tab: "write" };
+const state = { style: "stylised", people: {}, drawn: {}, pronouns: {}, looks: {}, speakers: {}, voices: {}, pitch: {}, story: null, film: null, stage: null, stageCast: null, playing: false, ttsBlocked: false, tab: "write" };
 const synth = globalThis.speechSynthesis || null;
 let actx = null;
 const audio = () => (actx ||= new (globalThis.AudioContext || globalThis.webkitAudioContext)());
@@ -260,12 +260,13 @@ synth?.addEventListener?.("voiceschanged", () => update());
 Object.assign(state.looks, safe(() => JSON.parse(localStorage.getItem(LOOKS_KEY) || "{}")) || {});
 const saveLooks = () => safe(() => localStorage.setItem(LOOKS_KEY, JSON.stringify(state.looks)));
 // What the stage was built for: a different style, look or person means loading again.
-const lookKey = story => state.style + ":" + (state.style === "realistic"
-  ? JSON.stringify(castPeople(story.cast, state.people))
+const lookKey = story => state.style + ":" + (state.style === "realistic" ? JSON.stringify(castPeople(story.cast, state.people))
+  : state.style === "drawn" ? JSON.stringify(castDrawn(story.cast, state.drawn))
   : story.cast.map(c => c.name + "=" + JSON.stringify(state.looks[c.name] || null)).join("|"));
 state.style = STYLES[safe(() => localStorage.getItem(STYLE_KEY))] ? localStorage.getItem(STYLE_KEY) : "stylised";
 Object.assign(state.people, safe(() => JSON.parse(localStorage.getItem(PEOPLE_KEY) || "{}")) || {});
-const saveStyle = () => safe(() => { localStorage.setItem(STYLE_KEY, state.style); localStorage.setItem(PEOPLE_KEY, JSON.stringify(state.people)); });
+Object.assign(state.drawn, safe(() => JSON.parse(localStorage.getItem(DRAWN_KEY) || "{}")) || {});
+const saveStyle = () => safe(() => { localStorage.setItem(STYLE_KEY, state.style); localStorage.setItem(PEOPLE_KEY, JSON.stringify(state.people)); localStorage.setItem(DRAWN_KEY, JSON.stringify(state.drawn)); });
 
 function open() { $("gate").hidden = true; $("app").hidden = false; }
 if (safe(() => localStorage.getItem(GATE)) === "yes") open(); else $("gate").hidden = false;
@@ -343,10 +344,32 @@ const seg = (attr, who, options, current) => `<div class="seg" role="group">${op
 function renderCast(story) {
   if (!story.cast.length) { $("cast").innerHTML = `<div class="card muted">People appear here as you write them. Try the sample from the ••• menu.</div>`; return; }
   const voices = deviceVoices(), real = state.style === "realistic", cast = castPeople(story.cast, state.people);
+  const drawnCast = castDrawn(story.cast, state.drawn);
+  const about = { realistic: "Real people in their own clothes, whose mouths move and eyes blink (Microsoft Rocketbox, MIT). About 0.5 MB each, loaded once.",
+    drawn: "Hand-drawn people in ink on drawn sets (Open Peeps by Pablo Stanley, CC0). Flat drawings, not 3D bodies: light on any phone.",
+    stylised: "Two free bodies made into anyone, with their hair, skin, clothes and colours chosen here (Quaternius, CC0)." };
   const styleCard = `<div class="card"><div class="field"><span>Style</span><div>${seg("data-style", "film", Object.entries(STYLES), state.style)}</div></div>
-    <p class="muted small" style="margin:8px 0 0">${real ? "Real people in their own clothes, whose mouths move and eyes blink (Microsoft Rocketbox, MIT). About 0.5 MB each, loaded once." : "Two free bodies made into anyone, with their hair, skin, clothes and colours chosen here (Quaternius, CC0)."} The whole film uses one style.</p></div>`;
+    <p class="muted small" style="margin:8px 0 0">${about[state.style]} The whole film uses one style.</p></div>`;
+  const voiceRows = (c, i, who) => `<div class="field"><span>Voice</span><div class="row" style="flex-wrap:nowrap"><select data-voice="${who}" style="flex:1;min-width:0" aria-label="${who}'s voice">${voices.length ? voices.map(o => `<option value="${esc(o.id)}" ${voiceOf(c.name, i)?.id === o.id ? "selected" : ""}>${esc(o.label)}</option>`).join("") : `<option value="">This browser has no voices</option>`}</select><button type="button" data-try="${who}" aria-label="Hear ${who}">▶</button></div></div>
+      <div class="field"><span>Pitch</span><div>${seg("data-pitch", c.name, [["deeper", "Deeper"], ["natural", "Natural"], ["higher", "Higher"]], pitchOf(c.name))}</div></div>`;
+  const pronounRow = (c, who) => `<div class="field"><span>Is</span><div>${seg("data-pronoun", c.name, [["she", "she"], ["he", "he"], ["they", "they"]], c.pronoun)}
+        ${c.pronoun ? "" : `<div class="need">Choose one, so the story's “she”, “he” or “they” can find ${who}.</div>`}</div></div>`;
   $("cast").innerHTML = styleCard + story.cast.map((c, i) => {
     const look = state.looks[c.name] = cleanLook(state.looks[c.name] || defaultLook(c, i));
+    if (state.style === "drawn") {
+      const who = esc(c.name), d = drawnCast[c.name];
+      const pick = (k, table, label) => `<div class="field"><span>${label}</span><select data-dk="${k}" data-who="${who}" aria-label="${who}'s ${label.toLowerCase()}">${Object.entries(table).map(([v, n]) => `<option value="${esc(v)}" ${d[k] === v ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`;
+      return `<div class="card person" data-person="${who}">
+      <header><span class="avatar" style="background:linear-gradient(${d.outfit === "BW" ? "#1b1b1b 58%, #fff 58%" : "#fff 58%, #1b1b1b 58%"});color:#888;border:1px solid var(--line)">${esc(c.name[0])}</span>
+        <div><strong>${who}</strong><div class="muted small">${c.lines} line${c.lines === 1 ? "" : "s"} · ${esc(DRAWN.hair[d.hair])}, ${esc(DRAWN.outfits[d.outfit].toLowerCase())}</div></div></header>
+      ${pronounRow(c, who)}
+      ${pick("hair", DRAWN.hair, "Hair")}
+      <div class="field"><span>Wears</span><div>${seg("data-outfit", c.name, Object.entries(DRAWN.outfits), d.outfit)}</div></div>
+      ${voiceRows(c, i, who)}
+      <details class="more" ${state.openLook === c.name ? "open" : ""} data-lookof="${who}"><summary>Change face, beard and glasses</summary><div>
+        ${pick("face", DRAWN.faces, "Face")}${pick("beard", DRAWN.beards, "Beard")}${pick("glasses", DRAWN.glasses, "Glasses")}
+      </div></details></div>`;
+    }
     if (real) {
       const who = esc(c.name), mine = cast[c.name], want = c.pronoun === "he" ? "man" : c.pronoun === "she" ? "woman" : null;
       const choices = Object.entries(PEOPLE).filter(([id, pp]) => !want || pp.body === want || id === mine);
@@ -405,16 +428,19 @@ $("cast").addEventListener("click", e => {
     const who = b.dataset.pronoun, c = state.story.cast.findIndex(x => x.name === who);
     state.pronouns[who] = b.dataset.value;
     state.looks[who] = defaultLook({ pronoun: b.dataset.value }, c);
-    saveLooks(); update();
+    delete state.drawn[who];
+    saveLooks(); saveStyle(); update();
   }
   if (b.dataset.pitch) { state.pitch[b.dataset.pitch] = b.dataset.value; sayOnce(b.dataset.pitch); update(); }
   if (b.dataset.try) sayOnce(b.dataset.try);
   if (b.dataset.style) { state.style = b.dataset.value; saveStyle(); update(); }
+  if (b.dataset.outfit) { drawnLook(b.dataset.outfit, "outfit", b.dataset.value); update(); }
 });
 $("cast").addEventListener("change", e => {
   const t = e.target;
   if (t.dataset.look && t.value !== "") state.looks[t.dataset.look] = cleanLook(LOOKS[+t.value]);
   if (t.dataset.real) { state.people[t.dataset.real] = t.value; saveStyle(); }
+  if (t.dataset.dk) { drawnLook(t.dataset.who, t.dataset.dk, t.value); if (t.dataset.dk !== "hair") state.openLook = t.dataset.who; }
   // Your own look: each change is kept, and the look becomes "Your own look".
   if (t.dataset.lk) {
     const who = t.dataset.who, l = cleanLook(state.looks[who]), k = t.dataset.lk;
@@ -428,6 +454,13 @@ $("cast").addEventListener("change", e => {
   if (t.dataset.voice) { state.voices[t.dataset.voice] = t.value; sayOnce(t.dataset.voice); }
   update();
 });
+
+// A drawn person's look, changed one thing at a time (and kept on this device).
+function drawnLook(who, k, v) {
+  const d = castDrawn(state.story.cast, state.drawn)[who];
+  state.drawn[who] = cleanDrawn({ ...d, [k]: v });
+  saveStyle();
+}
 
 // ---------------------------------------------------------------- script
 const MOVE_WORDS = { enter: "comes in", exit: "leaves", sit: "sits", stand: "stands", walk: "walks", nod: "nods", no: "shakes their head", arms: "folds their arms",
@@ -467,12 +500,12 @@ async function ensureStage() {
   const story = state.story;
   const castKey = lookKey(story);
   if (state.stage && state.stageCast === castKey) { const { recast } = stageMod; recast(state.stage, state.film); return state.stage; }
-  stageMod ||= await import("./film/stage.mjs?v=9");
+  stageMod ||= await import("./film/stage.mjs?v=10");
   const { setup } = stageMod;
   const looks = Object.fromEntries(story.cast.map((c, i) => [c.name, cleanLook(state.looks[c.name] || defaultLook(c, i))]));
   if (state.stage) { state.stage.renderer.dispose(); const gl = $("gl"), fresh = gl.cloneNode(); gl.replaceWith(fresh); }
-  $("status").textContent = state.stage ? "Dressing the cast…" : "Loading people, clothes and places (about 8 MB, once)…";
-  state.stage = await setup($("gl"), $("out"), state.film, { looks, style: state.style, people: castPeople(story.cast, state.people), shotAt: t => shotAt(state.stage ? state.stage.film : state.film, t), width: WIDTH, height: HEIGHT });
+  $("status").textContent = state.style === "drawn" ? "Drawing the cast…" : state.stage ? "Dressing the cast…" : "Loading people, clothes and places (about 8 MB, once)…";
+  state.stage = await setup($("gl"), $("out"), state.film, { looks, style: state.style, people: castPeople(story.cast, state.people), drawn: castDrawn(story.cast, state.drawn), shotAt: t => shotAt(state.stage ? state.stage.film : state.film, t), width: WIDTH, height: HEIGHT });
   state.stageCast = castKey;
   $("status").textContent = `Loaded ${(state.stage.bytes / 1e6).toFixed(1)} MB in ${(state.stage.loadMs / 1000).toFixed(1)} s.`;
   return state.stage;
@@ -619,7 +652,8 @@ function filmData() {
   return { text: $("story").value, pronouns: pick(state.pronouns), looks: pick(state.looks), pitch: pick(state.pitch),
     voices: Object.fromEntries(cast.map(n => [n, voiceOf(n)?.voice?.name]).filter(([, v]) => v)),
     speakers: state.speakers, fx: $("fx").checked, amb: $("amb").checked, music: $("music").checked,
-    style: state.style, people: state.style === "realistic" ? castPeople(state.story.cast, state.people) : {} };
+    style: state.style, people: state.style === "realistic" ? castPeople(state.story.cast, state.people) : {},
+    drawn: state.style === "drawn" ? castDrawn(state.story.cast, state.drawn) : {} };
 }
 $("sharelink").onclick = async () => {
   if (!$("story").value.trim()) { $("shared").textContent = "Write something first."; return; }
@@ -648,7 +682,7 @@ async function openLink() {
     const f = await decodeFilm(location.hash);
     Object.assign(state.pronouns, f.pronouns); Object.assign(state.looks, f.looks); Object.assign(state.pitch, f.pitch);
     Object.assign(state.speakers, f.speakers);
-    state.style = f.style; Object.assign(state.people, f.people);
+    state.style = f.style; Object.assign(state.people, f.people); Object.assign(state.drawn, f.drawn);
     state.linkVoices = f.voices;
     $("fx").checked = f.fx; $("amb").checked = f.amb; $("music").checked = f.music;
     $("story").value = f.text;
