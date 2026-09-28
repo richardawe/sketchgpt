@@ -5,7 +5,7 @@
 // No model, no network after the assets. three.js (MIT), Quaternius (CC0),
 // Kenney (CC0), Poly Haven (CC0), Mediabunny (MPL-2.0). docs/film-plan.md.
 import * as T from "../vendor/three.mjs?v=1";
-import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope, PEOPLE } from "../film.mjs?v=10";
+import { placesAt, cameraFor, segIndex, setAt, SETS, LOOKS, SKINS, SKIN_BASE, cleanLook, textEnvelope, PEOPLE } from "../film.mjs?v=11";
 import { cue, place } from "./sound.mjs?v=1";
 import { dressBody } from "./costume.mjs?v=3";
 import { follow, handOf } from "./realistic.mjs?v=1";

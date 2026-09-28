@@ -10,7 +10,7 @@
 // a garment is not drawn, so nothing pokes through when a joint bends.
 // docs/film-plan.md, "Costumes".
 import * as T from "../vendor/three.mjs?v=1";
-import { COSTUMES } from "../film.mjs?v=10";
+import { COSTUMES } from "../film.mjs?v=11";
 
 const ARM = /^(upperarm|lowerarm|hand|index|middle|pinky|ring|thumb)_/, LEG = /^(thigh|calf|foot|ball)_/;
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));

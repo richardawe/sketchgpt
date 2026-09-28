@@ -1302,6 +1302,65 @@ screen):
 - three.js is still downloaded (as code) for a drawn film, because the shared
   stage module imports it. Only the 3D people and places are skipped.
 
+## Voices in the video (Kokoro, at the owner's call)
+
+The owner, after watching a saved film: "the voice is not pulling to the final
+video". It never could: `speechSynthesis` plays outside the page's audio, and no
+browser lets a page record it. The page said so beside the video button, but
+a film without voices isn't what the owner wanted.
+
+Four options were put to the owner: a natural AI voice (Kokoro), a robotic
+rule-based one (eSpeak NG, GPL-3.0, a few MB), bringing back the per-line
+recorder, or leaving the video silent. **The owner chose Kokoro**, which
+overrides this plan's "no AI" for voices only. It is **off unless switched on**
+("Voices in the video", Watch → Video), because it's an AI model and a
+download.
+
+**How it works** (`web/film/voices.mjs`, `vendor/kokoro.web.js`):
+- kokoro-js 1.2.1 (Apache-2.0) runs Kokoro-82M v1.0 (q8, Apache-2.0) in the tab
+  on wasm. The bundle is vendored verbatim; what it bundles, including eSpeak NG
+  (GPL-3.0) for turning words into sounds, is in `web/vendor/kokoro-LICENSE.txt`.
+- **It downloads about 115 MB once:** the model (92 MB) and each voice (0.5 MB)
+  from huggingface.co, and the ONNX runtime's wasm (21.6 MB) from jsdelivr. All
+  are kept in the browser's Cache API. Every URL in the bundle was read: model
+  files, the wasm, documentation links. No analytics, beacon or POST. The words
+  are spoken in the tab and never sent.
+- **A voice per person**, by pronoun, never shared while an unused one fits
+  (`castAIVoices`): 6 women's and 5 men's voices, US and UK, Kokoro's better-graded
+  ones. Cast shows "In the video" for each person, with ▶ to hear it.
+- **Before playing or saving, every line is spoken once** ("Making the voices:
+  line 3 of 10"), and kept for the tab. **Each line then lasts as long as its
+  voice** (`beat.seconds`, the path the recorder used), so the film is re-timed
+  to the real speech.
+- The clips are mixed into the video's sound (`soundtrack`'s `voices`), and the
+  **mouths and heads move with the real voice's loudness** (`rmsEnvelope`, as
+  the recorder did). The preview plays the same clips, so what you watch is what
+  you save.
+- One failed download retries once by itself (the files that arrived are cached).
+
+**Measured here** (headless Chromium, one CPU core, no phone):
+- Load, from files already downloaded: 3.5 s.
+- Speech: **about 3× slower than it speaks.** Four lines, 12 s of speech, took
+  39 s (8–11 s a line). That matches Book's measurement. A two-minute film with
+  a minute of dialogue would take about 3 minutes here before the video starts.
+- `tests/film-voices-browser.mjs`, touch screen, the real model (its files are
+  fetched with curl into a local mirror, `tests/kokoro-mirror.mjs`, because this
+  sandbox's proxy fails Chromium's own requests):
+  - off by default; nothing fetched while off; the video silent where people speak;
+  - on: different voices by pronoun; a chosen voice wins;
+  - every line in the video; each line lasts its voice + 0.15 s; the film is re-timed;
+  - the saved video's sound is loud in every line and far louder than without;
+  - one speech envelope per line, from the audio;
+  - only GETs of the model's own files; the switch and voices survive a reload.
+
+**Not known:**
+- **How long it takes on an iPhone.** Safari's wasm on one thread, 115 MB to
+  download (on mobile data too), and whether iOS evicts the cache.
+- Whether Safari has room: the model runs in the tab next to the 3D stage.
+- Whether people prefer these voices to the phone's own while watching.
+- Links don't carry video voices; whoever opens a link gets the default voices
+  for the pronouns.
+
 ## What is not known, and how each gets known
 
 - **What the free tiers actually contain.** Stage 0's inventory. The kits
@@ -1333,3 +1392,6 @@ screen):
 4. **Plain prose first.** Fountain becomes an export and a recognised paste.
 5. **Phone first.** The iPhone sets the budget, and stage 0 runs on it before
    anything else is built.
+6. **Voices in the video: Kokoro, an AI voice.** Chosen over eSpeak (robotic),
+   the recorder and a silent video, after "the voice is not pulling to the final
+   video". The one exception to "no AI", and off unless switched on.

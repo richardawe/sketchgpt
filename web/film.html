@@ -209,7 +209,8 @@
       <div class="card stack">
         <h3>Video</h3>
         <p id="lastrun" class="notice warn" hidden></p>
-        <p class="muted small" style="margin:0">Saved with subtitles and sound. Phones don't let a page record their own voices into a file.</p>
+        <label class="switch"><span>Voices in the video<br><span class="muted small">Phones don't let a page record their own voices, so an AI voice (Kokoro) speaks the lines on this device instead. About 115 MB, downloaded once; your words aren't sent anywhere.</span></span><input type="checkbox" id="aivoice"></label>
+        <p id="aistate" class="muted small" style="margin:0">Saved with subtitles and sound, without voices.</p>
         <select id="quality" aria-label="Size"><option value="3000000">Best quality</option><option value="1200000">Smaller, for sharing</option></select>
         <div class="row"><button id="make" disabled>Make the video</button><button id="cancel" hidden>Stop</button></div>
         <progress id="prog" value="0" max="1" hidden></progress>
@@ -237,7 +238,7 @@
 </div></div>
 
 <script type="module">
-import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, LOOKS, HAIRS, SKINS, COSTUMES, STYLES, PEOPLE, castPeople, cleanLook, DRAWN, castDrawn, cleanDrawn, soundCues, ambience, isFountain, fromFountain, toFountain } from "./film.mjs?v=10";
+import { readStory, block, shotAt, clock, SAMPLE, LIMIT_SECONDS, PITCH, LOOKS, HAIRS, SKINS, COSTUMES, STYLES, PEOPLE, castPeople, cleanLook, DRAWN, castDrawn, cleanDrawn, soundCues, ambience, isFountain, fromFountain, toFountain, AI_VOICES, castAIVoices, rmsEnvelope } from "./film.mjs?v=11";
 import { encodeFilm, decodeFilm } from "./film/link.mjs?v=4";
 import { voiceOptions } from "./voice.mjs?v=10";
 
@@ -246,10 +247,13 @@ const safe = f => { try { return f(); } catch { return null; } };
 const GATE = "sketchgpt.film.adult", DRAFT = "sketchgpt.film.draft";
 const q = new URLSearchParams(location.search);
 const WIDTH = Math.max(180, Math.min(1080, +q.get("width") || 720)), HEIGHT = Math.round(WIDTH * 16 / 9), FPS = Math.max(4, Math.min(60, +q.get("fps") || 24));
+const AI_KEY = "sketchgpt.film.aivoice", AI_CHOSEN_KEY = "sketchgpt.film.aivoices";
 const LOOKS_KEY = "sketchgpt.film.looks", STYLE_KEY = "sketchgpt.film.style", PEOPLE_KEY = "sketchgpt.film.people", DRAWN_KEY = "sketchgpt.film.drawn";
 
 // Everything the page knows, rebuilt from the text on every edit.
-const state = { style: "stylised", people: {}, drawn: {}, pronouns: {}, looks: {}, speakers: {}, voices: {}, pitch: {}, story: null, film: null, stage: null, stageCast: null, playing: false, ttsBlocked: false, tab: "write" };
+const state = { style: "stylised", people: {}, drawn: {}, pronouns: {}, looks: {}, speakers: {}, voices: {}, pitch: {}, story: null, film: null, stage: null, stageCast: null, playing: false, ttsBlocked: false, tab: "write",
+  // Voices in the video: on or off, who has which Kokoro voice, and the lines already spoken (this tab only).
+  ai: safe(() => localStorage.getItem(AI_KEY)) === "1", aiChosen: {}, clips: {} };
 const synth = globalThis.speechSynthesis || null;
 let actx = null;
 const audio = () => (actx ||= new (globalThis.AudioContext || globalThis.webkitAudioContext)());
@@ -316,6 +320,12 @@ function read() {
     b.key = key;
   }
   story.cast = story.cast.slice(0, 4);
+  // With voices in the video, a line already spoken lasts exactly as long as its voice.
+  story.aiVoices = castAIVoices(story.cast, state.aiChosen);
+  if (state.ai) for (const s of story.scenes) for (const b of s.beats) {
+    const clip = b.kind === "line" && b.speaker && state.clips[clipKey(story.aiVoices[b.speaker], b.text)];
+    if (clip) b.seconds = clip.buffer.duration;
+  }
   return story;
 }
 
@@ -332,6 +342,7 @@ function update() {
   if (!state.playing) { $("play").textContent = state.stage ? "▶ Play again" : "▶ Play"; $("play").classList.toggle("again", !!state.stage); }
   $("make").disabled = !state.stage || state.stageCast !== castKey || !film.lines.length;
   $("make").title = $("make").disabled ? "Press Play first: it loads the people and places" : "";
+  aiNote();
   const missing = story.cast.filter(c => !state.pronouns[c.name]).length;
   $("castDot").hidden = !missing; $("castDot").textContent = missing;
   const unsure = story.scenes.flatMap(s => s.beats).filter(b => b.kind === "line" && (b.how === "guessed" || !b.speaker)).length;
@@ -351,7 +362,8 @@ function renderCast(story) {
   const styleCard = `<div class="card"><div class="field"><span>Style</span><div>${seg("data-style", "film", Object.entries(STYLES), state.style)}</div></div>
     <p class="muted small" style="margin:8px 0 0">${about[state.style]} The whole film uses one style.</p></div>`;
   const voiceRows = (c, i, who) => `<div class="field"><span>Voice</span><div class="row" style="flex-wrap:nowrap"><select data-voice="${who}" style="flex:1;min-width:0" aria-label="${who}'s voice">${voices.length ? voices.map(o => `<option value="${esc(o.id)}" ${voiceOf(c.name, i)?.id === o.id ? "selected" : ""}>${esc(o.label)}</option>`).join("") : `<option value="">This browser has no voices</option>`}</select><button type="button" data-try="${who}" aria-label="Hear ${who}">▶</button></div></div>
-      <div class="field"><span>Pitch</span><div>${seg("data-pitch", c.name, [["deeper", "Deeper"], ["natural", "Natural"], ["higher", "Higher"]], pitchOf(c.name))}</div></div>`;
+      <div class="field"><span>Pitch</span><div>${seg("data-pitch", c.name, [["deeper", "Deeper"], ["natural", "Natural"], ["higher", "Higher"]], pitchOf(c.name))}</div></div>${aiRow(c, who)}`;
+  const aiRow = (c, who) => state.ai ? `<div class="field"><span>In the video</span><div class="row" style="flex-wrap:nowrap"><select data-aivoice="${who}" style="flex:1;min-width:0" aria-label="${who}'s voice in the video">${Object.entries(AI_VOICES).filter(([id, v]) => c.pronoun !== "she" && c.pronoun !== "he" || v.is === c.pronoun || story.aiVoices[c.name] === id).map(([id, v]) => `<option value="${id}" ${story.aiVoices[c.name] === id ? "selected" : ""}>${esc(v.name)} (${v.accent}${c.pronoun === "she" || c.pronoun === "he" ? "" : v.is === "she" ? ", woman" : ", man"})</option>`).join("")}</select><button type="button" data-aitry="${who}" aria-label="Hear ${who} in the video">▶</button></div></div>` : "";
   const pronounRow = (c, who) => `<div class="field"><span>Is</span><div>${seg("data-pronoun", c.name, [["she", "she"], ["he", "he"], ["they", "they"]], c.pronoun)}
         ${c.pronoun ? "" : `<div class="need">Choose one, so the story's “she”, “he” or “they” can find ${who}.</div>`}</div></div>`;
   $("cast").innerHTML = styleCard + story.cast.map((c, i) => {
@@ -380,7 +392,7 @@ function renderCast(story) {
         ${c.pronoun ? "" : `<div class="need">Choose one, so the story's “she”, “he” or “they” can find ${who}.</div>`}</div></div>
       <div class="field"><span>Played by</span><select data-real="${who}" aria-label="Who plays ${who}">${choices.map(([id, pp]) => `<option value="${id}" ${id === mine ? "selected" : ""}>${esc(pp.name)}</option>`).join("")}</select></div>
       <div class="field"><span>Voice</span><div class="row" style="flex-wrap:nowrap"><select data-voice="${who}" style="flex:1;min-width:0" aria-label="${who}'s voice">${voices.length ? voices.map(o => `<option value="${esc(o.id)}" ${voiceOf(c.name, i)?.id === o.id ? "selected" : ""}>${esc(o.label)}</option>`).join("") : `<option value="">This browser has no voices</option>`}</select><button type="button" data-try="${who}" aria-label="Hear ${who}">▶</button></div></div>
-      <div class="field"><span>Pitch</span><div>${seg("data-pitch", c.name, [["deeper", "Deeper"], ["natural", "Natural"], ["higher", "Higher"]], pitchOf(c.name))}</div></div></div>`;
+      <div class="field"><span>Pitch</span><div>${seg("data-pitch", c.name, [["deeper", "Deeper"], ["natural", "Natural"], ["higher", "Higher"]], pitchOf(c.name))}</div></div>${aiRow(c, who)}</div>`;
     }
     const o = look.outfit, wear = COSTUMES[look.costume], who = esc(c.name);
     const preset = LOOKS.findIndex(l => sameLook(look, l));
@@ -392,7 +404,7 @@ function renderCast(story) {
       <div class="field"><span>Looks</span><select data-look="${who}" aria-label="${who}'s look">${LOOKS.map((l, j) => `<option value="${j}" ${preset === j ? "selected" : ""}>${esc(l.name)}</option>`).join("")}${preset < 0 ? `<option selected value="">Your own look</option>` : ""}</select></div>
       <div class="field"><span>Wears</span><select data-lk="costume" data-who="${who}" aria-label="${who}'s clothes">${Object.entries(COSTUMES).map(([k, v]) => `<option value="${k}" ${look.costume === k ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select></div>
       <div class="field"><span>Voice</span><div class="row" style="flex-wrap:nowrap"><select data-voice="${who}" style="flex:1;min-width:0" aria-label="${who}'s voice">${voices.length ? voices.map(o => `<option value="${esc(o.id)}" ${voiceOf(c.name, i)?.id === o.id ? "selected" : ""}>${esc(o.label)}</option>`).join("") : `<option value="">This browser has no voices</option>`}</select><button type="button" data-try="${who}" aria-label="Hear ${who}">▶</button></div></div>
-      <div class="field"><span>Pitch</span><div>${seg("data-pitch", c.name, [["deeper", "Deeper"], ["natural", "Natural"], ["higher", "Higher"]], pitchOf(c.name))}</div></div>
+      <div class="field"><span>Pitch</span><div>${seg("data-pitch", c.name, [["deeper", "Deeper"], ["natural", "Natural"], ["higher", "Higher"]], pitchOf(c.name))}</div></div>${aiRow(c, who)}
       <details class="more" ${state.openLook === c.name ? "open" : ""} data-lookof="${who}"><summary>Change hair, skin and colours</summary><div class="lookgrid">
         <label>Body <select data-lk="body" data-who="${who}">${["woman", "man"].map(b => `<option ${look.body === b ? "selected" : ""}>${b}</option>`).join("")}</select></label>
         <label>Hair <select data-lk="hair" data-who="${who}">${Object.entries(HAIRS).map(([k, n]) => `<option value="${k}" ${look.hair === k ? "selected" : ""}>${n}</option>`).join("")}</select></label>
@@ -433,6 +445,7 @@ $("cast").addEventListener("click", e => {
   }
   if (b.dataset.pitch) { state.pitch[b.dataset.pitch] = b.dataset.value; sayOnce(b.dataset.pitch); update(); }
   if (b.dataset.try) sayOnce(b.dataset.try);
+  if (b.dataset.aitry) hearAI(b.dataset.aitry, b);
   if (b.dataset.style) { state.style = b.dataset.value; saveStyle(); update(); }
   if (b.dataset.outfit) { drawnLook(b.dataset.outfit, "outfit", b.dataset.value); update(); }
 });
@@ -452,6 +465,7 @@ $("cast").addEventListener("change", e => {
   }
   saveLooks();
   if (t.dataset.voice) { state.voices[t.dataset.voice] = t.value; sayOnce(t.dataset.voice); }
+  if (t.dataset.aivoice) { state.aiChosen[t.dataset.aivoice] = t.value; saveAI(); }
   update();
 });
 
@@ -494,6 +508,61 @@ function sayLine(text, name) {
 }
 function sayOnce(name) { synth?.cancel(); sayLine(`This is ${name}.`, name); }
 
+// ---------------------------------------------------------------- voices in the video
+// Off unless asked for: Kokoro (web/film/voices.mjs) is an AI model and a ~115 MB download (model 92 MB + runtime 22 MB).
+let voicesMod = null;
+const clipKey = (voice, text) => voice + "\n" + text;
+Object.assign(state.aiChosen, safe(() => JSON.parse(localStorage.getItem(AI_CHOSEN_KEY) || "{}")) || {});
+const saveAI = () => safe(() => { localStorage.setItem(AI_KEY, state.ai ? "1" : "0"); localStorage.setItem(AI_CHOSEN_KEY, JSON.stringify(state.aiChosen)); });
+$("aivoice").checked = state.ai;
+$("aivoice").onchange = () => { state.ai = $("aivoice").checked; saveAI(); update(); };
+function aiNote() {
+  const lines = state.film?.lines.filter(l => l[2]) || [], made = lines.filter(l => clipOf(l)).length;
+  $("aistate").textContent = !state.ai ? "Saved with subtitles and sound, without voices."
+    : made === lines.length && lines.length ? `Saved with subtitles, sound and voices: all ${made} lines are spoken.`
+    : `Saved with subtitles, sound and voices. ${made ? `${made} of ${lines.length} lines are spoken so far; the rest are` : "Each line is"} spoken first, which takes a while on a phone.`;
+}
+const clipOf = line => state.clips[clipKey(state.story.aiVoices[line[2]], line[3])];
+async function loadAI() {
+  voicesMod ||= await import("./film/voices.mjs?v=1");
+  return voicesMod.loadVoices((k, got, all) => { $("status").textContent = `Downloading the voice (once): ${Math.round(k * 100)}% of ${Math.round(all / 1e6)} MB`; });
+}
+async function makeClip(tts, voice, text) {
+  const key = clipKey(voice, text);
+  if (state.clips[key]) return state.clips[key];
+  const { samples, rate } = await voicesMod.speak(tts, text, voice);
+  const buffer = new AudioBuffer({ length: Math.max(1, samples.length), sampleRate: rate, numberOfChannels: 1 });
+  buffer.copyToChannel(samples, 0);
+  return state.clips[key] = { buffer, env: rmsEnvelope(samples, rate, { fps: 24 }) };
+}
+// Every line spoken once, before the scene is played or saved; then the film is re-timed to them.
+async function makeClips() {
+  const todo = state.film.lines.filter(l => l[2] && !clipOf(l));
+  if (!todo.length) return;
+  const t0 = performance.now();
+  const tts = await loadAI();
+  for (const [i, l] of todo.entries()) {
+    if (cancelled) throw new Error("stopped");
+    $("status").textContent = `Making the voices: line ${i + 1} of ${todo.length}…`;
+    await makeClip(tts, state.story.aiVoices[l[2]], l[3]);
+  }
+  window.__film.voicesMs = performance.now() - t0;
+  update();
+}
+// The speech envelopes that move the mouths, by line.
+const aiSpeech = () => Object.fromEntries(state.film.lines.map((l, i) => [i, l[2] && clipOf(l)?.env]).filter(([, e]) => e));
+async function hearAI(who, button) {
+  audio().resume?.();
+  const text = `This is ${who}.`, label = button.textContent;
+  button.disabled = true; button.textContent = "…";
+  try {
+    const clip = await makeClip(await loadAI(), state.story.aiVoices[who], text);
+    const src = audio().createBufferSource(); src.buffer = clip.buffer; src.connect(audio().destination); src.start();
+    $("status").textContent = "";
+  } catch (e) { $("status").textContent = "The voice could not load: " + e.message; }
+  finally { button.disabled = false; button.textContent = label; }
+}
+
 // ---------------------------------------------------------------- the stage
 let stageMod = null, soundMod = null;
 async function ensureStage() {
@@ -522,11 +591,13 @@ $("play").onclick = async () => {
   if (synth) { synth.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; synth.speak(u); }
   $("play").hidden = true;
   try {
+    cancelled = false;
+    if (state.ai) { $("stop").hidden = false; await makeClips(); }
     const stage = await ensureStage();
     soundMod ||= await import("./film/sound.mjs?v=1");
     const { frameFn } = stageMod;
     const film = state.film;
-    stage.speech = {};
+    stage.speech = state.ai ? aiSpeech() : {};
     const draw = frameFn(stage);
     // The same sounds as the video, played as the scene reaches them.
     const cues = $("fx").checked ? soundCues(film) : [], places = $("amb").checked ? ambience(film).filter(a => a.kind !== "room") : [];
@@ -535,6 +606,7 @@ $("play").onclick = async () => {
     // The clock runs in real time, but a line never starts over the one
     // before it: if someone is still speaking, the scene holds until they stop.
     let t = 0, last = null, next = 0, busy = null;
+    stopClips = [];
     const heard = window.__film.heard = [];
     await new Promise(done => {
       const tick = now => {
@@ -563,10 +635,18 @@ $("play").onclick = async () => {
       requestAnimationFrame(tick);
     });
     placeNode?.disconnect();
-    // Speak one line in the speaker's phone voice.
+    // Speak one line: its video voice when there is one, else the phone's voice.
     function voice(line) {
       const [, , name, text, , key] = line;
       if (!name) return null;
+      const clip = state.ai && clipOf(line);
+      if (clip) {
+        const src = audio().createBufferSource(); src.buffer = clip.buffer; src.connect(audio().destination);
+        const ends = audio().currentTime + clip.buffer.duration; src.start();
+        heard.push({ key, how: "voice", ai: state.story.aiVoices[name] });
+        stopClips.push(src);
+        return () => state.playing && audio().currentTime < ends;
+      }
       const u = sayLine(text, name);
       if (!u) return null;
       let started = false, ended = false;
@@ -584,7 +664,8 @@ $("play").onclick = async () => {
     $("status").textContent = "Could not play: " + e.message;
   } finally { state.playing = false; synth?.cancel(); $("stop").hidden = true; $("play").hidden = false; update(); }
 };
-$("stop").onclick = () => { state.playing = false; synth?.cancel(); };
+let stopClips = [];
+$("stop").onclick = () => { state.playing = false; cancelled = true; synth?.cancel(); for (const s of stopClips) try { s.stop(); } catch {} };
 
 let cancelled = false;
 $("make").onclick = async () => {
@@ -594,11 +675,13 @@ $("make").onclick = async () => {
   let lock = null;
   try { lock = await navigator.wakeLock?.request("screen"); } catch {}
   try {
+    if (state.ai) await makeClips();
     const stage = await ensureStage();
-    stage.speech = {};
+    stage.speech = state.ai ? aiSpeech() : {};
+    const voices = state.ai ? state.film.lines.filter(l => l[2] && clipOf(l)).map(l => ({ at: l[0], buffer: clipOf(l).buffer })) : [];
     run = { total: Math.round(state.film.length * FPS), frame: 0, fps: FPS, started: new Date().toISOString(), finished: false, hidden: false };
     const t0 = performance.now();
-    const r = await stageMod.makeVideo(stage, { seconds: state.film.length, fps: FPS, music: $("music").checked, bitrate: +$("quality").value,
+    const r = await stageMod.makeVideo(stage, { seconds: state.film.length, fps: FPS, voices, music: $("music").checked, bitrate: +$("quality").value,
       cues: $("fx").checked ? soundCues(state.film) : [], places: $("amb").checked ? ambience(state.film).filter(a => a.kind !== "room") : [],
       onFrame: (f) => {
         if (cancelled) throw new Error("stopped");
@@ -614,8 +697,8 @@ $("make").onclick = async () => {
     const file = new File([r.blob], name, { type: r.blob.type });
     if (navigator.canShare?.({ files: [file] })) { const s = document.createElement("button"); s.textContent = "Share"; s.onclick = () => navigator.share({ files: [file] }).catch(() => {}); row.append(s); }
     $("result").append(row);
-    $("status").textContent = `Made ${clock(state.film.length)} of video in ${(r.wallMs / 1000).toFixed(0)} s (${r.ext.toUpperCase()}).` + (!r.audioCodec ? " Silent: this browser has no audio encoder." : "");
-    window.__film.video = { ok: true, ext: r.ext, audio: r.audioCodec, frames: r.frames, bytes: r.blob.size, bitrate: r.bitrate };
+    $("status").textContent = `Made ${clock(state.film.length)} of video in ${(r.wallMs / 1000).toFixed(0)} s (${r.ext.toUpperCase()}).` + (!r.audioCodec ? " Silent: this browser has no audio encoder." : voices.length ? ` With ${voices.length} spoken lines.` : "");
+    window.__film.video = { ok: true, ext: r.ext, audio: r.audioCodec, frames: r.frames, bytes: r.blob.size, bitrate: r.bitrate, voices: voices.map(v => v.at) };
     run.finished = true; safe(() => localStorage.setItem(RUN, JSON.stringify(run)));
     $("failure").hidden = $("copyfail").hidden = true;
   } catch (e) {

@@ -886,7 +886,56 @@ export function ambience(film) {
     kind: s.set === "bar" ? "bar" : s.set === "street" ? "street" : s.set === "park" ? "park" : "room", light: s.light }));
 }
 
-/** How loud someone is speaking, frame by frame, for a head that moves with the voice: the words' syllables spread over the line, a pulse each. */
+/**
+ * How loud someone is speaking, frame by frame, 0..1, from real speech (the
+ * video's own voice, web/film/voices.mjs), for a mouth that moves with it.
+ */
+export function rmsEnvelope(samples, sampleRate, { fps = 24 } = {}) {
+  const hop = sampleRate / fps, n = Math.ceil(samples.length / hop), out = new Float32Array(n);
+  let peak = 1e-6;
+  for (let f = 0; f < n; f++) {
+    let s = 0, c = 0;
+    for (let i = Math.floor(f * hop); i < Math.min(samples.length, Math.floor((f + 1) * hop)); i++) { s += samples[i] * samples[i]; c++; }
+    out[f] = Math.sqrt(s / Math.max(1, c)); peak = Math.max(peak, out[f]);
+  }
+  for (let f = 0; f < n; f++) out[f] = Math.min(1, out[f] / peak);
+  return out;
+}
+
+// ---------------------------------------------------------------- voices in the video
+// Phones can't record their own voices into a file, so a voice in the saved
+// video has to be made on the page: Kokoro-82M (Apache-2.0), run in the tab by
+// web/film/voices.mjs. It is an AI model, the one exception to Film's "no AI",
+// made at the owner's call, and only when "Voices in the video" is on. The
+// voices are Kokoro's own, the better-graded ones first for each kind.
+export const AI_VOICES = {
+  af_heart: { name: "Heart", is: "she", accent: "US" }, af_bella: { name: "Bella", is: "she", accent: "US" },
+  bf_emma: { name: "Emma", is: "she", accent: "UK" }, af_nicole: { name: "Nicole", is: "she", accent: "US" },
+  af_sarah: { name: "Sarah", is: "she", accent: "US" }, bf_isabella: { name: "Isabella", is: "she", accent: "UK" },
+  am_michael: { name: "Michael", is: "he", accent: "US" }, bm_george: { name: "George", is: "he", accent: "UK" },
+  am_fenrir: { name: "Fenrir", is: "he", accent: "US" }, am_puck: { name: "Puck", is: "he", accent: "US" },
+  bm_fable: { name: "Fable", is: "he", accent: "UK" },
+};
+/**
+ * A video voice for each person: the one chosen, else the first unused voice
+ * that matches their pronoun ("they", or none yet, takes any). Nobody shares a
+ * voice while an unused one fits.
+ */
+export function castAIVoices(cast, chosen = {}) {
+  const out = {}, used = new Set();
+  for (const c of cast) if (AI_VOICES[chosen[c.name]]) { out[c.name] = chosen[c.name]; used.add(chosen[c.name]); }
+  for (const c of cast) {
+    if (out[c.name]) continue;
+    const fits = Object.keys(AI_VOICES).filter(id => c.pronoun !== "she" && c.pronoun !== "he" || AI_VOICES[id].is === c.pronoun);
+    // "they" alternates kinds so two of them don't sound alike.
+    const order = c.pronoun === "she" || c.pronoun === "he" ? fits : fits.sort((a, b) => (AI_VOICES[a].is === "he") - (AI_VOICES[b].is === "he"));
+    const id = order.find(v => !used.has(v)) || order[0];
+    out[c.name] = id; used.add(id);
+  }
+  return out;
+}
+
+/** …or, with no voice made yet, from the words' syllables spread over the line: a pulse each. */
 export function textEnvelope(text, seconds, { fps = 24 } = {}) {
   const syll = Math.max(1, (String(text).toLowerCase().match(/[aeiouy]+/g) || []).length);
   const n = Math.max(1, Math.round(seconds * fps)), out = new Float32Array(n);
